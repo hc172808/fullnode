@@ -1,0 +1,22 @@
+services:
+  gyds-fullnode:
+    build: .
+    container_name: gyds-fullnode
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8545:8545"   # JSON-RPC
+      - "8546:8546"   # WebSocket
+      - "30303:30303" # P2P TCP
+      - "30303:30303/udp"
+    volumes:
+      - fullnode-data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "7"
+
+volumes:
+  fullnode-data:
