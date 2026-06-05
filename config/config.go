@@ -33,7 +33,7 @@ func DefaultConfig() *Config {
         return &Config{
                 ChainID:      13370,
                 NetworkName:  "GYDS Chain",
-                NodeMode:     "lite",
+                NodeMode:     "full",
                 P2PPort:      30303,
                 P2PBootstrap: []string{},
                 MaxPeers:     25,
@@ -45,7 +45,7 @@ func DefaultConfig() *Config {
                 DataDir:      "./data",
                 LogLevel:     "info",
                 LogFormat:    "pretty",
-                SyncMode:     "light",
+                SyncMode:     "full",
                 SnapshotSync: true,
         }
 }
