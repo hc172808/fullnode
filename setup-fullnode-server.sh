@@ -6,6 +6,7 @@
 #           Rocky Linux 8/9, Fedora 38+
 #
 # Usage: sudo bash setup-fullnode-server.sh [OPTIONS]
+#
 # Options:
 #   --datadir  DIR     Chain data directory (default: /var/lib/gyds-fullnode)
 #   --rpc-port PORT    RPC port (default: 8545)
@@ -17,6 +18,7 @@
 #   --no-docker        Skip Docker installation (run as native systemd service)
 #   --update           Update an existing installation
 #   --uninstall        Remove GYDS fullnode and all related files
+#   --help             Show this help and port reference, then exit
 # ============================================================
 set -euo pipefail
 
@@ -41,6 +43,81 @@ IS_UPDATE=false
 UNINSTALL=false
 
 # ── Argument parsing ───────────────────────────────────────────────────────────
+show_help() {
+  cat <<EOF
+
+GYDS Chain — Full Node Setup Script
+====================================
+
+Usage:
+  sudo bash setup-fullnode-server.sh [OPTIONS]
+
+OPTIONS
+  --rpc-port  PORT   JSON-RPC HTTP port          (default: 8545)
+  --ws-port   PORT   WebSocket port              (default: 8546)
+  --p2p-port  PORT   P2P peer networking port    (default: 30303)
+  --ssh-port  PORT   SSH port (firewall allow)   (default: 22)
+  --datadir   DIR    Chain data directory        (default: /var/lib/gyds-fullnode)
+  --domain    FQDN   Domain for auto-TLS (Certbot, requires DNS → this IP)
+  --log-level LEVEL  trace | debug | info | warn | error  (default: info)
+  --no-docker        Run as native systemd service instead of Docker
+  --update           Update an existing installation (keeps data, backs up first)
+  --uninstall        Remove node, service, nginx config (preserves chain data)
+  --help             Show this help and exit
+
+PORT REFERENCE
+  ┌─────────┬──────────┬─────────────────────────────────────────────────────┐
+  │ Port    │ Protocol │ Purpose                                             │
+  ├─────────┼──────────┼─────────────────────────────────────────────────────┤
+  │  8545   │ TCP      │ JSON-RPC HTTP — used by wallets, dApps, MetaMask   │
+  │  8546   │ TCP      │ WebSocket — real-time subscriptions (eth_subscribe) │
+  │ 30303   │ TCP+UDP  │ P2P network — peer discovery and block propagation  │
+  │    80   │ TCP      │ Nginx reverse proxy (HTTP → RPC)                    │
+  │   443   │ TCP      │ Nginx HTTPS (only when --domain is used)            │
+  │    22   │ TCP      │ SSH — protected by Fail2Ban                         │
+  └─────────┴──────────┴─────────────────────────────────────────────────────┘
+
+CHANGING PORTS
+  To use non-default ports, pass flags at install time:
+    sudo bash setup-fullnode-server.sh --rpc-port 9545 --ws-port 9546 --p2p-port 30304
+
+  To change ports on an existing install (update mode):
+    sudo bash setup-fullnode-server.sh --update --rpc-port 9545
+
+FIREWALL (UFW — Ubuntu/Debian)
+  Allow a port:   ufw allow <PORT>/tcp
+  Allow P2P UDP:  ufw allow 30303/udp
+  Deny a port:    ufw deny <PORT>/tcp
+  Check status:   ufw status numbered
+
+FIREWALL (firewalld — CentOS/RHEL/AlmaLinux)
+  Allow a port:   firewall-cmd --permanent --add-port=<PORT>/tcp && firewall-cmd --reload
+  Remove a port:  firewall-cmd --permanent --remove-port=<PORT>/tcp && firewall-cmd --reload
+  Check status:   firewall-cmd --list-all
+
+ADDING A DOMAIN + HTTPS
+  sudo bash setup-fullnode-server.sh --domain rpc.yourdomain.com
+  (Your domain must already point to this server's IP before running)
+
+EXAMPLES
+  Fresh install (Docker, default ports):
+    sudo bash setup-fullnode-server.sh
+
+  Fresh install (native service, custom ports):
+    sudo bash setup-fullnode-server.sh --no-docker --rpc-port 9545 --p2p-port 30304
+
+  With domain + TLS:
+    sudo bash setup-fullnode-server.sh --domain rpc.example.com
+
+  Update existing install:
+    sudo bash setup-fullnode-server.sh --update
+
+  Remove everything:
+    sudo bash setup-fullnode-server.sh --uninstall
+
+EOF
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --datadir)    GYDS_DATADIR="$2";  shift 2 ;;
@@ -53,6 +130,7 @@ while [[ $# -gt 0 ]]; do
     --no-docker)  USE_DOCKER=false;   shift   ;;
     --update)     IS_UPDATE=true;     shift   ;;
     --uninstall)  UNINSTALL=true;     shift   ;;
+    --help|-h)    show_help; exit 0   ;;
     *) echo "Unknown flag: $1"; exit 1 ;;
   esac
 done
@@ -667,44 +745,92 @@ SERVER_IP=$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null \
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
-echo "╔══════════════════════════════════════════════════╗"
-echo "║          GYDS FULL NODE DEPLOYED                 ║"
-echo "╚══════════════════════════════════════════════════╝"
-echo ""
-if [ -n "$DOMAIN" ]; then
-  echo "  JSON-RPC:  https://${DOMAIN}"
-  echo "  WebSocket: wss://${DOMAIN}/ws"
-else
-  echo "  JSON-RPC:  http://${SERVER_IP}:${GYDS_RPC_PORT}"
-  echo "  WebSocket: ws://${SERVER_IP}:${GYDS_WS_PORT}"
-  echo "  Via Nginx: http://${SERVER_IP}"
-fi
-echo "  P2P:       tcp://${SERVER_IP}:${GYDS_P2P_PORT}"
-echo ""
-echo "  Data dir:  ${GYDS_DATADIR}"
-echo "  Logs:      ${GYDS_DATADIR}/logs/"
-if $IS_UPDATE; then
-  echo "  Backup:    /var/backups/gyds-fullnode/"
-fi
-echo ""
-if $USE_DOCKER; then
-  echo "  Managed by: Docker Compose"
-  echo "  Status:     cd ${APP_DIR} && docker compose ps"
-  echo "  Logs:       cd ${APP_DIR} && docker compose logs -f"
-else
-  echo "  Managed by: systemd"
-  echo "  Status:     systemctl status gyds-fullnode"
-  echo "  Logs:       journalctl -u gyds-fullnode -f"
-  echo "  Log files:  ${GYDS_DATADIR}/logs/fullnode.log"
-fi
-echo ""
-echo "  Health:    /usr/local/bin/gyds-fullnode-health"
-echo "  Update:    sudo bash ${APP_DIR}/setup-fullnode-server.sh --update"
-echo "  Uninstall: sudo bash ${APP_DIR}/setup-fullnode-server.sh --uninstall"
+echo "╔════════════════════════════════════════════════════════════════╗"
+echo "║              GYDS FULL NODE DEPLOYED                          ║"
+echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 if $NODE_OK; then
-  echo "  Status: RUNNING OK"
+  echo "  Node status : RUNNING OK"
 else
-  echo "  Status: NOT RESPONDING — check logs above"
+  echo "  Node status : NOT RESPONDING — check logs below"
 fi
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ENDPOINTS"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+if [ -n "$DOMAIN" ]; then
+  echo "  JSON-RPC  (HTTPS) : https://${DOMAIN}"
+  echo "  WebSocket  (WSS)  : wss://${DOMAIN}/ws"
+  echo "  JSON-RPC (direct) : http://${SERVER_IP}:${GYDS_RPC_PORT}  (bypass nginx)"
+else
+  echo "  JSON-RPC  (HTTP)  : http://${SERVER_IP}:${GYDS_RPC_PORT}"
+  echo "  WebSocket  (WS)   : ws://${SERVER_IP}:${GYDS_WS_PORT}"
+  echo "  Via Nginx  (HTTP) : http://${SERVER_IP}  (port 80 → ${GYDS_RPC_PORT})"
+fi
+echo "  P2P Network (TCP) : tcp://${SERVER_IP}:${GYDS_P2P_PORT}"
+echo "  P2P Network (UDP) : udp://${SERVER_IP}:${GYDS_P2P_PORT}"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  PORT REFERENCE"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Port   Proto    Purpose"
+echo "  ─────  ───────  ────────────────────────────────────────────────"
+echo "  ${GYDS_RPC_PORT}   TCP      JSON-RPC HTTP (wallets, MetaMask, dApps)"
+echo "  ${GYDS_WS_PORT}   TCP      WebSocket (real-time block/tx subscriptions)"
+echo "  ${GYDS_P2P_PORT}  TCP+UDP  P2P networking (peer discovery, block sync)"
+echo "  80     TCP      Nginx reverse proxy → port ${GYDS_RPC_PORT}"
+if [ -n "$DOMAIN" ]; then
+  echo "  443    TCP      Nginx HTTPS (TLS cert: ${DOMAIN})"
+fi
+echo "  22     TCP      SSH (Fail2Ban active, max 5 attempts/10 min)"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  FIREWALL COMMANDS (UFW)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  View open ports : ufw status numbered"
+echo "  Allow a port    : ufw allow <PORT>/tcp"
+echo "  Allow P2P UDP   : ufw allow ${GYDS_P2P_PORT}/udp"
+echo "  Block a port    : ufw deny <PORT>/tcp"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  HOW TO CHANGE PORTS"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Re-run with --update and the new port flags:"
+echo "  sudo bash ${APP_DIR}/setup-fullnode-server.sh \\"
+echo "    --update --rpc-port 9545 --ws-port 9546 --p2p-port 30304"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  MANAGEMENT"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+if $USE_DOCKER; then
+  echo "  Managed by : Docker Compose"
+  echo "  Status     : cd ${APP_DIR} && docker compose ps"
+  echo "  Logs       : cd ${APP_DIR} && docker compose logs -f"
+  echo "  Restart    : cd ${APP_DIR} && docker compose restart"
+  echo "  Stop       : cd ${APP_DIR} && docker compose down"
+else
+  echo "  Managed by : systemd"
+  echo "  Status     : systemctl status gyds-fullnode"
+  echo "  Logs       : journalctl -u gyds-fullnode -f"
+  echo "  Log files  : ${GYDS_DATADIR}/logs/fullnode.log"
+  echo "  Restart    : systemctl restart gyds-fullnode"
+  echo "  Stop       : systemctl stop gyds-fullnode"
+fi
+echo ""
+echo "  Data dir   : ${GYDS_DATADIR}"
+echo "  Logs dir   : ${GYDS_DATADIR}/logs/"
+echo "  Health     : /usr/local/bin/gyds-fullnode-health"
+if $IS_UPDATE; then
+  echo "  Backup     : /var/backups/gyds-fullnode/"
+fi
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  QUICK COMMANDS"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Update    : sudo bash ${APP_DIR}/setup-fullnode-server.sh --update"
+echo "  Uninstall : sudo bash ${APP_DIR}/setup-fullnode-server.sh --uninstall"
+echo "  Port help : sudo bash ${APP_DIR}/setup-fullnode-server.sh --help"
+echo "  RPC test  : curl -s -X POST http://localhost:${GYDS_RPC_PORT} \\"
+echo "                -H 'Content-Type: application/json' \\"
+echo "                -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}'"
 echo ""
