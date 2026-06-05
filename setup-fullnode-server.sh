@@ -12,8 +12,11 @@
 #   --ws-port  PORT    WebSocket port (default: 8546)
 #   --p2p-port PORT    P2P port (default: 30303)
 #   --ssh-port PORT    SSH port for firewall (default: 22)
+#   --domain   DOMAIN  Domain name for TLS/HTTPS via Certbot (optional)
+#   --log-level LEVEL  Log level: trace|debug|info|warn|error (default: info)
 #   --no-docker        Skip Docker installation (run as native systemd service)
-#   --update           Update an existing installation instead of fresh install
+#   --update           Update an existing installation
+#   --uninstall        Remove GYDS fullnode and all related files
 # ============================================================
 set -euo pipefail
 
@@ -31,19 +34,25 @@ GYDS_RPC_PORT="${GYDS_RPC_PORT:-8545}"
 GYDS_WS_PORT="${GYDS_WS_PORT:-8546}"
 GYDS_P2P_PORT="${GYDS_P2P_PORT:-30303}"
 SSH_PORT="22"
+DOMAIN=""
+LOG_LEVEL="info"
 USE_DOCKER=true
 IS_UPDATE=false
+UNINSTALL=false
 
 # ── Argument parsing ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --datadir)   GYDS_DATADIR="$2";   shift 2 ;;
-    --rpc-port)  GYDS_RPC_PORT="$2";  shift 2 ;;
-    --ws-port)   GYDS_WS_PORT="$2";   shift 2 ;;
-    --p2p-port)  GYDS_P2P_PORT="$2";  shift 2 ;;
-    --ssh-port)  SSH_PORT="$2";       shift 2 ;;
-    --no-docker) USE_DOCKER=false;    shift   ;;
-    --update)    IS_UPDATE=true;      shift   ;;
+    --datadir)    GYDS_DATADIR="$2";  shift 2 ;;
+    --rpc-port)   GYDS_RPC_PORT="$2"; shift 2 ;;
+    --ws-port)    GYDS_WS_PORT="$2";  shift 2 ;;
+    --p2p-port)   GYDS_P2P_PORT="$2"; shift 2 ;;
+    --ssh-port)   SSH_PORT="$2";      shift 2 ;;
+    --domain)     DOMAIN="$2";        shift 2 ;;
+    --log-level)  LOG_LEVEL="$2";     shift 2 ;;
+    --no-docker)  USE_DOCKER=false;   shift   ;;
+    --update)     IS_UPDATE=true;     shift   ;;
+    --uninstall)  UNINSTALL=true;     shift   ;;
     *) echo "Unknown flag: $1"; exit 1 ;;
   esac
 done
@@ -56,6 +65,37 @@ info() { echo -e "${CYAN}[INFO]${NC} $*"; }
 die()  { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 
 [[ $EUID -ne 0 ]] && die "Run as root: sudo bash $0"
+
+# ── Uninstall ─────────────────────────────────────────────────────────────────
+if $UNINSTALL; then
+  log "Uninstalling GYDS fullnode..."
+  systemctl stop gyds-fullnode    2>/dev/null || true
+  systemctl disable gyds-fullnode 2>/dev/null || true
+  rm -f /etc/systemd/system/gyds-fullnode.service
+  systemctl daemon-reload 2>/dev/null || true
+
+  if command -v docker &>/dev/null && [ -f "$APP_DIR/docker-compose.yml" ]; then
+    docker compose -f "$APP_DIR/docker-compose.yml" down --remove-orphans --volumes 2>/dev/null || true
+  fi
+
+  rm -rf "$APP_DIR"
+  rm -f /etc/nginx/sites-enabled/gyds-fullnode
+  rm -f /etc/nginx/sites-available/gyds-fullnode
+  rm -f /etc/nginx/conf.d/gyds-fullnode.conf
+  nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+
+  rm -f /usr/local/bin/gyds-fullnode-health
+  rm -f /usr/local/bin/gyds-fullnode
+  crontab -l 2>/dev/null | grep -v gyds-fullnode-health | crontab - 2>/dev/null || true
+
+  if id "$APP_USER" &>/dev/null; then
+    userdel "$APP_USER" 2>/dev/null || true
+  fi
+
+  log "Uninstall complete. Chain data at ${GYDS_DATADIR} was preserved."
+  log "To also remove chain data: rm -rf ${GYDS_DATADIR}"
+  exit 0
+fi
 
 # ── OS detection ──────────────────────────────────────────────────────────────
 OS_ID=""
@@ -128,6 +168,43 @@ pkg_install() {
   esac
 }
 
+# ── Pre-flight checks ─────────────────────────────────────────────────────────
+log "Running pre-flight checks..."
+
+# Minimum requirements: 2 CPU cores, 2 GB RAM, 20 GB free disk
+MIN_CORES=2
+MIN_RAM_MB=2048
+MIN_DISK_GB=20
+
+CORES=$(nproc 2>/dev/null || echo 1)
+RAM_MB=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)
+DISK_KB=$(df -k "$( dirname "$GYDS_DATADIR" 2>/dev/null || echo / )" 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
+DISK_GB=$(( DISK_KB / 1024 / 1024 ))
+
+if (( CORES < MIN_CORES )); then
+  warn "Only ${CORES} CPU core(s) detected; ${MIN_CORES} recommended for stable block production."
+fi
+if (( RAM_MB < MIN_RAM_MB )); then
+  warn "Only ${RAM_MB} MB RAM detected; ${MIN_RAM_MB} MB recommended."
+fi
+if (( DISK_GB < MIN_DISK_GB )); then
+  die "Insufficient disk space: ${DISK_GB} GB free, ${MIN_DISK_GB} GB required."
+fi
+
+info "Pre-flight: ${CORES} cores | ${RAM_MB} MB RAM | ${DISK_GB} GB free disk — OK"
+
+# ── Swap (auto-create if RAM < 2 GB and no swap exists) ───────────────────────
+SWAP_TOTAL=$(free -m | awk '/^Swap:/{print $2}')
+if (( RAM_MB < 2048 && SWAP_TOTAL == 0 )); then
+  log "Low RAM detected and no swap — creating 2 GB swapfile..."
+  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  log "Swap enabled: $(free -h | awk '/^Swap:/{print $2}')"
+fi
+
 # ── System packages ───────────────────────────────────────────────────────────
 log "Updating system packages..."
 pkg_update
@@ -135,14 +212,14 @@ pkg_update
 log "Installing base dependencies..."
 if is_debian_based; then
   pkg_install curl wget git build-essential ca-certificates \
-    nginx jq lsof ufw fail2ban net-tools gnupg software-properties-common
+    nginx jq lsof ufw fail2ban net-tools gnupg software-properties-common certbot python3-certbot-nginx
 elif is_rhel_based; then
-  # Enable EPEL for fail2ban, jq, etc.
+  # Enable EPEL for fail2ban, jq, certbot, etc.
   if ! rpm -q epel-release &>/dev/null; then
     pkg_install epel-release || warn "EPEL not available — some packages may be missing"
   fi
   pkg_install curl wget git gcc make ca-certificates \
-    nginx jq lsof firewalld fail2ban net-tools gnupg2
+    nginx jq lsof firewalld fail2ban net-tools gnupg2 certbot python3-certbot-nginx
 fi
 
 # ── Go installation ───────────────────────────────────────────────────────────
@@ -154,7 +231,7 @@ install_go() {
   rm -rf "$target"
   tar -C /usr/local -xzf /tmp/go.tar.gz
   rm -f /tmp/go.tar.gz
-  ln -sf /usr/local/go/bin/go   /usr/local/bin/go
+  ln -sf /usr/local/go/bin/go    /usr/local/bin/go
   ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
   echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
   chmod +x /etc/profile.d/go.sh
@@ -185,10 +262,8 @@ install_docker() {
       | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || \
       curl -fsSL "https://download.docker.com/linux/ubuntu/gpg" \
       | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    # Use VERSION_CODENAME if available, else fall back to lsb_release
     local codename="${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null || echo jammy)}"
     local repo_os="$OS_ID"
-    # Debian-derived distros that don't have their own Docker repo use ubuntu's
     [[ "$OS_ID" != "ubuntu" && "$OS_ID" != "debian" ]] && repo_os="ubuntu"
     echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/${repo_os} ${codename} stable" \
@@ -256,20 +331,45 @@ fi
 # ── Fail2Ban ──────────────────────────────────────────────────────────────────
 if command -v fail2ban-server &>/dev/null; then
   cat > /etc/fail2ban/jail.local <<-EOF
-        [DEFAULT]
-        bantime  = 1h
-        findtime = 10m
-        maxretry = 5
+	[DEFAULT]
+	bantime  = 1h
+	findtime = 10m
+	maxretry = 5
 
-        [sshd]
-        enabled = true
-        port    = $SSH_PORT
-        EOF
+	[sshd]
+	enabled = true
+	port    = $SSH_PORT
+	EOF
   systemctl enable --now fail2ban
   log "Fail2Ban configured"
 else
   warn "fail2ban not found — skipping"
 fi
+
+# ── Kernel / network tuning ───────────────────────────────────────────────────
+log "Applying kernel network tuning for P2P workloads..."
+cat > /etc/sysctl.d/99-gyds-fullnode.conf <<-EOF
+	# Increase socket buffer sizes for high-throughput P2P
+	net.core.rmem_max = 134217728
+	net.core.wmem_max = 134217728
+	net.core.rmem_default = 65536
+	net.core.wmem_default = 65536
+	net.ipv4.tcp_rmem = 4096 87380 134217728
+	net.ipv4.tcp_wmem = 4096 65536 134217728
+
+	# Allow more concurrent connections
+	net.core.somaxconn = 65535
+	net.ipv4.tcp_max_syn_backlog = 65535
+
+	# Reduce TIME_WAIT pressure from many short-lived RPC connections
+	net.ipv4.tcp_tw_reuse = 1
+	net.ipv4.tcp_fin_timeout = 15
+
+	# Increase max open file descriptors for the node process
+	fs.file-max = 2097152
+	EOF
+sysctl -p /etc/sysctl.d/99-gyds-fullnode.conf --quiet 2>/dev/null || true
+log "Kernel tuning applied"
 
 # ── Clone / update repo ───────────────────────────────────────────────────────
 log "Setting up application directory..."
@@ -287,29 +387,41 @@ else
 fi
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
+# ── Backup before update ──────────────────────────────────────────────────────
+if $IS_UPDATE; then
+  BACKUP_DIR="/var/backups/gyds-fullnode/$(date +%Y%m%d_%H%M%S)"
+  log "Creating backup at ${BACKUP_DIR}..."
+  mkdir -p "$BACKUP_DIR"
+  [ -f "$APP_DIR/.env" ] && cp "$APP_DIR/.env" "$BACKUP_DIR/.env.bak"
+  if [ -d "${GYDS_DATADIR}/chaindata" ]; then
+    tar -czf "$BACKUP_DIR/chaindata.tar.gz" -C "$GYDS_DATADIR" chaindata 2>/dev/null || \
+      warn "Could not backup chaindata — continuing anyway"
+  fi
+  log "Backup complete: ${BACKUP_DIR}"
+fi
+
 # ── Environment file ──────────────────────────────────────────────────────────
 log "Creating environment configuration..."
 if [ ! -f "$APP_DIR/.env" ] || $IS_UPDATE; then
-  # Use .env.example from repo if available, otherwise generate
   if [ -f "$APP_DIR/.env.example" ]; then
     cp "$APP_DIR/.env.example" "$APP_DIR/.env"
   else
     cat > "$APP_DIR/.env" <<-EOF
-        GYDS_CHAIN_ID=$GYDS_CHAIN_ID
-        GYDS_NODE_MODE=full
-        GYDS_RPC_PORT=$GYDS_RPC_PORT
-        GYDS_RPC_HOST=0.0.0.0
-        GYDS_WS_PORT=$GYDS_WS_PORT
-        GYDS_P2P_PORT=$GYDS_P2P_PORT
-        GYDS_DATA_DIR=$GYDS_DATADIR
-        GYDS_LOG_LEVEL=info
-        EOF
+	GYDS_CHAIN_ID=$GYDS_CHAIN_ID
+	GYDS_NODE_MODE=full
+	GYDS_RPC_PORT=$GYDS_RPC_PORT
+	GYDS_RPC_HOST=0.0.0.0
+	GYDS_WS_PORT=$GYDS_WS_PORT
+	GYDS_P2P_PORT=$GYDS_P2P_PORT
+	GYDS_DATA_DIR=$GYDS_DATADIR
+	GYDS_LOG_LEVEL=$LOG_LEVEL
+	EOF
   fi
-  # Ensure runtime values are applied (overwrite key lines)
   sed -i "s|^GYDS_RPC_PORT=.*|GYDS_RPC_PORT=$GYDS_RPC_PORT|"   "$APP_DIR/.env"
   sed -i "s|^GYDS_P2P_PORT=.*|GYDS_P2P_PORT=$GYDS_P2P_PORT|"   "$APP_DIR/.env"
   sed -i "s|^GYDS_DATA_DIR=.*|GYDS_DATA_DIR=$GYDS_DATADIR|"     "$APP_DIR/.env"
   sed -i "s|^GYDS_NODE_MODE=.*|GYDS_NODE_MODE=full|"            "$APP_DIR/.env"
+  sed -i "s|^GYDS_LOG_LEVEL=.*|GYDS_LOG_LEVEL=$LOG_LEVEL|"      "$APP_DIR/.env"
   chmod 640 "$APP_DIR/.env"
   chown "root:$APP_USER" "$APP_DIR/.env"
 fi
@@ -336,6 +448,7 @@ fi
 # ── Docker Compose (optional) ─────────────────────────────────────────────────
 if $USE_DOCKER; then
   log "Starting Docker container..."
+  cd "$APP_DIR"
   docker compose down --remove-orphans 2>/dev/null || true
   if $IS_UPDATE; then
     docker compose build
@@ -348,105 +461,157 @@ fi
 
 # ── Nginx reverse proxy ───────────────────────────────────────────────────────
 log "Configuring Nginx reverse proxy..."
+
+# Shared rate-limit zone (defined in http context via conf.d snippet)
+cat > /etc/nginx/conf.d/gyds-ratelimit.conf <<-NGINX
+	limit_req_zone \$binary_remote_addr zone=gyds_rpc:10m rate=30r/s;
+	limit_conn_zone \$binary_remote_addr zone=gyds_conn:10m;
+	NGINX
+
 if is_debian_based; then
   rm -f /etc/nginx/sites-enabled/default
   cat > /etc/nginx/sites-available/gyds-fullnode <<-NGINX
-        server {
-            listen 80;
-            server_name _;
+	server {
+	    listen 80;
+	    server_name ${DOMAIN:-_};
 
-            # JSON-RPC and WebSocket on the same location
-            location / {
-                proxy_pass         http://127.0.0.1:$GYDS_RPC_PORT;
-                proxy_http_version 1.1;
-                proxy_set_header   Upgrade    \$http_upgrade;
-                proxy_set_header   Connection "upgrade";
-                proxy_set_header   Host       \$host;
-                proxy_set_header   X-Real-IP  \$remote_addr;
-                proxy_read_timeout 300s;
-                proxy_send_timeout 300s;
-            }
-        }
-        NGINX
+	    # RPC rate limiting — 30 req/s per IP, burst 60
+	    limit_req       zone=gyds_rpc burst=60 nodelay;
+	    limit_conn      gyds_conn 20;
+	    limit_req_status 429;
+
+	    location / {
+	        proxy_pass         http://127.0.0.1:$GYDS_RPC_PORT;
+	        proxy_http_version 1.1;
+	        proxy_set_header   Upgrade    \$http_upgrade;
+	        proxy_set_header   Connection "upgrade";
+	        proxy_set_header   Host       \$host;
+	        proxy_set_header   X-Real-IP  \$remote_addr;
+	        proxy_read_timeout 300s;
+	        proxy_send_timeout 300s;
+	    }
+	}
+	NGINX
   ln -sf /etc/nginx/sites-available/gyds-fullnode /etc/nginx/sites-enabled/
 elif is_rhel_based; then
   cat > /etc/nginx/conf.d/gyds-fullnode.conf <<-NGINX
-        server {
-            listen 80;
-            server_name _;
+	server {
+	    listen 80;
+	    server_name ${DOMAIN:-_};
 
-            location / {
-                proxy_pass         http://127.0.0.1:$GYDS_RPC_PORT;
-                proxy_http_version 1.1;
-                proxy_set_header   Upgrade    \$http_upgrade;
-                proxy_set_header   Connection "upgrade";
-                proxy_set_header   Host       \$host;
-                proxy_set_header   X-Real-IP  \$remote_addr;
-                proxy_read_timeout 300s;
-                proxy_send_timeout 300s;
-            }
-        }
-        NGINX
+	    limit_req       zone=gyds_rpc burst=60 nodelay;
+	    limit_conn      gyds_conn 20;
+	    limit_req_status 429;
+
+	    location / {
+	        proxy_pass         http://127.0.0.1:$GYDS_RPC_PORT;
+	        proxy_http_version 1.1;
+	        proxy_set_header   Upgrade    \$http_upgrade;
+	        proxy_set_header   Connection "upgrade";
+	        proxy_set_header   Host       \$host;
+	        proxy_set_header   X-Real-IP  \$remote_addr;
+	        proxy_read_timeout 300s;
+	        proxy_send_timeout 300s;
+	    }
+	}
+	NGINX
 fi
 
 nginx -t && systemctl enable --now nginx && systemctl reload nginx
 log "Nginx configured"
 
-# ── Systemd service (native binary) ──────────────────────────────────────────
-# Only create native systemd service when not using Docker
-# (Docker has its own restart policy; running both would cause port conflicts)
+# ── TLS / HTTPS via Certbot (optional, requires --domain) ─────────────────────
+if [ -n "$DOMAIN" ]; then
+  if command -v certbot &>/dev/null; then
+    log "Provisioning TLS certificate for ${DOMAIN}..."
+    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
+      --register-unsafely-without-email --redirect 2>/dev/null || \
+      warn "Certbot failed — check that $DOMAIN resolves to this server's IP and port 80 is open."
+    # Auto-renewal cron (certbot installs its own timer on systemd distros, but add as fallback)
+    (crontab -l 2>/dev/null | grep -v certbot; \
+      echo "0 3 * * * certbot renew --quiet --nginx") | crontab - 2>/dev/null || true
+    log "TLS certificate provisioned — HTTPS enabled"
+  else
+    warn "certbot not found — skipping TLS setup"
+  fi
+fi
+
+# ── Systemd service (native binary) ───────────────────────────────────────────
 if ! $USE_DOCKER; then
-  log "Creating systemd service..."
+  log "Creating hardened systemd service..."
   cat > /etc/systemd/system/gyds-fullnode.service <<-SERVICE
-        [Unit]
-        Description=GYDS Chain Full Node
-        Documentation=https://github.com/hc172808/fullnode
-        After=network-online.target
-        Wants=network-online.target
+	[Unit]
+	Description=GYDS Chain Full Node
+	Documentation=https://github.com/hc172808/fullnode
+	After=network-online.target
+	Wants=network-online.target
 
-        [Service]
-        Type=simple
-        User=$APP_USER
-        Group=$APP_USER
-        WorkingDirectory=$APP_DIR
-        EnvironmentFile=$APP_DIR/.env
-        ExecStart=$APP_DIR/bin/gyds-fullnode start
-        Restart=on-failure
-        RestartSec=10s
-        LimitNOFILE=65536
-        StandardOutput=append:${GYDS_DATADIR}/logs/fullnode.log
-        StandardError=append:${GYDS_DATADIR}/logs/fullnode-error.log
+	[Service]
+	Type=simple
+	User=$APP_USER
+	Group=$APP_USER
+	WorkingDirectory=$APP_DIR
+	EnvironmentFile=$APP_DIR/.env
+	ExecStart=$APP_DIR/bin/gyds-fullnode start
+	Restart=on-failure
+	RestartSec=10s
+	TimeoutStopSec=30s
 
-        [Install]
-        WantedBy=multi-user.target
-        SERVICE
+	# Resource limits
+	LimitNOFILE=65536
+	LimitNPROC=4096
+
+	# Logging
+	StandardOutput=append:${GYDS_DATADIR}/logs/fullnode.log
+	StandardError=append:${GYDS_DATADIR}/logs/fullnode-error.log
+
+	# Systemd hardening
+	NoNewPrivileges=true
+	ProtectSystem=strict
+	ProtectHome=true
+	ReadWritePaths=${GYDS_DATADIR} ${APP_DIR}/bin
+	PrivateTmp=true
+	PrivateDevices=true
+	ProtectKernelTunables=true
+	ProtectKernelModules=true
+	ProtectControlGroups=true
+	RestrictAddressFamilies=AF_INET AF_INET6
+	RestrictNamespaces=true
+	LockPersonality=true
+	MemoryDenyWriteExecute=true
+	RestrictRealtime=true
+	SystemCallFilter=@system-service
+	SystemCallErrorNumber=EPERM
+
+	[Install]
+	WantedBy=multi-user.target
+	SERVICE
 
   systemctl daemon-reload
   systemctl enable gyds-fullnode
   systemctl restart gyds-fullnode
-  log "systemd service 'gyds-fullnode' enabled and started"
+  log "Systemd service 'gyds-fullnode' enabled and started"
 fi
 
-# ── Health check script ───────────────────────────────────────────────────────
+# ── Health check script ────────────────────────────────────────────────────────
 log "Installing health check..."
 cat > /usr/local/bin/gyds-fullnode-health <<-EOF
-        #!/usr/bin/env bash
-        RPC_PORT="${GYDS_RPC_PORT}"
-        RESP=\$(curl -sf --max-time 5 -X POST "http://localhost:\${RPC_PORT}" \\
-          -H "Content-Type: application/json" \\
-          --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)
-        if [ -n "\$RESP" ]; then
-          echo "[OK]   \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC responsive — \$RESP"
-        else
-          echo "[WARN] \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC not responding on port \${RPC_PORT}"
-          # Auto-recover
-          if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
-            systemctl restart gyds-fullnode && echo "[INFO] Service restarted"
-          elif command -v docker &>/dev/null; then
-            cd ${APP_DIR} && docker compose up -d && echo "[INFO] Container restarted"
-          fi
-        fi
-        EOF
+	#!/usr/bin/env bash
+	RPC_PORT="${GYDS_RPC_PORT}"
+	RESP=\$(curl -sf --max-time 5 -X POST "http://localhost:\${RPC_PORT}" \\
+	  -H "Content-Type: application/json" \\
+	  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)
+	if [ -n "\$RESP" ]; then
+	  echo "[OK]   \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC responsive — \$RESP"
+	else
+	  echo "[WARN] \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC not responding on port \${RPC_PORT}"
+	  if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
+	    systemctl restart gyds-fullnode && echo "[INFO] Service restarted"
+	  elif command -v docker &>/dev/null; then
+	    cd ${APP_DIR} && docker compose up -d && echo "[INFO] Container restarted"
+	  fi
+	fi
+	EOF
 chmod +x /usr/local/bin/gyds-fullnode-health
 
 # Register cron job (runs every 5 minutes)
@@ -455,18 +620,52 @@ chmod +x /usr/local/bin/gyds-fullnode-health
   | crontab -
 log "Health check cron installed"
 
-# ── Log rotation ──────────────────────────────────────────────────────────────
+# ── Log rotation ───────────────────────────────────────────────────────────────
 cat > /etc/logrotate.d/gyds-fullnode <<-LOGROTATE
-        ${GYDS_DATADIR}/logs/*.log {
-            daily
-            rotate 14
-            compress
-            delaycompress
-            missingok
-            notifempty
-            copytruncate
-        }
-        LOGROTATE
+	${GYDS_DATADIR}/logs/*.log {
+	    daily
+	    rotate 14
+	    compress
+	    delaycompress
+	    missingok
+	    notifempty
+	    copytruncate
+	}
+	LOGROTATE
+
+# ── Post-install health verification ──────────────────────────────────────────
+log "Verifying node is running..."
+sleep 5
+NODE_OK=false
+for i in 1 2 3 4 5; do
+  RESP=$(curl -sf --max-time 5 -X POST "http://localhost:${GYDS_RPC_PORT}" \
+    -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)
+  if [ -n "$RESP" ]; then
+    NODE_OK=true
+    BLOCK_HEX=$(echo "$RESP" | grep -o '"result":"0x[^"]*"' | grep -o '0x[^"]*' || echo "0x0")
+    info "Node is live — current block: ${BLOCK_HEX}"
+    break
+  fi
+  warn "Attempt $i/5: node not yet responsive, waiting 5s..."
+  sleep 5
+done
+
+if ! $NODE_OK; then
+  warn "Node did not respond within 30s. Check logs:"
+  if ! $USE_DOCKER; then
+    warn "  journalctl -u gyds-fullnode -n 50"
+    warn "  tail -f ${GYDS_DATADIR}/logs/fullnode-error.log"
+  else
+    warn "  cd ${APP_DIR} && docker compose logs --tail=50"
+  fi
+fi
+
+# ── Detect public IP ──────────────────────────────────────────────────────────
+SERVER_IP=$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null \
+  || curl -sf --max-time 5 https://ifconfig.me 2>/dev/null \
+  || hostname -I 2>/dev/null | awk '{print $1}' \
+  || echo "YOUR_SERVER_IP")
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
@@ -474,13 +673,21 @@ echo "╔═══════════════════════�
 echo "║          GYDS FULL NODE DEPLOYED                 ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
-echo "  JSON-RPC:  http://YOUR_SERVER_IP:${GYDS_RPC_PORT}"
-echo "  WebSocket: ws://YOUR_SERVER_IP:${GYDS_WS_PORT}"
-echo "  P2P:       tcp://YOUR_SERVER_IP:${GYDS_P2P_PORT}"
-echo "  Via Nginx: http://YOUR_SERVER_IP"
+if [ -n "$DOMAIN" ]; then
+echo "  JSON-RPC:  https://${DOMAIN}"
+echo "  WebSocket: wss://${DOMAIN}/ws"
+else
+echo "  JSON-RPC:  http://${SERVER_IP}:${GYDS_RPC_PORT}"
+echo "  WebSocket: ws://${SERVER_IP}:${GYDS_WS_PORT}"
+echo "  Via Nginx: http://${SERVER_IP}"
+fi
+echo "  P2P:       tcp://${SERVER_IP}:${GYDS_P2P_PORT}"
 echo ""
 echo "  Data dir:  ${GYDS_DATADIR}"
 echo "  Logs:      ${GYDS_DATADIR}/logs/"
+if $IS_UPDATE; then
+echo "  Backup:    /var/backups/gyds-fullnode/"
+fi
 echo ""
 if $USE_DOCKER; then
   echo "  Managed by: Docker Compose"
@@ -493,6 +700,13 @@ else
   echo "  Log files:  ${GYDS_DATADIR}/logs/fullnode.log"
 fi
 echo ""
-echo "  Health:   /usr/local/bin/gyds-fullnode-health"
-echo "  Re-run:   sudo bash ${APP_DIR}/setup-fullnode-server.sh --update"
+echo "  Health:    /usr/local/bin/gyds-fullnode-health"
+echo "  Update:    sudo bash ${APP_DIR}/setup-fullnode-server.sh --update"
+echo "  Uninstall: sudo bash ${APP_DIR}/setup-fullnode-server.sh --uninstall"
+echo ""
+if $NODE_OK; then
+echo "  Status: RUNNING ✓"
+else
+echo "  Status: NOT RESPONDING — check logs above"
+fi
 echo ""
