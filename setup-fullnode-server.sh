@@ -276,6 +276,8 @@ log "Setting up application directory..."
 mkdir -p "$APP_DIR"
 if [ ! -d "$APP_DIR/.git" ]; then
   log "Cloning repository..."
+  # Remove any partial/stale contents so git clone into the dir succeeds
+  rm -rf "${APP_DIR:?}"/*  "${APP_DIR:?}"/.[!.]* 2>/dev/null || true
   git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 else
   log "Updating repository..."
@@ -318,20 +320,28 @@ mkdir -p "${GYDS_DATADIR}"/{chaindata,keystore,logs}
 chown -R "$APP_USER:$APP_USER" "$GYDS_DATADIR"
 chmod 750 "$GYDS_DATADIR"
 
-# ── Build binary ──────────────────────────────────────────────────────────────
-log "Building gyds-fullnode binary..."
-cd "$APP_DIR"
-export HOME="/root"
-go mod tidy
-go build -ldflags="-s -w -X main.version=1.0.0" -o bin/gyds-fullnode .
-chown "$APP_USER:$APP_USER" "$APP_DIR/bin/gyds-fullnode"
-log "Binary built: $(file "$APP_DIR/bin/gyds-fullnode")"
+# ── Build binary (only when not using Docker) ─────────────────────────────────
+if ! $USE_DOCKER; then
+  log "Building gyds-fullnode binary..."
+  cd "$APP_DIR"
+  export HOME="/root"
+  export GOTOOLCHAIN=local
+  mkdir -p "$APP_DIR/bin"
+  go mod tidy
+  go build -ldflags="-s -w -X main.version=1.0.0" -o bin/gyds-fullnode .
+  chown "$APP_USER:$APP_USER" "$APP_DIR/bin/gyds-fullnode"
+  log "Binary built: $(file "$APP_DIR/bin/gyds-fullnode")"
+fi
 
 # ── Docker Compose (optional) ─────────────────────────────────────────────────
 if $USE_DOCKER; then
   log "Starting Docker container..."
   docker compose down --remove-orphans 2>/dev/null || true
-  docker compose build --no-cache
+  if $IS_UPDATE; then
+    docker compose build
+  else
+    docker compose build --no-cache
+  fi
   docker compose up -d
   log "Docker container started"
 fi
@@ -433,7 +443,7 @@ cat > /usr/local/bin/gyds-fullnode-health <<-EOF
           if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
             systemctl restart gyds-fullnode && echo "[INFO] Service restarted"
           elif command -v docker &>/dev/null; then
-            cd /opt/gyds-fullnode && docker compose up -d && echo "[INFO] Container restarted"
+            cd ${APP_DIR} && docker compose up -d && echo "[INFO] Container restarted"
           fi
         fi
         EOF
