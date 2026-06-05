@@ -34,6 +34,10 @@ waitForPort = 5000
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 30303
+externalPort = 3000
+
 [deployment]
 deploymentTarget = "vm"
 run = ["bash", "-c", "GYDS_RPC_PORT=5000 GYDS_NODE_MODE=full GYDS_DATA_DIR=/var/lib/gyds-fullnode ./bin/gyds-fullnode start"]
