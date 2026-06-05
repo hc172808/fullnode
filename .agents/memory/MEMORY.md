@@ -1,0 +1,1 @@
+- [Project identity](project-identity.md) — this is a GYDS Chain fullnode (Go blockchain node, PoS, Ethereum-compatible JSON-RPC)
