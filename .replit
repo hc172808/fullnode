@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "GYDS_RPC_PORT=5000 GYDS_NODE_MODE=full go run . start"
+args = "GOTOOLCHAIN=local GYDS_RPC_PORT=5000 GYDS_NODE_MODE=full GYDS_DATA_DIR=./data go run . start"
 waitForPort = 5000
 
 [[ports]]
@@ -36,5 +36,5 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "vm"
-run = ["bash", "-c", "GYDS_RPC_PORT=5000 GYDS_NODE_MODE=full ./bin/gyds-fullnode start"]
-build = ["go", "build", "-o", "bin/gyds-fullnode", "."]
+run = ["bash", "-c", "GYDS_RPC_PORT=5000 GYDS_NODE_MODE=full GYDS_DATA_DIR=/var/lib/gyds-fullnode ./bin/gyds-fullnode start"]
+build = ["bash", "-c", "GOTOOLCHAIN=local go build -o bin/gyds-fullnode ."]

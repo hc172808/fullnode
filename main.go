@@ -13,11 +13,11 @@ import (
         "github.com/rs/zerolog/log"
         "github.com/spf13/cobra"
 
-        "github.com/gydschain/litenode/config"
-        "github.com/gydschain/litenode/consensus"
-        "github.com/gydschain/litenode/core"
-        "github.com/gydschain/litenode/p2p"
-        "github.com/gydschain/litenode/rpc"
+        "github.com/gydschain/fullnode/config"
+        "github.com/gydschain/fullnode/consensus"
+        "github.com/gydschain/fullnode/core"
+        "github.com/gydschain/fullnode/p2p"
+        "github.com/gydschain/fullnode/rpc"
 )
 
 var version = "1.0.0"
@@ -88,7 +88,7 @@ func runNode() error {
                 Int64("chainId", cfg.ChainID).
                 Msg("Starting GYDS fullnode")
 
-        chain := core.NewChain(core.GydsGenesis)
+        chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
         log.Info().Uint64("height", chain.Height()).Msg("Chain initialised from genesis")
 
         vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)

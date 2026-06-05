@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gydschain/litenode/storage"
+	"github.com/gydschain/fullnode/storage"
 )
 
 // ── Errors ───────────────────────────────────────────────────────────────────

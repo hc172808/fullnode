@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gydschain/litenode/core"
+	"github.com/gydschain/fullnode/core"
 	"github.com/rs/zerolog/log"
 )
 
