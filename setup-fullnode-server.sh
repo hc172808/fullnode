@@ -256,15 +256,15 @@ fi
 # ── Fail2Ban ──────────────────────────────────────────────────────────────────
 if command -v fail2ban-server &>/dev/null; then
   cat > /etc/fail2ban/jail.local <<-EOF
-	[DEFAULT]
-	bantime  = 1h
-	findtime = 10m
-	maxretry = 5
+        [DEFAULT]
+        bantime  = 1h
+        findtime = 10m
+        maxretry = 5
 
-	[sshd]
-	enabled = true
-	port    = $SSH_PORT
-	EOF
+        [sshd]
+        enabled = true
+        port    = $SSH_PORT
+        EOF
   systemctl enable --now fail2ban
   log "Fail2Ban configured"
 else
@@ -279,6 +279,7 @@ if [ ! -d "$APP_DIR/.git" ]; then
   git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 else
   log "Updating repository..."
+  git config --global --add safe.directory "$APP_DIR"
   git -C "$APP_DIR" fetch --depth 1 origin "$BRANCH"
   git -C "$APP_DIR" reset --hard "origin/$BRANCH"
 fi
@@ -292,15 +293,15 @@ if [ ! -f "$APP_DIR/.env" ] || $IS_UPDATE; then
     cp "$APP_DIR/.env.example" "$APP_DIR/.env"
   else
     cat > "$APP_DIR/.env" <<-EOF
-	GYDS_CHAIN_ID=$GYDS_CHAIN_ID
-	GYDS_NODE_MODE=full
-	GYDS_RPC_PORT=$GYDS_RPC_PORT
-	GYDS_RPC_HOST=0.0.0.0
-	GYDS_WS_PORT=$GYDS_WS_PORT
-	GYDS_P2P_PORT=$GYDS_P2P_PORT
-	GYDS_DATA_DIR=$GYDS_DATADIR
-	GYDS_LOG_LEVEL=info
-	EOF
+        GYDS_CHAIN_ID=$GYDS_CHAIN_ID
+        GYDS_NODE_MODE=full
+        GYDS_RPC_PORT=$GYDS_RPC_PORT
+        GYDS_RPC_HOST=0.0.0.0
+        GYDS_WS_PORT=$GYDS_WS_PORT
+        GYDS_P2P_PORT=$GYDS_P2P_PORT
+        GYDS_DATA_DIR=$GYDS_DATADIR
+        GYDS_LOG_LEVEL=info
+        EOF
   fi
   # Ensure runtime values are applied (overwrite key lines)
   sed -i "s|^GYDS_RPC_PORT=.*|GYDS_RPC_PORT=$GYDS_RPC_PORT|"   "$APP_DIR/.env"
@@ -340,42 +341,42 @@ log "Configuring Nginx reverse proxy..."
 if is_debian_based; then
   rm -f /etc/nginx/sites-enabled/default
   cat > /etc/nginx/sites-available/gyds-fullnode <<-NGINX
-	server {
-	    listen 80;
-	    server_name _;
+        server {
+            listen 80;
+            server_name _;
 
-	    # JSON-RPC and WebSocket on the same location
-	    location / {
-	        proxy_pass         http://127.0.0.1:$GYDS_RPC_PORT;
-	        proxy_http_version 1.1;
-	        proxy_set_header   Upgrade    \$http_upgrade;
-	        proxy_set_header   Connection "upgrade";
-	        proxy_set_header   Host       \$host;
-	        proxy_set_header   X-Real-IP  \$remote_addr;
-	        proxy_read_timeout 300s;
-	        proxy_send_timeout 300s;
-	    }
-	}
-	NGINX
+            # JSON-RPC and WebSocket on the same location
+            location / {
+                proxy_pass         http://127.0.0.1:$GYDS_RPC_PORT;
+                proxy_http_version 1.1;
+                proxy_set_header   Upgrade    \$http_upgrade;
+                proxy_set_header   Connection "upgrade";
+                proxy_set_header   Host       \$host;
+                proxy_set_header   X-Real-IP  \$remote_addr;
+                proxy_read_timeout 300s;
+                proxy_send_timeout 300s;
+            }
+        }
+        NGINX
   ln -sf /etc/nginx/sites-available/gyds-fullnode /etc/nginx/sites-enabled/
 elif is_rhel_based; then
   cat > /etc/nginx/conf.d/gyds-fullnode.conf <<-NGINX
-	server {
-	    listen 80;
-	    server_name _;
+        server {
+            listen 80;
+            server_name _;
 
-	    location / {
-	        proxy_pass         http://127.0.0.1:$GYDS_RPC_PORT;
-	        proxy_http_version 1.1;
-	        proxy_set_header   Upgrade    \$http_upgrade;
-	        proxy_set_header   Connection "upgrade";
-	        proxy_set_header   Host       \$host;
-	        proxy_set_header   X-Real-IP  \$remote_addr;
-	        proxy_read_timeout 300s;
-	        proxy_send_timeout 300s;
-	    }
-	}
-	NGINX
+            location / {
+                proxy_pass         http://127.0.0.1:$GYDS_RPC_PORT;
+                proxy_http_version 1.1;
+                proxy_set_header   Upgrade    \$http_upgrade;
+                proxy_set_header   Connection "upgrade";
+                proxy_set_header   Host       \$host;
+                proxy_set_header   X-Real-IP  \$remote_addr;
+                proxy_read_timeout 300s;
+                proxy_send_timeout 300s;
+            }
+        }
+        NGINX
 fi
 
 nginx -t && systemctl enable --now nginx && systemctl reload nginx
@@ -387,28 +388,28 @@ log "Nginx configured"
 if ! $USE_DOCKER; then
   log "Creating systemd service..."
   cat > /etc/systemd/system/gyds-fullnode.service <<-SERVICE
-	[Unit]
-	Description=GYDS Chain Full Node
-	Documentation=https://github.com/hc172808/fullnode
-	After=network-online.target
-	Wants=network-online.target
+        [Unit]
+        Description=GYDS Chain Full Node
+        Documentation=https://github.com/hc172808/fullnode
+        After=network-online.target
+        Wants=network-online.target
 
-	[Service]
-	Type=simple
-	User=$APP_USER
-	Group=$APP_USER
-	WorkingDirectory=$APP_DIR
-	EnvironmentFile=$APP_DIR/.env
-	ExecStart=$APP_DIR/bin/gyds-fullnode start
-	Restart=on-failure
-	RestartSec=10s
-	LimitNOFILE=65536
-	StandardOutput=append:${GYDS_DATADIR}/logs/fullnode.log
-	StandardError=append:${GYDS_DATADIR}/logs/fullnode-error.log
+        [Service]
+        Type=simple
+        User=$APP_USER
+        Group=$APP_USER
+        WorkingDirectory=$APP_DIR
+        EnvironmentFile=$APP_DIR/.env
+        ExecStart=$APP_DIR/bin/gyds-fullnode start
+        Restart=on-failure
+        RestartSec=10s
+        LimitNOFILE=65536
+        StandardOutput=append:${GYDS_DATADIR}/logs/fullnode.log
+        StandardError=append:${GYDS_DATADIR}/logs/fullnode-error.log
 
-	[Install]
-	WantedBy=multi-user.target
-	SERVICE
+        [Install]
+        WantedBy=multi-user.target
+        SERVICE
 
   systemctl daemon-reload
   systemctl enable gyds-fullnode
@@ -419,23 +420,23 @@ fi
 # ── Health check script ───────────────────────────────────────────────────────
 log "Installing health check..."
 cat > /usr/local/bin/gyds-fullnode-health <<-EOF
-	#!/usr/bin/env bash
-	RPC_PORT="${GYDS_RPC_PORT}"
-	RESP=\$(curl -sf --max-time 5 -X POST "http://localhost:\${RPC_PORT}" \\
-	  -H "Content-Type: application/json" \\
-	  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)
-	if [ -n "\$RESP" ]; then
-	  echo "[OK]   \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC responsive — \$RESP"
-	else
-	  echo "[WARN] \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC not responding on port \${RPC_PORT}"
-	  # Auto-recover
-	  if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
-	    systemctl restart gyds-fullnode && echo "[INFO] Service restarted"
-	  elif command -v docker &>/dev/null; then
-	    cd /opt/gyds-fullnode && docker compose up -d && echo "[INFO] Container restarted"
-	  fi
-	fi
-	EOF
+        #!/usr/bin/env bash
+        RPC_PORT="${GYDS_RPC_PORT}"
+        RESP=\$(curl -sf --max-time 5 -X POST "http://localhost:\${RPC_PORT}" \\
+          -H "Content-Type: application/json" \\
+          --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)
+        if [ -n "\$RESP" ]; then
+          echo "[OK]   \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC responsive — \$RESP"
+        else
+          echo "[WARN] \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC not responding on port \${RPC_PORT}"
+          # Auto-recover
+          if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
+            systemctl restart gyds-fullnode && echo "[INFO] Service restarted"
+          elif command -v docker &>/dev/null; then
+            cd /opt/gyds-fullnode && docker compose up -d && echo "[INFO] Container restarted"
+          fi
+        fi
+        EOF
 chmod +x /usr/local/bin/gyds-fullnode-health
 
 # Register cron job (runs every 5 minutes)
@@ -446,16 +447,16 @@ log "Health check cron installed"
 
 # ── Log rotation ──────────────────────────────────────────────────────────────
 cat > /etc/logrotate.d/gyds-fullnode <<-LOGROTATE
-	${GYDS_DATADIR}/logs/*.log {
-	    daily
-	    rotate 14
-	    compress
-	    delaycompress
-	    missingok
-	    notifempty
-	    copytruncate
-	}
-	LOGROTATE
+        ${GYDS_DATADIR}/logs/*.log {
+            daily
+            rotate 14
+            compress
+            delaycompress
+            missingok
+            notifempty
+            copytruncate
+        }
+        LOGROTATE
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
