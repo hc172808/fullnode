@@ -38,6 +38,9 @@ GYDS_P2P_PORT="${GYDS_P2P_PORT:-30303}"
 SSH_PORT="22"
 DOMAIN=""
 LOG_LEVEL="info"
+BOOTSTRAP_NODES=""
+ALLOW_IPS=""
+DISK_ALERT_GB=10
 USE_DOCKER=true
 IS_UPDATE=false
 UNINSTALL=false
@@ -60,6 +63,9 @@ OPTIONS
   --datadir   DIR    Chain data directory        (default: /var/lib/gyds-fullnode)
   --domain    FQDN   Domain for auto-TLS (Certbot, requires DNS → this IP)
   --log-level LEVEL  trace | debug | info | warn | error  (default: info)
+  --bootstrap-nodes  Comma-separated peer list  e.g. tcp://1.2.3.4:30303,tcp://5.6.7.8:30303
+  --allow-ip  IP     Restrict RPC/WS to this IP only (can repeat for multiple IPs)
+  --disk-alert GB    Warn when free disk drops below this GB threshold (default: 10)
   --no-docker        Run as native systemd service instead of Docker
   --update           Update an existing installation (keeps data, backs up first)
   --uninstall        Remove node, service, nginx config (preserves chain data)
@@ -127,10 +133,13 @@ while [[ $# -gt 0 ]]; do
     --ssh-port)   SSH_PORT="$2";      shift 2 ;;
     --domain)     DOMAIN="$2";        shift 2 ;;
     --log-level)  LOG_LEVEL="$2";     shift 2 ;;
-    --no-docker)  USE_DOCKER=false;   shift   ;;
-    --update)     IS_UPDATE=true;     shift   ;;
-    --uninstall)  UNINSTALL=true;     shift   ;;
-    --help|-h)    show_help; exit 0   ;;
+    --bootstrap-nodes) BOOTSTRAP_NODES="$2"; shift 2 ;;
+    --allow-ip)        ALLOW_IPS="${ALLOW_IPS} $2"; shift 2 ;;
+    --disk-alert)      DISK_ALERT_GB="$2";  shift 2 ;;
+    --no-docker)       USE_DOCKER=false;    shift   ;;
+    --update)          IS_UPDATE=true;      shift   ;;
+    --uninstall)       UNINSTALL=true;      shift   ;;
+    --help|-h)         show_help; exit 0   ;;
     *) echo "Unknown flag: $1"; exit 1 ;;
   esac
 done
@@ -504,6 +513,12 @@ EOF
   sed -i "s|^GYDS_DATA_DIR=.*|GYDS_DATA_DIR=$GYDS_DATADIR|"     "$APP_DIR/.env"
   sed -i "s|^GYDS_NODE_MODE=.*|GYDS_NODE_MODE=full|"            "$APP_DIR/.env"
   sed -i "s|^GYDS_LOG_LEVEL=.*|GYDS_LOG_LEVEL=$LOG_LEVEL|"      "$APP_DIR/.env"
+  if [ -n "$BOOTSTRAP_NODES" ]; then
+    grep -q '^GYDS_BOOTSTRAP_NODES=' "$APP_DIR/.env" \
+      && sed -i "s|^GYDS_BOOTSTRAP_NODES=.*|GYDS_BOOTSTRAP_NODES=$BOOTSTRAP_NODES|" "$APP_DIR/.env" \
+      || echo "GYDS_BOOTSTRAP_NODES=$BOOTSTRAP_NODES" >> "$APP_DIR/.env"
+    log "Bootstrap peers configured: $BOOTSTRAP_NODES"
+  fi
   chmod 640 "$APP_DIR/.env"
   chown "root:$APP_USER" "$APP_DIR/.env"
 fi
@@ -535,6 +550,31 @@ fi
 if $USE_DOCKER; then
   log "Starting Docker container..."
   cd "$APP_DIR"
+
+  # Inject resource limits into docker-compose.yml so the container
+  # cannot starve the host of memory or CPU
+  if command -v python3 &>/dev/null; then
+    python3 - <<PYEOF
+import yaml, sys, os
+path = '${APP_DIR}/docker-compose.yml'
+try:
+    with open(path) as f:
+        doc = yaml.safe_load(f)
+    svc = list(doc.get('services', {}).values())[0]
+    svc.setdefault('deploy', {}).setdefault('resources', {}).update({
+        'limits':    {'memory': '2g', 'cpus': '2.0'},
+        'reservations': {'memory': '512m'}
+    })
+    with open(path, 'w') as f:
+        yaml.dump(doc, f, default_flow_style=False)
+    print('[GYDS] Docker resource limits set: 2 GB RAM / 2 CPUs')
+except Exception as e:
+    print(f'[WARN] Could not set Docker resource limits: {e}', file=sys.stderr)
+PYEOF
+  else
+    warn "python3 not available — Docker resource limits not set; container may use unlimited RAM"
+  fi
+
   docker compose down --remove-orphans 2>/dev/null || true
   if $IS_UPDATE; then
     docker compose build
@@ -555,6 +595,17 @@ EOF
 
 NGINX_SERVER_NAME="${DOMAIN:-_}"
 
+# Build IP allowlist block — if no IPs specified, allow all
+NGINX_IP_RULES=""
+if [ -n "$ALLOW_IPS" ]; then
+  for ip in $ALLOW_IPS; do
+    NGINX_IP_RULES="${NGINX_IP_RULES}    allow ${ip};
+"
+  done
+  NGINX_IP_RULES="${NGINX_IP_RULES}    deny all;"
+  log "RPC access restricted to:${ALLOW_IPS}"
+fi
+
 if is_debian_based; then
   rm -f /etc/nginx/sites-enabled/default
   cat > /etc/nginx/sites-available/gyds-fullnode <<EOF
@@ -565,6 +616,8 @@ server {
     limit_req       zone=gyds_rpc burst=60 nodelay;
     limit_conn      gyds_conn 20;
     limit_req_status 429;
+
+${NGINX_IP_RULES}
 
     location / {
         proxy_pass         http://127.0.0.1:${GYDS_RPC_PORT};
@@ -588,6 +641,8 @@ server {
     limit_req       zone=gyds_rpc burst=60 nodelay;
     limit_conn      gyds_conn 20;
     limit_req_status 429;
+
+${NGINX_IP_RULES}
 
     location / {
         proxy_pass         http://127.0.0.1:${GYDS_RPC_PORT};
@@ -683,18 +738,33 @@ log "Installing health check..."
 cat > /usr/local/bin/gyds-fullnode-health <<EOF
 #!/usr/bin/env bash
 RPC_PORT="${GYDS_RPC_PORT}"
+DATADIR="${GYDS_DATADIR}"
+DISK_ALERT_GB="${DISK_ALERT_GB}"
+NOW=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# ── RPC check ────────────────────────────────────────────────────────────────
 RESP=\$(curl -sf --max-time 5 -X POST "http://localhost:\${RPC_PORT}" \\
   -H "Content-Type: application/json" \\
   --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)
 if [ -n "\$RESP" ]; then
-  echo "[OK]   \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC responsive -- \$RESP"
+  echo "[OK]   \${NOW} RPC responsive -- \$RESP"
 else
-  echo "[WARN] \$(date -u +%Y-%m-%dT%H:%M:%SZ) RPC not responding on port \${RPC_PORT}"
+  echo "[WARN] \${NOW} RPC not responding on port \${RPC_PORT}"
   if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
-    systemctl restart gyds-fullnode && echo "[INFO] Service restarted"
+    systemctl restart gyds-fullnode && echo "[INFO] \${NOW} Service restarted"
   elif command -v docker &>/dev/null; then
-    cd ${APP_DIR} && docker compose up -d && echo "[INFO] Container restarted"
+    cd ${APP_DIR} && docker compose up -d && echo "[INFO] \${NOW} Container restarted"
   fi
+fi
+
+# ── Disk space check ─────────────────────────────────────────────────────────
+DISK_FREE_KB=\$(df -k "\${DATADIR}" 2>/dev/null | awk 'NR==2{print \$4}' || echo 0)
+DISK_FREE_GB=\$(( DISK_FREE_KB / 1024 / 1024 ))
+if (( DISK_FREE_GB < DISK_ALERT_GB )); then
+  echo "[WARN] \${NOW} LOW DISK SPACE: \${DISK_FREE_GB} GB free on \${DATADIR} (threshold: \${DISK_ALERT_GB} GB)"
+  echo "[WARN] \${NOW} Chain data is growing — consider pruning or expanding disk."
+else
+  echo "[OK]   \${NOW} Disk: \${DISK_FREE_GB} GB free on \${DATADIR}"
 fi
 EOF
 chmod +x /usr/local/bin/gyds-fullnode-health
@@ -835,6 +905,38 @@ if $IS_UPDATE; then
   echo "  Backup     : /var/backups/gyds-fullnode/"
 fi
 echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ADD TO METAMASK / WALLET"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Network Name : GYDS Chain"
+echo "  Chain ID     : ${GYDS_CHAIN_ID}"
+if [ -n "$DOMAIN" ]; then
+  echo "  RPC URL      : https://${DOMAIN}"
+  echo "  WebSocket    : wss://${DOMAIN}/ws"
+else
+  echo "  RPC URL      : http://${SERVER_IP}:${GYDS_RPC_PORT}"
+  echo "  WebSocket    : ws://${SERVER_IP}:${GYDS_WS_PORT}"
+fi
+echo "  Currency     : GYDS"
+echo "  Block Expl.  : (none configured)"
+echo ""
+echo "  In MetaMask: Settings → Networks → Add Network → fill fields above"
+echo ""
+if [ -n "$BOOTSTRAP_NODES" ]; then
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  BOOTSTRAP PEERS"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ${BOOTSTRAP_NODES}"
+echo ""
+fi
+if [ -n "$ALLOW_IPS" ]; then
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  RPC ACCESS CONTROL"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Allowed IPs : ${ALLOW_IPS}"
+echo "  All other IPs are blocked at Nginx"
+echo ""
+fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  QUICK COMMANDS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
