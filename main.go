@@ -39,7 +39,7 @@ Supports full sync, RPC API, WebSocket subscriptions, and P2P networking.`,
 func startCmd() *cobra.Command {
         return &cobra.Command{
                 Use:   "start",
-                Short: "Start the GYDS litenode",
+                Short: "Start the GYDS fullnode",
                 RunE: func(cmd *cobra.Command, args []string) error {
                         return runNode()
                 },
@@ -134,6 +134,7 @@ func runNode() error {
                 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
                 defer cancel()
                 rpcSrv.Shutdown(ctx)
+                chain.Close()
         case err := <-errCh:
                 if err != nil {
                         return fmt.Errorf("RPC server: %w", err)

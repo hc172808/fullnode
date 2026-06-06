@@ -5,6 +5,8 @@ import (
         "math/big"
         "strings"
         "sync"
+
+        "github.com/gydschain/fullnode/storage"
 )
 
 var (
@@ -26,6 +28,7 @@ type Chain struct {
         byNumber map[uint64]*Block
         genesis  *GenesisConfig
         dataDir  string
+        db       storage.Storage
 
         accountsMu sync.RWMutex
         accounts   map[string]*AccountState
@@ -58,12 +61,15 @@ func NewChain(genesis *GenesisConfig, dataDir string) *Chain {
         genBlock := GenesisBlock(genesis)
         c.addBlock(genBlock)
 
-        if err := c.initDataDir(); err != nil {
-                // Non-fatal: fall back to memory-only
-                c.dataDir = ""
-        } else if err := c.loadFromDisk(); err != nil {
-                // Non-fatal: continue from genesis
-                c.dataDir = ""
+        if dataDir != "" {
+                if err := c.openDB(); err != nil {
+                        // Non-fatal: log and continue with memory-only storage
+                        c.dataDir = ""
+                } else if err := c.loadFromDB(); err != nil {
+                        // Non-fatal: continue from genesis
+                        c.Close()
+                        c.dataDir = ""
+                }
         }
         return c
 }
@@ -143,11 +149,15 @@ func (c *Chain) InsertBlock(b *Block) error {
         }
 
         c.addBlock(b)
-        c.persistBlock(b)
 
+        // Apply transactions first so account state is updated before persisting.
         for _, tx := range b.Transactions {
                 c.applyTx(tx)
         }
+
+        // Persist block + updated account state atomically to LevelDB.
+        c.persistBlock(b)
+
         return nil
 }
 
