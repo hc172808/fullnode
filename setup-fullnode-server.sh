@@ -470,9 +470,14 @@ if $IS_UPDATE; then
   log "Creating backup at ${BACKUP_DIR}..."
   mkdir -p "$BACKUP_DIR"
   [ -f "$APP_DIR/.env" ] && cp "$APP_DIR/.env" "$BACKUP_DIR/.env.bak"
-  if [ -d "${GYDS_DATADIR}/chaindata" ]; then
-    tar -czf "$BACKUP_DIR/chaindata.tar.gz" -C "$GYDS_DATADIR" chaindata 2>/dev/null || \
-      warn "Could not backup chaindata — continuing anyway"
+  # Back up the LevelDB state database (state.db) and any keystore files
+  if [ -d "${GYDS_DATADIR}/state.db" ]; then
+    tar -czf "$BACKUP_DIR/state.db.tar.gz" -C "$GYDS_DATADIR" state.db 2>/dev/null || \
+      warn "Could not backup state.db — continuing anyway"
+  fi
+  if [ -d "${GYDS_DATADIR}/keystore" ]; then
+    tar -czf "$BACKUP_DIR/keystore.tar.gz" -C "$GYDS_DATADIR" keystore 2>/dev/null || \
+      warn "Could not backup keystore — continuing anyway"
   fi
   log "Backup complete: ${BACKUP_DIR}"
 fi
@@ -504,8 +509,10 @@ EOF
 fi
 
 # ── Data directories ──────────────────────────────────────────────────────────
+# state.db/ is created automatically by LevelDB on first run — do not pre-create it.
+# keystore/ holds encrypted account keys; logs/ holds node and health-check logs.
 log "Creating data directories..."
-mkdir -p "${GYDS_DATADIR}"/{chaindata,keystore,logs}
+mkdir -p "${GYDS_DATADIR}"/{keystore,logs}
 chown -R "$APP_USER:$APP_USER" "$GYDS_DATADIR"
 chmod 750 "$GYDS_DATADIR"
 
@@ -516,7 +523,9 @@ if ! $USE_DOCKER; then
   export HOME="/root"
   export GOTOOLCHAIN=local
   mkdir -p "$APP_DIR/bin"
-  go mod tidy
+  # GONOSUMDB=* allows go mod tidy to fetch module checksums without
+  # requiring GOSUM verification — safe for private/air-gapped environments.
+  GONOSUMDB="*" go mod tidy
   go build -ldflags="-s -w -X main.version=1.0.0" -o bin/gyds-fullnode .
   chown "$APP_USER:$APP_USER" "$APP_DIR/bin/gyds-fullnode"
   log "Binary built: $(file "$APP_DIR/bin/gyds-fullnode")"
@@ -818,6 +827,8 @@ else
 fi
 echo ""
 echo "  Data dir   : ${GYDS_DATADIR}"
+echo "  LevelDB    : ${GYDS_DATADIR}/state.db/   (chain blocks + account state)"
+echo "  Keystore   : ${GYDS_DATADIR}/keystore/"
 echo "  Logs dir   : ${GYDS_DATADIR}/logs/"
 echo "  Health     : /usr/local/bin/gyds-fullnode-health"
 if $IS_UPDATE; then
