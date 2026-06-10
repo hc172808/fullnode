@@ -1,0 +1,61 @@
+# ══════════════════════════════════════════════════════════
+#  GYDS Chain — Full Node  /  fail2ban jail.local
+#  Copy to: /etc/fail2ban/jail.local
+# ══════════════════════════════════════════════════════════
+
+[DEFAULT]
+bantime        = 3600
+findtime       = 300
+maxretry       = 10
+banaction      = ufw
+banaction_allports = ufw
+loglevel       = INFO
+logtarget      = /var/log/fail2ban.log
+backend        = auto
+
+ignoreip       = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+
+[sshd]
+enabled        = true
+port           = ssh
+filter         = sshd
+logpath        = %(sshd_log)s
+maxretry       = 3
+bantime        = 86400
+findtime       = 600
+
+[gyds-rpc-flood]
+enabled        = true
+filter         = gyds-rpc-flood
+port           = http,https,8545,8546
+logpath        = /var/log/nginx/access.log
+maxretry       = 5
+findtime       = 60
+bantime        = 3600
+
+[gyds-rpc-badrpc]
+enabled        = true
+filter         = gyds-rpc-badrpc
+port           = http,https,8545,8546
+logpath        = /var/log/nginx/access.log
+maxretry       = 20
+findtime       = 120
+bantime        = 1800
+
+[gyds-scan]
+enabled        = true
+filter         = gyds-scan
+port           = http,https,8545,8546
+logpath        = /var/log/nginx/access.log
+maxretry       = 5
+findtime       = 300
+bantime        = 7200
+
+[recidive]
+enabled        = true
+filter         = recidive
+logpath        = /var/log/fail2ban.log
+action         = ufw
+bantime        = 604800
+findtime       = 86400
+maxretry       = 3

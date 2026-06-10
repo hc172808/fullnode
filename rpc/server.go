@@ -6,6 +6,7 @@ import (
         "encoding/hex"
         "encoding/json"
         "fmt"
+	"io/fs"
         "math/big"
         "net/http"
         "strconv"
@@ -65,10 +66,20 @@ func cors(next http.Handler) http.Handler {
         })
 }
 
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	sub, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
+		return
+	}
+	http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+}
+
 func (s *Server) setupRoutes() {
         r := mux.NewRouter()
 
         r.HandleFunc("/health", s.handleHealth).Methods("GET")
+	r.HandleFunc("/", s.handleDashboard).Methods("GET")
         r.HandleFunc("/", s.handleJSONRPC).Methods("POST", "OPTIONS")
         r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
 

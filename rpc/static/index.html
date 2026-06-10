@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GYDS Chain — Wallet</title>
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg:      #0b0f1a;
+      --card:    #111827;
+      --border:  #1e2d40;
+      --accent:  #10b981;
+      --accent2: #3b82f6;
+      --warn:    #f59e0b;
+      --danger:  #ef4444;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --mono:    'JetBrains Mono','Fira Code','Courier New',monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height: 100vh; }
+
+    /* ── Header ── */
+    .header {
+      background: var(--card); border-bottom: 1px solid var(--border);
+      padding: 14px 24px; display: flex; align-items: center;
+      justify-content: space-between; position: sticky; top: 0; z-index: 100;
+    }
+    .logo-row { display: flex; align-items: center; gap: 12px; }
+    .logo { width: 34px; height: 34px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; color: #fff; }
+    .brand { font-size: 17px; font-weight: 700; }
+    .brand span { color: var(--accent); }
+    .node-badge { font-size: 11px; background: rgba(59,130,246,.15); color: var(--accent2); border: 1px solid rgba(59,130,246,.3); border-radius: 20px; padding: 3px 10px; font-weight: 600; }
+    .net-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+    .dot.off { background: var(--danger); animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Layout ── */
+    .wrap { max-width: 760px; margin: 0 auto; padding: 28px 16px; }
+
+    /* ── Wallet card ── */
+    .wallet-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; margin-bottom: 20px; }
+
+    /* ── Entry screen ── */
+    .entry { padding: 36px; text-align: center; }
+    .entry h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+    .entry p { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+    .entry-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 22px; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all .2s; text-decoration: none; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), #059669); color: #fff; }
+    .btn-primary:hover { opacity: .88; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+    .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-outline:hover { border-color: var(--accent2); color: var(--accent2); }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(239,68,68,.35); }
+    .btn-danger:hover { background: rgba(239,68,68,.08); }
+    .btn-sm { padding: 7px 14px; font-size: 12px; }
+    .btn-full { width: 100%; justify-content: center; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .tab { padding: 14px 20px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Tab content ── */
+    .tab-body { padding: 24px; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── Wallet info bar ── */
+    .wallet-info { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: rgba(16,185,129,.06); border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 10px; }
+    .addr-block { display: flex; align-items: center; gap: 10px; }
+    .addr-label { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+    .addr-text { font-family: var(--mono); font-size: 13px; color: var(--text); }
+    .balance-block { text-align: right; }
+    .balance-val { font-size: 22px; font-weight: 800; color: var(--accent); }
+    .balance-sub { font-size: 11px; color: var(--muted); }
+
+    /* ── Form ── */
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .field input, .field textarea, .field select {
+      width: 100%; background: rgba(255,255,255,.04); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px;
+      font-family: inherit; transition: border-color .2s; outline: none;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); }
+    .field textarea { font-family: var(--mono); font-size: 12px; resize: vertical; min-height: 80px; }
+    .field-row { display: flex; gap: 10px; }
+    .field-row .field { flex: 1; margin-bottom: 0; }
+    .input-wrap { position: relative; }
+    .input-wrap input { padding-right: 44px; }
+    .eye-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 0; }
+    .eye-btn:hover { color: var(--text); }
+
+    /* ── Seed phrase grid ── */
+    .seed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0; }
+    @media(max-width:480px){ .seed-grid { grid-template-columns: repeat(2, 1fr); } }
+    .seed-word { background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-family: var(--mono); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+    .seed-num { color: var(--muted); min-width: 22px; font-size: 11px; }
+    .seed-val { color: var(--text); font-weight: 600; }
+
+    /* ── Alerts ── */
+    .alert { border-radius: 8px; padding: 12px 14px; font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+    .alert-warn { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.3); color: var(--warn); }
+    .alert-success { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.3); color: var(--accent); }
+    .alert-danger { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3); color: var(--danger); }
+    .alert-info { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.3); color: var(--accent2); }
+
+    /* ── Divider ── */
+    .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; margin: 18px 0; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── QR placeholder ── */
+    .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px 0; }
+    .qr-box { width: 180px; height: 180px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #999; }
+    canvas#qrCanvas { border-radius: 10px; }
+
+    /* ── TX table ── */
+    .tx-list { display: flex; flex-direction: column; gap: 10px; }
+    .tx-item { background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 14px; }
+    .tx-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .tx-icon.out { background: rgba(239,68,68,.12); }
+    .tx-icon.in  { background: rgba(16,185,129,.12); }
+    .tx-details { flex: 1; min-width: 0; }
+    .tx-hash { font-family: var(--mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tx-addr { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tx-amount { text-align: right; flex-shrink: 0; }
+    .tx-val { font-size: 14px; font-weight: 700; }
+    .tx-val.out { color: var(--danger); }
+    .tx-val.in  { color: var(--accent); }
+    .tx-status { font-size: 11px; color: var(--muted); }
+
+    /* ── Copy button ── */
+    .copy-btn { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 14px; padding: 3px 6px; border-radius: 4px; transition: color .2s; }
+    .copy-btn:hover { color: var(--accent); }
+
+    /* ── Spinner ── */
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ── */
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; font-size: 13px; color: var(--accent); box-shadow: 0 8px 32px rgba(0,0,0,.4); opacity: 0; transform: translateY(10px); transition: all .3s; z-index: 9999; pointer-events: none; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* ── Misc ── */
+    .text-muted { color: var(--muted); font-size: 13px; }
+    .text-center { text-align: center; }
+    .mt-4 { margin-top: 16px; }
+    .flex-between { display: flex; align-items: center; justify-content: space-between; }
+    .gap-2 { gap: 8px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="logo-row">
+    <div class="logo">GY</div>
+    <span class="brand">GYDS <span>Chain</span></span>
+    <span class="node-badge" id="nodeLabel">Full Node</span>
+  </div>
+  <div class="net-status">
+    <div class="dot" id="netDot"></div>
+    <span id="netHeight">Block #—</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ── Entry Screen (no wallet loaded) ── -->
+  <div id="entryScreen">
+    <div class="wallet-card">
+      <div class="entry">
+        <h2>GYDS Chain Wallet</h2>
+        <p>Create a new wallet or import an existing one to send and receive GYDS.</p>
+        <div class="entry-btns">
+          <button class="btn btn-primary" onclick="showCreate()">✦ Create New Wallet</button>
+          <button class="btn btn-outline" onclick="showImport()">⬆ Import Wallet</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Wallet Panel -->
+    <div id="createPanel" class="wallet-card hidden">
+      <div class="tabs">
+        <button class="tab active" onclick="switchCreateTab('newKey',this)">New Key</button>
+        <button class="tab" onclick="switchCreateTab('newMnemonic',this)">12-Word Phrase</button>
+      </div>
+      <div class="tab-body">
+
+        <!-- New private key -->
+        <div id="newKey" class="tab-pane active">
+          <div class="alert alert-warn">⚠️ Copy your private key and store it somewhere safe — it cannot be recovered if lost.</div>
+          <div class="field">
+            <label>Generated Private Key</label>
+            <div class="input-wrap">
+              <input type="password" id="newKeyVal" readonly />
+              <button class="eye-btn" onclick="toggleVis('newKeyVal',this)">👁</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Wallet Address</label>
+            <input type="text" id="newKeyAddr" readonly />
+          </div>
+          <div class="field-row mt-4">
+            <button class="btn btn-outline" onclick="generateKey()">🔄 Generate New</button>
+            <button class="btn btn-primary" id="useKeyBtn" onclick="loadFromKey()" disabled>Use This Wallet →</button>
+          </div>
+        </div>
+
+        <!-- New mnemonic -->
+        <div id="newMnemonic" class="tab-pane">
+          <div class="alert alert-warn">⚠️ Write down your 12-word recovery phrase and keep it private. Anyone with these words can access your funds.</div>
+          <div class="seed-grid" id="seedGrid"></div>
+          <div class="field-row mt-4">
+            <button class="btn btn-outline" onclick="generateMnemonic()">🔄 Generate New</button>
+            <button class="btn btn-primary" id="useMnemonicBtn" onclick="loadFromMnemonic()" disabled>Use This Wallet →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import Wallet Panel -->
+    <div id="importPanel" class="wallet-card hidden">
+      <div class="tabs">
+        <button class="tab active" onclick="switchImportTab('byKey',this)">Private Key</button>
+        <button class="tab" onclick="switchImportTab('byMnemonic',this)">12/24-Word Phrase</button>
+      </div>
+      <div class="tab-body">
+
+        <!-- By private key -->
+        <div id="byKey" class="tab-pane active">
+          <div class="field">
+            <label>Private Key (hex, 64 chars)</label>
+            <div class="input-wrap">
+              <input type="password" id="importKey" placeholder="0x or without prefix…" autocomplete="off" />
+              <button class="eye-btn" onclick="toggleVis('importKey',this)">👁</button>
+            </div>
+          </div>
+          <div id="importKeyErr" class="alert alert-danger hidden"></div>
+          <button class="btn btn-primary btn-full mt-4" onclick="importByKey()">Import Wallet →</button>
+        </div>
+
+        <!-- By mnemonic -->
+        <div id="byMnemonic" class="tab-pane">
+          <div class="field">
+            <label>Recovery Phrase (12 or 24 words, space-separated)</label>
+            <textarea id="importMnemonic" placeholder="word1 word2 word3 …" autocomplete="off"></textarea>
+          </div>
+          <div id="importMnemonicErr" class="alert alert-danger hidden"></div>
+          <button class="btn btn-primary btn-full mt-4" onclick="importByMnemonic()">Import Wallet →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Wallet Screen (wallet loaded) ── -->
+  <div id="walletScreen" class="hidden">
+
+    <!-- Balance bar -->
+    <div class="wallet-card">
+      <div class="wallet-info">
+        <div class="addr-block">
+          <div>
+            <div class="addr-label">Wallet Address</div>
+            <div class="addr-text" id="walletAddr">—</div>
+          </div>
+          <button class="copy-btn" onclick="copyAddr()" title="Copy address">⧉</button>
+        </div>
+        <div class="balance-block">
+          <div class="balance-val"><span id="walletBalance">—</span> GYDS</div>
+          <div class="balance-sub" id="balanceSub">Loading…</div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" data-tab="send"    onclick="switchTab('send',this)">Send</button>
+        <button class="tab"         data-tab="receive" onclick="switchTab('receive',this)">Receive</button>
+        <button class="tab"         data-tab="history" onclick="switchTab('history',this)">History</button>
+        <button class="tab"         data-tab="keys"    onclick="switchTab('keys',this)">Keys</button>
+        <button class="tab"         data-tab="search"  onclick="switchTab('search',this)">🔍 Search</button>
+      </div>
+
+      <div class="tab-body">
+
+        <!-- ── SEND ── -->
+        <div id="pane-send" class="tab-pane active">
+          <div id="sendAlert"></div>
+          <div class="field">
+            <label>Recipient Address</label>
+            <input type="text" id="sendTo" placeholder="0x…" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>Amount (GYDS)</label>
+            <input type="number" id="sendAmount" placeholder="0.0" min="0" step="any" />
+          </div>
+          <div class="alert alert-info" style="margin-bottom:14px">
+            Gas fee: 21,000 × 1 Gwei = 0.000021 GYDS
+          </div>
+          <button class="btn btn-primary btn-full" id="sendBtn" onclick="sendTx()">
+            Send GYDS
+          </button>
+        </div>
+
+        <!-- ── RECEIVE ── -->
+        <div id="pane-receive" class="tab-pane">
+          <div class="qr-wrap">
+            <canvas id="qrCanvas" width="180" height="180"></canvas>
+            <div style="text-align:center">
+              <div style="font-family:var(--mono);font-size:13px;word-break:break-all;margin-bottom:8px" id="receiveAddr">—</div>
+              <button class="btn btn-outline btn-sm" onclick="copyAddr()">⧉ Copy Address</button>
+            </div>
+          </div>
+          <div class="alert alert-info mt-4" style="margin-top:16px">
+            Share this address to receive GYDS. Chain ID: <strong>13370</strong> — make sure the sender is on GYDS Chain.
+          </div>
+        </div>
+
+        <!-- ── HISTORY ── -->
+        <div id="pane-history" class="tab-pane">
+          <div id="historyList" class="tx-list">
+            <div class="text-center text-muted" style="padding:32px">Loading transactions…</div>
+          </div>
+          <button class="btn btn-outline btn-sm mt-4" onclick="loadHistory()" style="margin-top:12px">⟳ Refresh</button>
+        </div>
+
+        <!-- ── KEYS ── -->
+        <div id="pane-keys" class="tab-pane">
+          <div class="alert alert-warn">⚠️ Never share your private key or seed phrase. Anyone with these can take your funds.</div>
+          <div class="field mt-4">
+            <div class="flex-between gap-2" style="margin-bottom:6px">
+              <label style="margin:0">Private Key</label>
+              <button class="copy-btn" onclick="copyPrivKey()" title="Copy">⧉</button>
+            </div>
+            <div class="input-wrap">
+              <input type="password" id="showPrivKey" readonly />
+              <button class="eye-btn" onclick="toggleVis('showPrivKey',this)">👁</button>
+            </div>
+          </div>
+          <div class="field" id="mnemonicBlock">
+            <div class="flex-between gap-2" style="margin-bottom:6px">
+              <label style="margin:0">Recovery Phrase</label>
+              <button class="copy-btn" onclick="copyMnemonic()" title="Copy">⧉</button>
+            </div>
+            <div class="input-wrap">
+              <textarea id="showMnemonic" readonly style="height:70px"></textarea>
+            </div>
+          </div>
+          <div class="divider">danger zone</div>
+          <button class="btn btn-danger btn-full" onclick="disconnectWallet()">✕ Disconnect Wallet</button>
+          <p class="text-muted" style="font-size:11px;margin-top:8px;text-align:center">This only removes the wallet from memory. Your funds remain on-chain.</p>
+        </div>
+
+        <!-- ── SEARCH ── -->
+        <div id="pane-search" class="tab-pane">
+          <div class="field">
+            <label>Transaction Hash or Wallet Address</label>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="walletSearchInput"
+                placeholder="0x… hash (66 chars) or address (42 chars)"
+                style="font-family:var(--mono);font-size:12px"
+                onkeydown="if(event.key==='Enter')doWalletSearch()" />
+              <button class="btn btn-primary btn-sm" onclick="doWalletSearch()">Search</button>
+            </div>
+          </div>
+          <div id="walletSearchResult"></div>
+        </div>
+
+      </div><!-- /tab-body -->
+    </div><!-- /wallet-card -->
+  </div><!-- /walletScreen -->
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const CHAIN_ID   = 13370;
+const SYMBOL     = 'GYDS';
+const GAS_LIMIT  = 21000;
+const GAS_PRICE  = ethers.utils.parseUnits('1', 'gwei');
+const RPC_URL    = window.location.origin;
+
+// ── State ───────────────────────────────────────────────────────────────────
+let provider = null;
+let wallet   = null;
+let mnemonic = null;
+
+// ── Init ────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  // Detect node type from URL or just leave as Full Node
+  const host = window.location.hostname;
+  if (host.includes('lite')) document.getElementById('nodeLabel').textContent = 'Lite Node';
+
+  provider = new ethers.providers.JsonRpcProvider(RPC_URL, {
+    chainId: CHAIN_ID,
+    name: 'GYDS Chain'
+  });
+
+  pollHeight();
+  setInterval(pollHeight, 5000);
+  generateKey();
+  generateMnemonic();
+});
+
+async function pollHeight() {
+  try {
+    const n = await provider.getBlockNumber();
+    document.getElementById('netHeight').textContent = 'Block #' + n.toLocaleString();
+    document.getElementById('netDot').className = 'dot';
+  } catch {
+    document.getElementById('netDot').className = 'dot off';
+  }
+}
+
+// ── Entry screen actions ─────────────────────────────────────────────────────
+function showCreate() {
+  document.getElementById('createPanel').classList.remove('hidden');
+  document.getElementById('importPanel').classList.add('hidden');
+}
+function showImport() {
+  document.getElementById('importPanel').classList.remove('hidden');
+  document.getElementById('createPanel').classList.add('hidden');
+}
+
+// ── Create — new private key ─────────────────────────────────────────────────
+function generateKey() {
+  const w = ethers.Wallet.createRandom();
+  document.getElementById('newKeyVal').value  = w.privateKey;
+  document.getElementById('newKeyAddr').value = w.address;
+  document.getElementById('useKeyBtn').disabled = false;
+  document.getElementById('useKeyBtn')._wallet = w;
+}
+function loadFromKey() {
+  const btn = document.getElementById('useKeyBtn');
+  activateWallet(btn._wallet, null);
+}
+
+// ── Create — mnemonic ────────────────────────────────────────────────────────
+function generateMnemonic() {
+  const w = ethers.Wallet.createRandom();
+  const phrase = w.mnemonic.phrase;
+  const words  = phrase.split(' ');
+  const grid   = document.getElementById('seedGrid');
+  grid.innerHTML = words.map((w,i) =>
+    `<div class="seed-word"><span class="seed-num">${i+1}.</span><span class="seed-val">${w}</span></div>`
+  ).join('');
+  document.getElementById('useMnemonicBtn').disabled = false;
+  document.getElementById('useMnemonicBtn')._wallet  = w;
+  document.getElementById('useMnemonicBtn')._phrase  = phrase;
+}
+function loadFromMnemonic() {
+  const btn = document.getElementById('useMnemonicBtn');
+  activateWallet(btn._wallet, btn._phrase);
+}
+
+// ── Import ───────────────────────────────────────────────────────────────────
+function importByKey() {
+  const raw = document.getElementById('importKey').value.trim();
+  const errEl = document.getElementById('importKeyErr');
+  errEl.classList.add('hidden');
+  try {
+    const w = new ethers.Wallet(raw);
+    activateWallet(w, null);
+  } catch(e) {
+    errEl.textContent = 'Invalid private key. Must be 64 hex characters (with or without 0x prefix).';
+    errEl.classList.remove('hidden');
+  }
+}
+function importByMnemonic() {
+  const phrase = document.getElementById('importMnemonic').value.trim();
+  const errEl  = document.getElementById('importMnemonicErr');
+  errEl.classList.add('hidden');
+  try {
+    const w = ethers.Wallet.fromMnemonic(phrase);
+    activateWallet(w, phrase);
+  } catch(e) {
+    errEl.textContent = 'Invalid recovery phrase. Check spelling and word count (12 or 24 words).';
+    errEl.classList.remove('hidden');
+  }
+}
+
+// ── Activate wallet ──────────────────────────────────────────────────────────
+function activateWallet(w, phrase) {
+  wallet   = w.connect(provider);
+  mnemonic = phrase;
+
+  document.getElementById('walletAddr').textContent  = w.address;
+  document.getElementById('receiveAddr').textContent = w.address;
+  document.getElementById('showPrivKey').value = w.privateKey;
+  document.getElementById('showMnemonic').value = phrase || '(wallet created from private key — no phrase)';
+  if (!phrase) document.getElementById('mnemonicBlock').style.opacity = '.5';
+
+  drawQR(w.address);
+  document.getElementById('entryScreen').classList.add('hidden');
+  document.getElementById('walletScreen').classList.remove('hidden');
+  refreshBalance();
+  loadHistory();
+}
+
+function disconnectWallet() {
+  if (!confirm('Disconnect this wallet from the interface?')) return;
+  wallet = null; mnemonic = null;
+  document.getElementById('walletScreen').classList.add('hidden');
+  document.getElementById('entryScreen').classList.remove('hidden');
+  document.getElementById('importKey').value = '';
+  document.getElementById('importMnemonic').value = '';
+  generateKey();
+  generateMnemonic();
+}
+
+// ── Balance ──────────────────────────────────────────────────────────────────
+async function refreshBalance() {
+  if (!wallet) return;
+  try {
+    const bal = await provider.getBalance(wallet.address);
+    const fmt = parseFloat(ethers.utils.formatEther(bal));
+    document.getElementById('walletBalance').textContent = fmt.toLocaleString(undefined, {maximumFractionDigits: 6});
+    document.getElementById('balanceSub').textContent = 'Chain ID ' + CHAIN_ID + ' · GYDS Chain';
+  } catch {
+    document.getElementById('balanceSub').textContent = 'Could not load balance';
+  }
+}
+
+// ── Send ─────────────────────────────────────────────────────────────────────
+async function sendTx() {
+  const to     = document.getElementById('sendTo').value.trim();
+  const amount = document.getElementById('sendAmount').value.trim();
+  const alertEl = document.getElementById('sendAlert');
+  alertEl.innerHTML = '';
+
+  if (!ethers.utils.isAddress(to)) {
+    return setAlert(alertEl, 'danger', 'Invalid recipient address.');
+  }
+  if (!amount || parseFloat(amount) <= 0) {
+    return setAlert(alertEl, 'danger', 'Enter an amount greater than 0.');
+  }
+
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Signing & Sending…';
+
+  try {
+    const value = ethers.utils.parseEther(amount);
+    const nonce = await provider.getTransactionCount(wallet.address, 'latest');
+    const tx = await wallet.sendTransaction({
+      to, value, nonce,
+      gasLimit: GAS_LIMIT,
+      gasPrice: GAS_PRICE,
+      chainId:  CHAIN_ID,
+    });
+    setAlert(alertEl, 'success',
+      `✅ Transaction sent!<br>Hash: <span style="font-family:var(--mono);font-size:11px;word-break:break-all">${tx.hash}</span>`
+    );
+    document.getElementById('sendTo').value     = '';
+    document.getElementById('sendAmount').value = '';
+    setTimeout(refreshBalance, 3000);
+    loadHistory();
+  } catch(e) {
+    setAlert(alertEl, 'danger', '❌ ' + (e.reason || e.message || 'Transaction failed'));
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Send GYDS';
+  }
+}
+
+// ── History ──────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  if (!wallet) return;
+  const el = document.getElementById('historyList');
+  el.innerHTML = '<div class="text-center text-muted" style="padding:24px">Loading…</div>';
+  try {
+    const res = await fetch('/api/transactions?limit=50');
+    const { transactions } = await res.json();
+    const addr = wallet.address.toLowerCase();
+    const mine = (transactions || []).filter(tx =>
+      (tx.from||'').toLowerCase() === addr || (tx.to||'').toLowerCase() === addr
+    );
+    if (!mine.length) {
+      el.innerHTML = '<div class="text-center text-muted" style="padding:32px">No transactions yet for this address.</div>';
+      return;
+    }
+    el.innerHTML = mine.map(tx => {
+      const isOut = (tx.from||'').toLowerCase() === addr;
+      const other = isOut ? tx.to : tx.from;
+      const valWei = BigInt(tx.value || '0x0');
+      const valEth = ethers.utils.formatEther(valWei.toString());
+      const shortH = tx.hash ? tx.hash.slice(0,12)+'…'+tx.hash.slice(-6) : '—';
+      const shortA = other ? other.slice(0,10)+'…'+other.slice(-6) : '—';
+      return `<div class="tx-item">
+        <div class="tx-icon ${isOut?'out':'in'}">${isOut?'↑':'↓'}</div>
+        <div class="tx-details">
+          <div class="tx-hash">${shortH}</div>
+          <div class="tx-addr">${isOut?'To: ':'From: '}${shortA}</div>
+        </div>
+        <div class="tx-amount">
+          <div class="tx-val ${isOut?'out':'in'}">${isOut?'-':'+'}${parseFloat(valEth).toFixed(4)} GYDS</div>
+          <div class="tx-status">${tx.status||'confirmed'}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch {
+    el.innerHTML = '<div class="text-center text-muted" style="padding:24px">Could not load transaction history.</div>';
+  }
+}
+
+// ── QR Code (canvas-based, no lib needed) ────────────────────────────────────
+function drawQR(address) {
+  const canvas = document.getElementById('qrCanvas');
+  const ctx    = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 180, 180);
+  ctx.fillStyle = '#1e2d40';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  // Simple placeholder — shows address text in a box
+  const lines = [];
+  for (let i=0; i<address.length; i+=10) lines.push(address.slice(i,i+10));
+  ctx.fillStyle = '#0b0f1a';
+  ctx.fillRect(10, 10, 160, 160);
+  ctx.fillStyle = '#10b981';
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText('GYDS Address', 90, 30);
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = '9px monospace';
+  lines.forEach((line, i) => ctx.fillText(line, 90, 52 + i * 14));
+  // border
+  ctx.strokeStyle = '#10b981';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(10, 10, 160, 160);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setAlert(el, type, html) {
+  el.className = `alert alert-${type}`;
+  el.innerHTML = html;
+}
+
+function toggleVis(id, btn) {
+  const el = document.getElementById(id);
+  const isHidden = el.type === 'password';
+  el.type = isHidden ? 'text' : 'password';
+  btn.textContent = isHidden ? '🙈' : '👁';
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab[data-tab]').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('[id^="pane-"]').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('pane-' + name).classList.add('active');
+  if (name === 'history') loadHistory();
+  if (name === 'receive') refreshBalance();
+}
+
+function switchCreateTab(name, btn) {
+  btn.closest('.wallet-card').querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.closest('.wallet-card').querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(name).classList.add('active');
+}
+function switchImportTab(name, btn) { switchCreateTab(name, btn); }
+
+function copyAddr() {
+  const addr = wallet ? wallet.address : '';
+  navigator.clipboard.writeText(addr).then(() => toast('Address copied!'));
+}
+function copyPrivKey() {
+  if (!wallet) return;
+  navigator.clipboard.writeText(wallet.privateKey).then(() => toast('Private key copied — keep it safe!'));
+}
+function copyMnemonic() {
+  if (!mnemonic) { toast('No mnemonic (key-only wallet)'); return; }
+  navigator.clipboard.writeText(mnemonic).then(() => toast('Recovery phrase copied — store it safely!'));
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Search (wallet tab) ───────────────────────────────────────────────────────
+async function doWalletSearch() {
+  const raw = document.getElementById('walletSearchInput').value.trim();
+  const out = document.getElementById('walletSearchResult');
+  if (!raw) return;
+  out.innerHTML = `<div class="text-muted" style="padding:10px 0"><span class="spinner"></span> Searching…</div>`;
+  const clean = raw.startsWith('0x') ? raw : '0x' + raw;
+  if (clean.length === 66)      await searchTxResult(clean, out);
+  else if (clean.length === 42) await searchAcctResult(clean, out);
+  else out.innerHTML = srchErr('Enter a 66-char transaction hash or 42-char wallet address.');
+}
+
+async function searchTxResult(hash, out) {
+  try {
+    const res  = await fetch('/api/transactions/' + hash);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const tx   = data.transaction || data;
+    if (!tx?.hash) throw new Error();
+    out.innerHTML = srchTxCard(tx);
+  } catch {
+    try {
+      const r = await provider.getTransaction(hash);
+      if (r) out.innerHTML = srchTxCard({ hash: r.hash, from: r.from, to: r.to, value: '0x'+r.value.toString(16), gas: r.gasLimit?.toNumber(), gasPrice: r.gasPrice?.toNumber(), nonce: r.nonce, blockNumber: r.blockNumber, status: 'confirmed' });
+      else out.innerHTML = srchErr('Transaction not found.');
+    } catch { out.innerHTML = srchErr('Transaction not found.'); }
+  }
+}
+
+async function searchAcctResult(address, out) {
+  try {
+    const [acctRes, txRes, bal] = await Promise.all([
+      fetch('/api/accounts/' + address).then(r=>r.json()).catch(()=>({})),
+      fetch('/api/transactions?limit=100').then(r=>r.json()).catch(()=>({transactions:[]})),
+      provider.getBalance(address)
+    ]);
+    const balFmt = parseFloat(ethers.utils.formatEther(bal)).toLocaleString(undefined,{maximumFractionDigits:6});
+    const nonce  = acctRes?.nonce ?? acctRes?.tx_count ?? 0;
+    const addr   = address.toLowerCase();
+    const mine   = (txRes.transactions||[]).filter(tx=>(tx.from||'').toLowerCase()===addr||(tx.to||'').toLowerCase()===addr);
+    out.innerHTML = srchAcctCard(address, balFmt, nonce, mine);
+  } catch(e) { out.innerHTML = srchErr('Could not load account: ' + e.message); }
+}
+
+function srchTxCard(tx) {
+  const wei  = BigInt(tx.value||'0x0');
+  const eth  = (Number(wei)/1e18).toFixed(6);
+  const blk  = tx.blockNumber||tx.block_num||'—';
+  const st   = tx.status||'confirmed';
+  const sc   = st==='pending'?'var(--warn)':'var(--accent)';
+  return `<div class="card" style="margin-top:12px;padding:16px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+      <span style="font-size:12px;font-weight:700;color:var(--accent2)">Transaction</span>
+      <span style="font-size:11px;font-weight:600;color:${sc};border:1px solid ${sc};border-radius:20px;padding:2px 10px">${st}</span>
+    </div>
+    ${sr('Hash',  `<span style="font-family:var(--mono);font-size:11px;word-break:break-all">${tx.hash}</span>`)}
+    ${sr('From',  `<span style="font-family:var(--mono);font-size:11px">${tx.from||'—'}</span>`)}
+    ${sr('To',    `<span style="font-family:var(--mono);font-size:11px">${tx.to||'—'}</span>`)}
+    ${sr('Value', `<strong style="color:var(--accent)">${eth} GYDS</strong>`)}
+    ${sr('Gas',   String((tx.gas||tx.gasLimit||21000).toLocaleString()) + ' units')}
+    ${sr('Block', blk !== '—' ? '#'+blk : '—')}
+  </div>`;
+}
+
+function srchAcctCard(address, balFmt, nonce, txs) {
+  const addr = address.toLowerCase();
+  const rows = txs.length ? txs.map(tx=>{
+    const isOut=(tx.from||'').toLowerCase()===addr;
+    const other=(isOut?tx.to:tx.from)||'—';
+    const shortO=other.length>14?other.slice(0,8)+'…'+other.slice(-5):other;
+    const eth=(Number(BigInt(tx.value||'0x0'))/1e18).toFixed(4);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:16px">${isOut?'↑':'↓'}</span>
+      <div style="flex:1;min-width:0;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isOut?'To ':'From '}${shortO}</div>
+      <span style="font-size:12px;font-weight:700;color:${isOut?'var(--danger)':'var(--accent)'}">${isOut?'-':'+'}${eth} GYDS</span>
+    </div>`;
+  }).join('') : `<div class="text-center text-muted" style="padding:16px;font-size:12px">No transactions found</div>`;
+  return `<div class="card" style="margin-top:12px;padding:16px">
+    <div style="margin-bottom:12px"><span style="font-size:12px;font-weight:700;color:var(--accent2)">Account</span></div>
+    ${sr('Address', `<span style="font-family:var(--mono);font-size:11px;word-break:break-all">${address}</span>`)}
+    ${sr('Balance', `<strong style="color:var(--accent);font-size:16px">${balFmt} GYDS</strong>`)}
+    ${sr('Tx Sent', String(nonce))}
+    <div style="margin-top:12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Transactions (${txs.length})</div>
+    <div style="max-height:240px;overflow-y:auto">${rows}</div>
+  </div>`;
+}
+
+function sr(label, html) {
+  return `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+    <span style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--muted);min-width:70px">${label}</span>
+    <span style="font-size:12px;color:var(--text);flex:1;display:flex;align-items:center;gap:4px;flex-wrap:wrap">${html}</span>
+  </div>`;
+}
+
+function srchErr(msg) {
+  return `<div class="alert alert-danger" style="margin-top:10px">❌ ${msg}</div>`;
+}
+</script>
+</body>
+</html>
