@@ -76,3 +76,13 @@
 11:25:40.788362 version@stat F·[1 1] S·160KiB[1KiB 159KiB] Sc·[0.25 0.00]
 11:25:40.795640 db@janitor F·4 G·0
 11:25:40.795683 db@open done T·13.028665ms
+=============== Jun 14, 2026 (UTC) ===============
+11:30:25.085904 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:30:25.086111 version@stat F·[1 1] S·160KiB[1KiB 159KiB] Sc·[0.25 0.00]
+11:30:25.086121 db@open opening
+11:30:25.086169 journal@recovery F·1
+11:30:25.086491 journal@recovery recovering @20
+11:30:25.091280 memdb@flush created L0@22 N·6 S·2KiB "acc..001,v679":"blk..\x00\x01\x01,v678"
+11:30:25.091847 version@stat F·[2 1] S·162KiB[3KiB 159KiB] Sc·[0.50 0.00]
+11:30:25.097265 db@janitor F·5 G·0
+11:30:25.097705 db@open done T·11.327656ms

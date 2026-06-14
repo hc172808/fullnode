@@ -23,13 +23,14 @@ import (
 )
 
 type Server struct {
-        chain      *core.Chain
-        router     *mux.Router
-        httpServer *http.Server
-        upgrader   websocket.Upgrader
-        subs       map[string]*subscriber
-        subsMu     sync.RWMutex
-        port       int
+        chain         *core.Chain
+        router        *mux.Router
+        httpServer    *http.Server
+        upgrader      websocket.Upgrader
+        subs          map[string]*subscriber
+        subsMu        sync.RWMutex
+        port          int
+        blockTimeSecs int
 
         pendingTx   map[string]*core.Transaction
         pendingTxMu sync.RWMutex
@@ -40,10 +41,11 @@ type subscriber struct {
         ch   chan interface{}
 }
 
-func NewServer(chain *core.Chain, port int) *Server {
+func NewServer(chain *core.Chain, port int, blockTimeSecs int) *Server {
         s := &Server{
-                chain: chain,
-                port:  port,
+                chain:         chain,
+                port:          port,
+                blockTimeSecs: blockTimeSecs,
                 upgrader: websocket.Upgrader{
                         CheckOrigin: func(r *http.Request) bool { return true },
                 },
@@ -153,7 +155,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-        jsonOK(w, s.chain.Stats())
+        stats := s.chain.Stats()
+        stats["blockTimeSecs"] = s.blockTimeSecs
+        jsonOK(w, stats)
 }
 
 func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {

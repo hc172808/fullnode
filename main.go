@@ -94,7 +94,7 @@ func runNode() error {
         vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
         engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
-        rpcSrv := rpc.NewServer(chain, cfg.RPCPort)
+        rpcSrv := rpc.NewServer(chain, cfg.RPCPort, int(cfg.BlockTime.Seconds()))
         engine.OnNewBlock(func(b *core.Block) {
                 log.Info().
                         Uint64("number", b.Header.Number).

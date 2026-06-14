@@ -243,11 +243,18 @@ func (c *Chain) Stats() map[string]interface{} {
         c.mu.RLock()
         defer c.mu.RUnlock()
         head := c.blocks[len(c.blocks)-1]
+        var totalTxs int
+        for _, b := range c.blocks {
+                totalTxs += len(b.Transactions)
+        }
         return map[string]interface{}{
-                "blockHeight": head.Header.Number,
-                "headHash":    head.Hash,
-                "chainId":     c.genesis.ChainID,
-                "networkName": c.genesis.NetworkName,
-                "totalBlocks": len(c.blocks),
+                "blockHeight":        head.Header.Number,
+                "headHash":           head.Hash,
+                "chainId":            c.genesis.ChainID,
+                "networkName":        c.genesis.NetworkName,
+                "totalBlocks":        len(c.blocks),
+                "totalTxs":           totalTxs,
+                "lastBlockTimestamp": head.Header.Timestamp,
+                "validator":          head.Header.Validator,
         }
 }
