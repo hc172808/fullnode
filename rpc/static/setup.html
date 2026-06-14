@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GYDS Chain — Node Setup Wizard</title>
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg:      #0b0f1a;
+      --card:    #111827;
+      --card2:   #1a2235;
+      --border:  #1e2d40;
+      --accent:  #10b981;
+      --accent2: #3b82f6;
+      --warn:    #f59e0b;
+      --danger:  #ef4444;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --mono:    'JetBrains Mono','Fira Code','Courier New',monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height: 100vh; }
+
+    /* ── Header ── */
+    .header { background: var(--card); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .logo-row { display: flex; align-items: center; gap: 12px; }
+    .logo { width: 34px; height: 34px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; color: #fff; }
+    .brand { font-size: 17px; font-weight: 700; }
+    .brand span { color: var(--accent); }
+    .back-link { font-size: 13px; color: var(--muted); text-decoration: none; display: flex; align-items: center; gap: 6px; }
+    .back-link:hover { color: var(--text); }
+
+    /* ── Layout ── */
+    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 16px 80px; }
+
+    /* ── Progress bar ── */
+    .progress-wrap { margin-bottom: 36px; }
+    .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; transition: width 0.4s ease; }
+    .steps-row { display: flex; gap: 0; margin-top: 16px; }
+    .step-dot { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: default; }
+    .step-dot .circle { width: 28px; height: 28px; border-radius: 50%; background: var(--border); color: var(--muted); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; transition: all 0.3s; position: relative; z-index: 1; }
+    .step-dot.done   .circle { background: var(--accent); color: #fff; }
+    .step-dot.active .circle { background: var(--accent2); color: #fff; box-shadow: 0 0 0 4px rgba(59,130,246,.25); }
+    .step-dot .label { font-size: 10px; color: var(--muted); text-align: center; display: none; }
+    @media(min-width:600px){ .step-dot .label { display: block; } }
+    .step-dot.done   .label, .step-dot.active .label { color: var(--text); }
+    .step-connector { flex: 1; height: 2px; background: var(--border); margin-top: 13px; transition: background 0.3s; }
+    .step-connector.done { background: var(--accent); }
+
+    /* ── Step card ── */
+    .step-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+    .step-header { padding: 24px 28px 0; }
+    .step-num { font-size: 11px; color: var(--accent2); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 4px; }
+    .step-title { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+    .step-desc { font-size: 14px; color: var(--muted); margin-bottom: 0; line-height: 1.6; }
+    .step-body { padding: 24px 28px; }
+    .step-footer { padding: 16px 28px 24px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); gap: 12px; }
+    .step-footer-right { display: flex; gap: 10px; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 22px; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all .2s; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), #059669); color: #fff; }
+    .btn-primary:hover { opacity: .88; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+    .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-outline:hover { border-color: var(--accent2); color: var(--accent2); }
+    .btn-accent2 { background: linear-gradient(135deg, var(--accent2), #2563eb); color: #fff; }
+    .btn-accent2:hover { opacity: .88; transform: translateY(-1px); }
+    .btn-sm { padding: 7px 14px; font-size: 12px; }
+    .btn-full { width: 100%; justify-content: center; }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(239,68,68,.35); }
+
+    /* ── Form ── */
+    .field { margin-bottom: 18px; }
+    .field:last-child { margin-bottom: 0; }
+    .field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .field-hint { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+    .field input, .field textarea, .field select {
+      width: 100%; background: rgba(255,255,255,.04); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px;
+      font-family: inherit; transition: border-color .2s; outline: none;
+    }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+    .field select option { background: var(--card); }
+    .field textarea { font-family: var(--mono); font-size: 12px; resize: vertical; min-height: 70px; }
+    .field-row { display: flex; gap: 12px; }
+    .field-row .field { flex: 1; margin-bottom: 0; }
+    .input-wrap { position: relative; }
+    .input-wrap input { padding-right: 44px; }
+    .eye-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 0; }
+    .copy-end { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; padding: 0; }
+    .copy-end:hover { color: var(--accent); }
+
+    /* ── Toggle ── */
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+    .toggle-info { }
+    .toggle-info strong { font-size: 14px; display: block; margin-bottom: 2px; }
+    .toggle-info span { font-size: 12px; color: var(--muted); }
+    .toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background: var(--border); border-radius: 24px; cursor: pointer; transition: background .3s; }
+    .slider::before { content: ''; position: absolute; width: 18px; height: 18px; background: #fff; border-radius: 50%; left: 3px; top: 3px; transition: transform .3s; }
+    input:checked + .slider { background: var(--accent); }
+    input:checked + .slider::before { transform: translateX(20px); }
+
+    /* ── Radio cards ── */
+    .radio-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
+    @media(max-width:480px){ .radio-cards { grid-template-columns: 1fr; } }
+    .radio-card { border: 2px solid var(--border); border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: all .2s; }
+    .radio-card:hover { border-color: var(--accent2); }
+    .radio-card.selected { border-color: var(--accent); background: rgba(16,185,129,.06); }
+    .radio-card input { display: none; }
+    .radio-card-title { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+    .radio-card-desc { font-size: 12px; color: var(--muted); }
+
+    /* ── Wallet tabs ── */
+    .wallet-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .wallet-tab { padding: 10px 18px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; background: none; border-top: none; border-left: none; border-right: none; transition: all .2s; }
+    .wallet-tab:hover { color: var(--text); }
+    .wallet-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .wallet-pane { display: none; }
+    .wallet-pane.active { display: block; }
+
+    /* ── Alerts ── */
+    .alert { border-radius: 8px; padding: 12px 14px; font-size: 13px; margin-bottom: 16px; line-height: 1.6; }
+    .alert-warn    { background: rgba(245,158,11,.08);  border: 1px solid rgba(245,158,11,.3);  color: var(--warn); }
+    .alert-success { background: rgba(16,185,129,.08);  border: 1px solid rgba(16,185,129,.3);  color: var(--accent); }
+    .alert-danger  { background: rgba(239,68,68,.08);   border: 1px solid rgba(239,68,68,.3);   color: var(--danger); }
+    .alert-info    { background: rgba(59,130,246,.08);  border: 1px solid rgba(59,130,246,.3);  color: var(--accent2); }
+
+    /* ── Seed grid ── */
+    .seed-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin: 12px 0; }
+    @media(max-width:480px){ .seed-grid { grid-template-columns: repeat(2,1fr); } }
+    .seed-word { background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-family: var(--mono); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+    .seed-num { color: var(--muted); min-width: 22px; font-size: 11px; }
+    .seed-val { color: var(--text); font-weight: 600; }
+
+    /* ── Review / env preview ── */
+    .env-preview { background: #060a12; border: 1px solid var(--border); border-radius: 10px; padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.8; color: #a0b4c8; max-height: 360px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+    .env-preview .comment { color: var(--muted); }
+    .env-preview .key     { color: var(--accent2); }
+    .env-preview .val     { color: var(--accent); }
+
+    /* ── Checklist ── */
+    .checklist { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .checklist li { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; }
+    .check-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 1px; }
+    .check-icon.ok   { background: rgba(16,185,129,.15); color: var(--accent); }
+    .check-icon.warn { background: rgba(245,158,11,.15); color: var(--warn); }
+    .check-icon.skip { background: rgba(100,116,139,.15); color: var(--muted); }
+
+    /* ── Summary cards ── */
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    @media(max-width:480px){ .summary-grid { grid-template-columns: 1fr; } }
+    .summary-card { background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .summary-card .sc-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+    .summary-card .sc-val   { font-size: 14px; font-weight: 700; font-family: var(--mono); word-break: break-all; }
+
+    /* ── Divider ── */
+    .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 18px 0; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── Toast ── */
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; font-size: 13px; color: var(--accent); box-shadow: 0 8px 32px rgba(0,0,0,.4); opacity: 0; transform: translateY(10px); transition: all .3s; z-index: 9999; pointer-events: none; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .hidden { display: none !important; }
+    .mt-4 { margin-top: 16px; }
+    .text-muted { color: var(--muted); font-size: 13px; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo-row">
+    <div class="logo">GY</div>
+    <span class="brand">GYDS <span>Chain</span></span>
+  </div>
+  <a href="/" class="back-link">← Back to Wallet</a>
+</header>
+
+<main class="wrap">
+
+  <!-- Progress -->
+  <div class="progress-wrap">
+    <div class="progress-label">
+      <span id="stepLabel">Step 1 of 7</span>
+      <span id="stepName">Node Identity</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:14%"></div></div>
+    <div class="steps-row" id="stepsRow"></div>
+  </div>
+
+  <!-- ═══════════════  STEP 1 — Node Identity  ════════════════════ -->
+  <div class="step-card" id="step1">
+    <div class="step-header">
+      <div class="step-num">Step 1 of 7</div>
+      <div class="step-title">Node Identity</div>
+      <div class="step-desc">Configure your chain ID, network name, and node operating mode.</div>
+    </div>
+    <div class="step-body">
+      <div class="field-row">
+        <div class="field">
+          <label>Chain ID</label>
+          <input type="number" id="chainId" value="13370" min="1" />
+          <div class="field-hint">Unique identifier for this blockchain network (default: 13370)</div>
+        </div>
+        <div class="field">
+          <label>Network Name</label>
+          <input type="text" id="networkName" value="GYDS Chain" />
+        </div>
+      </div>
+      <div class="field" style="margin-top:18px">
+        <label>Node Mode</label>
+        <div class="radio-cards">
+          <label class="radio-card selected" id="modeFull" onclick="selectMode('full',this)">
+            <input type="radio" name="nodeMode" value="full" checked />
+            <div class="radio-card-title">⛓ Full Node</div>
+            <div class="radio-card-desc">Stores the complete chain history. Recommended for most operators.</div>
+          </label>
+          <label class="radio-card" id="modeLite" onclick="selectMode('lite',this)">
+            <input type="radio" name="nodeMode" value="lite" />
+            <div class="radio-card-title">⚡ Lite Node</div>
+            <div class="radio-card-desc">Downloads only block headers. Lower storage, faster sync.</div>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="step-footer">
+      <span></span>
+      <div class="step-footer-right">
+        <button class="btn btn-primary" onclick="goStep(2)">Next: Wallet →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════  STEP 2 — Wallet  ════════════════════════════ -->
+  <div class="step-card hidden" id="step2">
+    <div class="step-header">
+      <div class="step-num">Step 2 of 7</div>
+      <div class="step-title">Wallet</div>
+      <div class="step-desc">Create a new wallet or import an existing one. Your private key is stored only in the .env file on your server.</div>
+    </div>
+    <div class="step-body">
+      <div class="wallet-tabs">
+        <button class="wallet-tab active" onclick="switchWTab('generate',this)">✦ Generate New</button>
+        <button class="wallet-tab" onclick="switchWTab('importKey',this)">Import Key</button>
+        <button class="wallet-tab" onclick="switchWTab('importPhrase',this)">Import Phrase</button>
+        <button class="wallet-tab" onclick="switchWTab('skip',this)">Skip</button>
+      </div>
+
+      <!-- Generate -->
+      <div class="wallet-pane active" id="wpane-generate">
+        <div class="alert alert-warn">⚠️ Save your private key securely before continuing. It will be stored in your .env file — never share it or upload it publicly.</div>
+        <div class="field">
+          <label>Generated Address</label>
+          <div class="input-wrap">
+            <input type="text" id="genAddr" readonly />
+            <button class="copy-end" onclick="copyField('genAddr')" title="Copy">⧉</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Private Key</label>
+          <div class="input-wrap">
+            <input type="password" id="genKey" readonly />
+            <button class="eye-btn" onclick="toggleVis('genKey',this)">👁</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>12-Word Recovery Phrase</label>
+          <div class="seed-grid" id="genSeedGrid"></div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="doGenerateWallet()" style="margin-top:4px">🔄 Generate New Wallet</button>
+      </div>
+
+      <!-- Import Key -->
+      <div class="wallet-pane" id="wpane-importKey">
+        <div class="field">
+          <label>Private Key (64 hex chars, with or without 0x)</label>
+          <div class="input-wrap">
+            <input type="password" id="importKeyVal" placeholder="0x…" autocomplete="off" oninput="resolveImportKey()" />
+            <button class="eye-btn" onclick="toggleVis('importKeyVal',this)">👁</button>
+          </div>
+          <div class="field-hint" id="importKeyHint"></div>
+        </div>
+        <div class="field">
+          <label>Resolved Address</label>
+          <input type="text" id="importKeyAddr" readonly placeholder="Will appear after entering key" />
+        </div>
+      </div>
+
+      <!-- Import Phrase -->
+      <div class="wallet-pane" id="wpane-importPhrase">
+        <div class="field">
+          <label>Recovery Phrase (12 or 24 words, space-separated)</label>
+          <textarea id="importPhraseVal" placeholder="word1 word2 word3 …" autocomplete="off" oninput="resolveImportPhrase()"></textarea>
+          <div class="field-hint" id="importPhraseHint"></div>
+        </div>
+        <div class="field">
+          <label>Resolved Address</label>
+          <input type="text" id="importPhraseAddr" readonly placeholder="Will appear after entering phrase" />
+        </div>
+      </div>
+
+      <!-- Skip -->
+      <div class="wallet-pane" id="wpane-skip">
+        <div class="alert alert-info">No wallet will be configured now. You can add <code>GYDS_WALLET_PRIVATE_KEY</code> to your .env file later.</div>
+      </div>
+
+    </div>
+    <div class="step-footer">
+      <button class="btn btn-outline" onclick="goStep(1)">← Back</button>
+      <div class="step-footer-right">
+        <button class="btn btn-primary" onclick="commitWallet()">Next: Ports →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════  STEP 3 — Ports  ════════════════════════════ -->
+  <div class="step-card hidden" id="step3">
+    <div class="step-header">
+      <div class="step-num">Step 3 of 7</div>
+      <div class="step-title">Ports &amp; Networking</div>
+      <div class="step-desc">Choose which ports your node listens on. Make sure these are open in your server's firewall and not already in use.</div>
+    </div>
+    <div class="step-body">
+      <div class="field-row">
+        <div class="field">
+          <label>JSON-RPC Port</label>
+          <input type="number" id="rpcPort" value="8545" min="1" max="65535" />
+          <div class="field-hint">HTTP API (e.g. MetaMask, ethers.js)</div>
+        </div>
+        <div class="field">
+          <label>WebSocket Port</label>
+          <input type="number" id="wsPort" value="8546" min="1" max="65535" />
+          <div class="field-hint">Real-time subscriptions</div>
+        </div>
+      </div>
+      <div class="field-row" style="margin-top:8px">
+        <div class="field">
+          <label>P2P Port</label>
+          <input type="number" id="p2pPort" value="30303" min="1" max="65535" />
+          <div class="field-hint">Peer-to-peer gossip (TCP + UDP)</div>
+        </div>
+        <div class="field">
+          <label>Max Peers</label>
+          <input type="number" id="maxPeers" value="25" min="1" max="200" />
+          <div class="field-hint">Max simultaneous P2P connections</div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:8px">
+        <label>Bootstrap Peers <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></label>
+        <textarea id="bootstrapNodes" placeholder="tcp://node1.gydschain.io:30303&#10;tcp://node2.gydschain.io:30303"></textarea>
+        <div class="field-hint">One peer per line. Leave blank to run as an isolated node.</div>
+      </div>
+    </div>
+    <div class="step-footer">
+      <button class="btn btn-outline" onclick="goStep(2)">← Back</button>
+      <div class="step-footer-right">
+        <button class="btn btn-primary" onclick="goStep(4)">Next: Storage →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════  STEP 4 — Storage  ══════════════════════════ -->
+  <div class="step-card hidden" id="step4">
+    <div class="step-header">
+      <div class="step-num">Step 4 of 7</div>
+      <div class="step-title">Storage</div>
+      <div class="step-desc">Choose where chain data is stored and how much disk space to allocate.</div>
+    </div>
+    <div class="step-body">
+      <div class="field">
+        <label>Data Directory</label>
+        <input type="text" id="dataDir" value="/var/lib/gyds-fullnode" />
+        <div class="field-hint">Absolute path on your server where LevelDB chain data is persisted. The directory will be created automatically if it does not exist.</div>
+      </div>
+      <div class="field" style="margin-top:8px">
+        <label>Storage Limit (GB)</label>
+        <input type="number" id="storageLimitGb" value="50" min="1" max="100000" />
+        <div class="field-hint">
+          Maximum disk usage for chain data.
+          <strong>Full node estimates:</strong> ~5–10 GB for a fresh start, growing ~1–3 GB/month depending on traffic.
+          The deploy script will warn if available disk space is below this limit.
+        </div>
+      </div>
+      <div class="alert alert-info" style="margin-top:18px">
+        💡 A storage monitoring script (<code>check-storage.sh</code>) is written by <code>deploy.sh</code> and can be scheduled via cron to alert you when space is low.
+      </div>
+    </div>
+    <div class="step-footer">
+      <button class="btn btn-outline" onclick="goStep(3)">← Back</button>
+      <div class="step-footer-right">
+        <button class="btn btn-primary" onclick="goStep(5)">Next: Firewall →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════  STEP 5 — Firewall  ═════════════════════════ -->
+  <div class="step-card hidden" id="step5">
+    <div class="step-header">
+      <div class="step-num">Step 5 of 7</div>
+      <div class="step-title">Firewall &amp; Security</div>
+      <div class="step-desc">Configure UFW rules and fail2ban protection. <code>deploy.sh</code> applies these settings automatically when run as root.</div>
+    </div>
+    <div class="step-body">
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <strong>Enable UFW Firewall</strong>
+          <span>Applies port rules via <code>ufw</code> + <code>setup-firewall.sh</code></span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="enableFirewall" checked onchange="toggleFirewallFields()" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div id="firewallFields">
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <strong>Enable fail2ban</strong>
+            <span>Automatically bans IPs that repeatedly fail RPC or SSH auth</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="enableFail2ban" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="field" style="margin-top:16px">
+          <label>SSH Port</label>
+          <input type="number" id="sshPort" value="22" min="1" max="65535" />
+          <div class="field-hint">Your server's SSH port — will be kept open in the firewall (rate-limited). Change this if you've moved SSH off port 22.</div>
+        </div>
+
+        <div class="field" style="margin-top:8px">
+          <label>Allowed IPs <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></label>
+          <textarea id="allowedIPs" placeholder="1.2.3.4&#10;10.0.0.0/24" style="min-height:60px"></textarea>
+          <div class="field-hint">One IP or CIDR per line. These are always allowed through the firewall — useful for VPN or admin IPs.</div>
+        </div>
+
+        <div class="alert alert-warn" style="margin-top:16px">
+          ⚠️ Make sure your SSH port is correct before enabling the firewall. Locking yourself out of the server requires console access to recover.
+        </div>
+      </div>
+
+    </div>
+    <div class="step-footer">
+      <button class="btn btn-outline" onclick="goStep(4)">← Back</button>
+      <div class="step-footer-right">
+        <button class="btn btn-primary" onclick="goStep(6)">Next: Logging →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════  STEP 6 — Logging  ══════════════════════════ -->
+  <div class="step-card hidden" id="step6">
+    <div class="step-header">
+      <div class="step-num">Step 6 of 7</div>
+      <div class="step-title">Logging</div>
+      <div class="step-desc">Choose how much detail the node logs and the output format.</div>
+    </div>
+    <div class="step-body">
+      <div class="field-row">
+        <div class="field">
+          <label>Log Level</label>
+          <select id="logLevel">
+            <option value="error">error — errors only</option>
+            <option value="warn">warn — warnings + errors</option>
+            <option value="info" selected>info — standard (recommended)</option>
+            <option value="debug">debug — verbose</option>
+            <option value="trace">trace — very verbose (dev only)</option>
+          </select>
+          <div class="field-hint">Use <code>info</code> for production. Higher verbosity increases log file size significantly.</div>
+        </div>
+        <div class="field">
+          <label>Log Format</label>
+          <select id="logFormat">
+            <option value="json" selected>json — structured (recommended for production)</option>
+            <option value="pretty">pretty — coloured console (development)</option>
+          </select>
+          <div class="field-hint">JSON format is easier to parse with tools like <code>jq</code> or log aggregators.</div>
+        </div>
+      </div>
+    </div>
+    <div class="step-footer">
+      <button class="btn btn-outline" onclick="goStep(5)">← Back</button>
+      <div class="step-footer-right">
+        <button class="btn btn-primary" onclick="buildReview()">Next: Review →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════  STEP 7 — Review & Save  ════════════════════ -->
+  <div class="step-card hidden" id="step7">
+    <div class="step-header">
+      <div class="step-num">Step 7 of 7</div>
+      <div class="step-title">Review &amp; Save</div>
+      <div class="step-desc">Your <code>.env</code> configuration is ready. Save it to the server or download it.</div>
+    </div>
+    <div class="step-body">
+
+      <div class="summary-grid" id="summaryGrid"></div>
+
+      <div class="divider">generated .env</div>
+
+      <pre class="env-preview" id="envPreview"></pre>
+
+      <div class="field-row mt-4" style="margin-top:20px">
+        <button class="btn btn-outline btn-sm" onclick="downloadEnv()" style="flex:1;justify-content:center">⬇ Download .env</button>
+        <button class="btn btn-accent2" onclick="saveToServer()" id="saveBtn" style="flex:2;justify-content:center">
+          💾 Save .env to Server
+        </button>
+      </div>
+
+      <div id="saveResult" style="margin-top:16px"></div>
+
+      <div class="divider" style="margin-top:24px">next steps</div>
+
+      <ul class="checklist" id="nextStepsList"></ul>
+
+    </div>
+    <div class="step-footer">
+      <button class="btn btn-outline" onclick="goStep(6)">← Back</button>
+      <div class="step-footer-right">
+        <a href="/" class="btn btn-primary">→ Open Wallet</a>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const TOTAL_STEPS = 7;
+let currentStep = 1;
+let walletTab = 'generate';
+let nodeMode = 'full';
+
+// Wallet state
+let walletAddr = '';
+let walletKey  = '';
+
+const STEP_NAMES = [
+  '', 'Node Identity', 'Wallet', 'Ports', 'Storage', 'Firewall', 'Logging', 'Review'
+];
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  buildStepsRow();
+  doGenerateWallet();
+});
+
+// ── Steps row ─────────────────────────────────────────────────────────────────
+function buildStepsRow() {
+  const row = document.getElementById('stepsRow');
+  row.innerHTML = '';
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    if (i > 1) {
+      const conn = document.createElement('div');
+      conn.className = 'step-connector';
+      conn.id = 'conn' + (i-1);
+      row.appendChild(conn);
+    }
+    const dot = document.createElement('div');
+    dot.className = 'step-dot';
+    dot.id = 'dot' + i;
+    dot.innerHTML = `<div class="circle">${i}</div><div class="label">${STEP_NAMES[i]}</div>`;
+    row.appendChild(dot);
+  }
+  updateProgress();
+}
+
+function updateProgress() {
+  const pct = Math.round((currentStep / TOTAL_STEPS) * 100);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('stepLabel').textContent = `Step ${currentStep} of ${TOTAL_STEPS}`;
+  document.getElementById('stepName').textContent = STEP_NAMES[currentStep] || '';
+
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const dot = document.getElementById('dot' + i);
+    dot.className = 'step-dot' + (i < currentStep ? ' done' : i === currentStep ? ' active' : '');
+    dot.querySelector('.circle').textContent = i < currentStep ? '✓' : String(i);
+    if (i > 1) {
+      const conn = document.getElementById('conn' + (i-1));
+      conn.className = 'step-connector' + (i <= currentStep ? ' done' : '');
+    }
+  }
+}
+
+function goStep(n) {
+  document.getElementById('step' + currentStep).classList.add('hidden');
+  currentStep = n;
+  document.getElementById('step' + currentStep).classList.remove('hidden');
+  updateProgress();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Step 1: Node mode ─────────────────────────────────────────────────────────
+function selectMode(mode, el) {
+  nodeMode = mode;
+  document.getElementById('modeFull').classList.remove('selected');
+  document.getElementById('modeLite').classList.remove('selected');
+  el.classList.add('selected');
+}
+
+// ── Step 2: Wallet ────────────────────────────────────────────────────────────
+function switchWTab(tab, btn) {
+  walletTab = tab;
+  document.querySelectorAll('.wallet-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.wallet-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('wpane-' + tab).classList.add('active');
+}
+
+function doGenerateWallet() {
+  try {
+    const w = ethers.Wallet.createRandom();
+    document.getElementById('genAddr').value = w.address;
+    document.getElementById('genKey').value  = w.privateKey;
+    const words = w.mnemonic.phrase.split(' ');
+    document.getElementById('genSeedGrid').innerHTML = words.map((wd, i) =>
+      `<div class="seed-word"><span class="seed-num">${i+1}.</span><span class="seed-val">${wd}</span></div>`
+    ).join('');
+    // Store in state
+    walletAddr = w.address;
+    walletKey  = w.privateKey;
+  } catch(e) {
+    // ethers.js not loaded (CDN blocked in preview)
+    document.getElementById('genAddr').value = 'ethers.js not available — use import tab';
+  }
+}
+
+function resolveImportKey() {
+  const raw = document.getElementById('importKeyVal').value.trim();
+  const hint = document.getElementById('importKeyHint');
+  const addrEl = document.getElementById('importKeyAddr');
+  try {
+    const w = new ethers.Wallet(raw);
+    addrEl.value = w.address;
+    hint.textContent = '✓ Valid private key';
+    hint.style.color = 'var(--accent)';
+  } catch {
+    addrEl.value = '';
+    hint.textContent = raw.length > 0 ? 'Invalid key format' : '';
+    hint.style.color = 'var(--danger)';
+  }
+}
+
+function resolveImportPhrase() {
+  const phrase = document.getElementById('importPhraseVal').value.trim();
+  const hint   = document.getElementById('importPhraseHint');
+  const addrEl = document.getElementById('importPhraseAddr');
+  try {
+    const w = ethers.Wallet.fromMnemonic(phrase);
+    addrEl.value = w.address;
+    hint.textContent = '✓ Valid phrase';
+    hint.style.color = 'var(--accent)';
+  } catch {
+    addrEl.value = '';
+    hint.textContent = phrase.length > 0 ? 'Invalid phrase' : '';
+    hint.style.color = 'var(--danger)';
+  }
+}
+
+function commitWallet() {
+  if (walletTab === 'generate') {
+    walletAddr = document.getElementById('genAddr').value;
+    walletKey  = document.getElementById('genKey').value;
+  } else if (walletTab === 'importKey') {
+    const raw = document.getElementById('importKeyVal').value.trim();
+    const addr = document.getElementById('importKeyAddr').value;
+    if (!addr) { showToast('Enter a valid private key or switch to Skip'); return; }
+    walletAddr = addr;
+    walletKey  = raw.startsWith('0x') ? raw : '0x' + raw;
+  } else if (walletTab === 'importPhrase') {
+    const phrase = document.getElementById('importPhraseVal').value.trim();
+    const addr   = document.getElementById('importPhraseAddr').value;
+    if (!addr) { showToast('Enter a valid recovery phrase or switch to Skip'); return; }
+    try {
+      const w = ethers.Wallet.fromMnemonic(phrase);
+      walletAddr = addr;
+      walletKey  = w.privateKey;
+    } catch { showToast('Invalid phrase'); return; }
+  } else {
+    walletAddr = '';
+    walletKey  = '';
+  }
+  goStep(3);
+}
+
+// ── Step 5: Firewall toggle ───────────────────────────────────────────────────
+function toggleFirewallFields() {
+  const enabled = document.getElementById('enableFirewall').checked;
+  document.getElementById('firewallFields').style.opacity = enabled ? '1' : '0.4';
+  document.getElementById('firewallFields').style.pointerEvents = enabled ? '' : 'none';
+}
+
+// ── Step 7: Build review ──────────────────────────────────────────────────────
+function collectConfig() {
+  const bootstrapRaw = document.getElementById('bootstrapNodes').value.trim();
+  const bootstrap = bootstrapRaw
+    ? bootstrapRaw.split('\n').map(s => s.trim()).filter(Boolean).join(',')
+    : '';
+
+  const allowedRaw = document.getElementById('allowedIPs').value.trim();
+  const allowed = allowedRaw
+    ? allowedRaw.split('\n').map(s => s.trim()).filter(Boolean).join(',')
+    : '';
+
+  return {
+    chainId:        document.getElementById('chainId').value,
+    networkName:    document.getElementById('networkName').value,
+    nodeMode:       nodeMode,
+    walletAddress:  walletAddr,
+    walletKey:      walletKey,
+    rpcPort:        document.getElementById('rpcPort').value,
+    wsPort:         document.getElementById('wsPort').value,
+    p2pPort:        document.getElementById('p2pPort').value,
+    maxPeers:       document.getElementById('maxPeers').value,
+    bootstrapNodes: bootstrap,
+    dataDir:        document.getElementById('dataDir').value,
+    storageLimitGb: document.getElementById('storageLimitGb').value,
+    enableFirewall: document.getElementById('enableFirewall').checked ? 'true' : 'false',
+    sshPort:        document.getElementById('sshPort').value,
+    allowedIps:     allowed,
+    logLevel:       document.getElementById('logLevel').value,
+    logFormat:      document.getElementById('logFormat').value,
+  };
+}
+
+function buildReview() {
+  const cfg = collectConfig();
+
+  // Summary cards
+  const summaryGrid = document.getElementById('summaryGrid');
+  const items = [
+    ['Chain ID',       cfg.chainId],
+    ['Network',        cfg.networkName],
+    ['Node Mode',      cfg.nodeMode],
+    ['Wallet',         cfg.walletAddress ? cfg.walletAddress.slice(0,12)+'…' : '(none)'],
+    ['RPC Port',       cfg.rpcPort],
+    ['P2P Port',       cfg.p2pPort],
+    ['Data Dir',       cfg.dataDir],
+    ['Storage Limit',  cfg.storageLimitGb + ' GB'],
+    ['Firewall',       cfg.enableFirewall === 'true' ? '✓ Enabled' : '✗ Disabled'],
+    ['Log Level',      cfg.logLevel],
+  ];
+  summaryGrid.innerHTML = items.map(([k,v]) =>
+    `<div class="summary-card"><div class="sc-label">${k}</div><div class="sc-val">${v}</div></div>`
+  ).join('');
+
+  // .env preview (syntax-highlighted)
+  const envText = buildEnvText(cfg);
+  const envHtml = envText.split('\n').map(line => {
+    if (line.startsWith('#')) return `<span class="comment">${esc(line)}</span>`;
+    if (line.includes('=')) {
+      const eq = line.indexOf('=');
+      const k  = line.slice(0, eq);
+      const v  = line.slice(eq + 1);
+      const vDisplay = k === 'GYDS_WALLET_PRIVATE_KEY' && v
+        ? v.slice(0,6)+'…'+v.slice(-4)
+        : v;
+      return `<span class="key">${esc(k)}</span>=<span class="val">${esc(vDisplay)}</span>`;
+    }
+    return esc(line);
+  }).join('\n');
+  document.getElementById('envPreview').innerHTML = envHtml;
+
+  // Next steps checklist
+  const nl = document.getElementById('nextStepsList');
+  nl.innerHTML = `
+    <li><span class="check-icon ok">1</span><span>Copy <code>.env</code> to your server (or click <em>Save .env to Server</em> if this is your server)</span></li>
+    <li><span class="check-icon ok">2</span><span>Run <code>bash deploy.sh</code> to build, install, and start the node</span></li>
+    <li><span class="check-icon ${cfg.enableFirewall==='true'?'ok':'warn'}">${cfg.enableFirewall==='true'?'✓':'!'}</span>
+      <span>${cfg.enableFirewall==='true'
+        ? 'Firewall will be configured automatically by deploy.sh (requires root)'
+        : 'Firewall is disabled — consider enabling it for production'}</span></li>
+    <li><span class="check-icon ok">4</span><span>Verify the node is running: <code>curl http://localhost:${cfg.rpcPort}/health</code></span></li>
+    <li><span class="check-icon ok">5</span><span>View logs: <code>sudo journalctl -u gyds-fullnode -f</code></span></li>
+    <li><span class="check-icon ${cfg.bootstrapNodes?'ok':'warn'}">${cfg.bootstrapNodes?'✓':'!'}</span>
+      <span>${cfg.bootstrapNodes
+        ? 'Bootstrap peers configured — node will connect to the network'
+        : 'No bootstrap peers configured — node will run in isolated mode'}</span></li>
+  `;
+
+  goStep(7);
+}
+
+function buildEnvText(cfg) {
+  const ts = new Date().toISOString().slice(0,19)+'Z';
+  const lines = [
+    `# ══════════════════════════════════════════════════════════════════`,
+    `#  GYDS Chain Full Node — Environment Configuration`,
+    `#  Generated by setup wizard: ${ts}`,
+    `# ══════════════════════════════════════════════════════════════════`,
+    ``,
+    `# ── Chain Identity ─────────────────────────────────────────────`,
+    `GYDS_CHAIN_ID=${cfg.chainId}`,
+    `GYDS_NETWORK_NAME=${cfg.networkName}`,
+    `GYDS_NODE_MODE=${cfg.nodeMode}`,
+    ``,
+    `# ── Wallet ─────────────────────────────────────────────────────`,
+    `GYDS_WALLET_ADDRESS=${cfg.walletAddress}`,
+    `GYDS_WALLET_PRIVATE_KEY=${cfg.walletKey}`,
+    ``,
+    `# ── RPC / API Ports ────────────────────────────────────────────`,
+    `GYDS_RPC_PORT=${cfg.rpcPort}`,
+    `GYDS_RPC_HOST=0.0.0.0`,
+    `GYDS_WS_PORT=${cfg.wsPort}`,
+    ``,
+    `# ── P2P Networking ─────────────────────────────────────────────`,
+    `GYDS_P2P_PORT=${cfg.p2pPort}`,
+    `GYDS_MAX_PEERS=${cfg.maxPeers}`,
+    cfg.bootstrapNodes
+      ? `GYDS_BOOTSTRAP_NODES=${cfg.bootstrapNodes}`
+      : `# GYDS_BOOTSTRAP_NODES=`,
+    ``,
+    `# ── Storage ────────────────────────────────────────────────────`,
+    `GYDS_DATA_DIR=${cfg.dataDir}`,
+    `GYDS_STORAGE_LIMIT_GB=${cfg.storageLimitGb}`,
+    ``,
+    `# ── Firewall & Security ────────────────────────────────────────`,
+    `GYDS_ENABLE_FIREWALL=${cfg.enableFirewall}`,
+    `GYDS_SSH_PORT=${cfg.sshPort}`,
+    cfg.allowedIps
+      ? `GYDS_ALLOWED_IPS=${cfg.allowedIps}`
+      : `# GYDS_ALLOWED_IPS=`,
+    ``,
+    `# ── Logging ────────────────────────────────────────────────────`,
+    `GYDS_LOG_LEVEL=${cfg.logLevel}`,
+    `GYDS_LOG_FORMAT=${cfg.logFormat}`,
+  ];
+  return lines.join('\n');
+}
+
+function downloadEnv() {
+  const cfg = collectConfig();
+  const text = buildEnvText(cfg);
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = '.env';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('.env downloaded');
+}
+
+async function saveToServer() {
+  const cfg = collectConfig();
+  const btn = document.getElementById('saveBtn');
+  const res = document.getElementById('saveResult');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Saving…';
+  res.innerHTML = '';
+
+  try {
+    const r = await fetch('/api/setup/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      res.innerHTML = `<div class="alert alert-success">✓ .env saved to server. Run <code>bash deploy.sh</code> to deploy.</div>`;
+      showToast('.env saved to server');
+    } else {
+      res.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Unknown error'}</div>`;
+    }
+  } catch(e) {
+    res.innerHTML = `<div class="alert alert-danger">Network error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '💾 Save .env to Server';
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleVis(id, btn) {
+  const el = document.getElementById(id);
+  const hidden = el.type === 'password';
+  el.type = hidden ? 'text' : 'password';
+  btn.textContent = hidden ? '🙈' : '👁';
+}
+
+function copyField(id) {
+  const val = document.getElementById(id).value;
+  navigator.clipboard.writeText(val).then(() => showToast('Copied!')).catch(() => {});
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>

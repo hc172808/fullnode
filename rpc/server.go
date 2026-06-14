@@ -6,7 +6,7 @@ import (
         "encoding/hex"
         "encoding/json"
         "fmt"
-	"io/fs"
+        "io/fs"
         "math/big"
         "net/http"
         "strconv"
@@ -67,19 +67,20 @@ func cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	sub, err := fs.Sub(staticFiles, "static")
-	if err != nil {
-		http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
-		return
-	}
-	http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+        sub, err := fs.Sub(staticFiles, "static")
+        if err != nil {
+                http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
+                return
+        }
+        http.FileServer(http.FS(sub)).ServeHTTP(w, r)
 }
 
 func (s *Server) setupRoutes() {
         r := mux.NewRouter()
 
         r.HandleFunc("/health", s.handleHealth).Methods("GET")
-	r.HandleFunc("/", s.handleDashboard).Methods("GET")
+        r.HandleFunc("/setup", s.handleSetupPage).Methods("GET")
+        r.HandleFunc("/", s.handleDashboard).Methods("GET")
         r.HandleFunc("/", s.handleJSONRPC).Methods("POST", "OPTIONS")
         r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
 
@@ -90,6 +91,8 @@ func (s *Server) setupRoutes() {
         api.HandleFunc("/transactions", s.handleTransactions).Methods("GET")
         api.HandleFunc("/peers", s.handlePeers).Methods("GET")
         api.HandleFunc("/ws", s.handleWS)
+        api.HandleFunc("/setup/status", s.handleSetupStatus).Methods("GET")
+        api.HandleFunc("/setup/apply", s.handleSetupApply).Methods("POST", "OPTIONS")
 
         r.Use(cors)
         s.router = r
