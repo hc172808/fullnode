@@ -92,7 +92,7 @@ func runNode() error {
         log.Info().Uint64("height", chain.Height()).Msg("Chain initialised from genesis")
 
         vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
-        engine := consensus.NewPoSEngine(chain, vs, 5*time.Second)
+        engine := consensus.NewPoSEngine(chain, vs, 120*time.Second)
 
         rpcSrv := rpc.NewServer(chain, cfg.RPCPort)
         engine.OnNewBlock(func(b *core.Block) {
@@ -117,7 +117,7 @@ func runNode() error {
         }
 
         engine.Start()
-        log.Info().Dur("blockTime", 5*time.Second).Msg("PoS engine started")
+        log.Info().Dur("blockTime", 120*time.Second).Msg("PoS engine started")
 
         errCh := make(chan error, 1)
         go func() {

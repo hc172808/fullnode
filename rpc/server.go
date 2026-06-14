@@ -9,6 +9,7 @@ import (
         "io/fs"
         "math/big"
         "net/http"
+        "os"
         "strconv"
         "strings"
         "sync"
@@ -67,6 +68,10 @@ func cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+        if _, err := os.Stat(".env"); os.IsNotExist(err) {
+                http.Redirect(w, r, "/setup", http.StatusFound)
+                return
+        }
         sub, err := fs.Sub(staticFiles, "static")
         if err != nil {
                 http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
