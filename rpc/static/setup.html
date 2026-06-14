@@ -215,6 +215,13 @@
           <input type="text" id="networkName" value="GYDS Chain" />
         </div>
       </div>
+      <div class="field-row" style="margin-top:18px">
+        <div class="field">
+          <label>Block Time (seconds)</label>
+          <input type="number" id="blockTime" value="120" min="1" max="86400" />
+          <div class="field-hint">How often a new block is produced (default: 120 s = 2 min)</div>
+        </div>
+      </div>
       <div class="field" style="margin-top:18px">
         <label>Node Mode</label>
         <div class="radio-cards">
@@ -720,6 +727,7 @@ function collectConfig() {
     chainId:        document.getElementById('chainId').value,
     networkName:    document.getElementById('networkName').value,
     nodeMode:       nodeMode,
+    blockTime:      document.getElementById('blockTime').value,
     walletAddress:  walletAddr,
     walletKey:      walletKey,
     rpcPort:        document.getElementById('rpcPort').value,
@@ -746,6 +754,7 @@ function buildReview() {
     ['Chain ID',       cfg.chainId],
     ['Network',        cfg.networkName],
     ['Node Mode',      cfg.nodeMode],
+    ['Block Time',     cfg.blockTime + 's'],
     ['Wallet',         cfg.walletAddress ? cfg.walletAddress.slice(0,12)+'…' : '(none)'],
     ['RPC Port',       cfg.rpcPort],
     ['P2P Port',       cfg.p2pPort],
@@ -807,6 +816,7 @@ function buildEnvText(cfg) {
     `GYDS_CHAIN_ID=${cfg.chainId}`,
     `GYDS_NETWORK_NAME=${cfg.networkName}`,
     `GYDS_NODE_MODE=${cfg.nodeMode}`,
+    `GYDS_BLOCK_TIME=${cfg.blockTime}`,
     ``,
     `# ── Wallet ─────────────────────────────────────────────────────`,
     `GYDS_WALLET_ADDRESS=${cfg.walletAddress}`,

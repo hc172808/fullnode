@@ -1,151 +1,154 @@
 package rpc
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"os"
-	"strings"
-	"time"
+        "encoding/json"
+        "fmt"
+        "net/http"
+        "os"
+        "strings"
+        "time"
 )
 
 type setupConfig struct {
-	ChainID        string `json:"chainId"`
-	NetworkName    string `json:"networkName"`
-	NodeMode       string `json:"nodeMode"`
-	WalletAddress  string `json:"walletAddress"`
-	WalletKey      string `json:"walletKey"`
-	RPCPort        string `json:"rpcPort"`
-	WSPort         string `json:"wsPort"`
-	P2PPort        string `json:"p2pPort"`
-	MaxPeers       string `json:"maxPeers"`
-	BootstrapNodes string `json:"bootstrapNodes"`
-	DataDir        string `json:"dataDir"`
-	StorageLimitGB string `json:"storageLimitGb"`
-	EnableFirewall string `json:"enableFirewall"`
-	SSHPort        string `json:"sshPort"`
-	AllowedIPs     string `json:"allowedIps"`
-	LogLevel       string `json:"logLevel"`
-	LogFormat      string `json:"logFormat"`
+        ChainID        string `json:"chainId"`
+        NetworkName    string `json:"networkName"`
+        NodeMode       string `json:"nodeMode"`
+        BlockTime      string `json:"blockTime"`
+        WalletAddress  string `json:"walletAddress"`
+        WalletKey      string `json:"walletKey"`
+        RPCPort        string `json:"rpcPort"`
+        WSPort         string `json:"wsPort"`
+        P2PPort        string `json:"p2pPort"`
+        MaxPeers       string `json:"maxPeers"`
+        BootstrapNodes string `json:"bootstrapNodes"`
+        DataDir        string `json:"dataDir"`
+        StorageLimitGB string `json:"storageLimitGb"`
+        EnableFirewall string `json:"enableFirewall"`
+        SSHPort        string `json:"sshPort"`
+        AllowedIPs     string `json:"allowedIps"`
+        LogLevel       string `json:"logLevel"`
+        LogFormat      string `json:"logFormat"`
 }
 
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
-	f, err := staticFiles.Open("static/setup.html")
-	if err != nil {
-		http.Error(w, "setup page unavailable", http.StatusNotFound)
-		return
-	}
-	defer f.Close()
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := f.Read(buf)
-		if n > 0 {
-			w.Write(buf[:n])
-		}
-		if err != nil {
-			break
-		}
-	}
+        f, err := staticFiles.Open("static/setup.html")
+        if err != nil {
+                http.Error(w, "setup page unavailable", http.StatusNotFound)
+                return
+        }
+        defer f.Close()
+        w.Header().Set("Content-Type", "text/html; charset=utf-8")
+        buf := make([]byte, 32*1024)
+        for {
+                n, err := f.Read(buf)
+                if n > 0 {
+                        w.Write(buf[:n])
+                }
+                if err != nil {
+                        break
+                }
+        }
 }
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
-	_, err := os.Stat(".env")
-	configured := err == nil
-	jsonOK(w, map[string]interface{}{
-		"configured": configured,
-		"height":     s.chain.Height(),
-	})
+        _, err := os.Stat(".env")
+        configured := err == nil
+        jsonOK(w, map[string]interface{}{
+                "configured": configured,
+                "height":     s.chain.Height(),
+        })
 }
 
 func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
-	var cfg setupConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		jsonErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
-		return
-	}
+        var cfg setupConfig
+        if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+                jsonErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+                return
+        }
 
-	def := func(v, d string) string {
-		if strings.TrimSpace(v) == "" {
-			return d
-		}
-		return strings.TrimSpace(v)
-	}
+        def := func(v, d string) string {
+                if strings.TrimSpace(v) == "" {
+                        return d
+                }
+                return strings.TrimSpace(v)
+        }
 
-	cfg.ChainID        = def(cfg.ChainID, "13370")
-	cfg.NetworkName    = def(cfg.NetworkName, "GYDS Chain")
-	cfg.NodeMode       = def(cfg.NodeMode, "full")
-	cfg.RPCPort        = def(cfg.RPCPort, "8545")
-	cfg.WSPort         = def(cfg.WSPort, "8546")
-	cfg.P2PPort        = def(cfg.P2PPort, "30303")
-	cfg.MaxPeers       = def(cfg.MaxPeers, "25")
-	cfg.DataDir        = def(cfg.DataDir, "./data")
-	cfg.StorageLimitGB = def(cfg.StorageLimitGB, "50")
-	cfg.EnableFirewall = def(cfg.EnableFirewall, "true")
-	cfg.SSHPort        = def(cfg.SSHPort, "22")
-	cfg.LogLevel       = def(cfg.LogLevel, "info")
-	cfg.LogFormat      = def(cfg.LogFormat, "json")
+        cfg.ChainID        = def(cfg.ChainID, "13370")
+        cfg.NetworkName    = def(cfg.NetworkName, "GYDS Chain")
+        cfg.NodeMode       = def(cfg.NodeMode, "full")
+        cfg.BlockTime      = def(cfg.BlockTime, "120")
+        cfg.RPCPort        = def(cfg.RPCPort, "8545")
+        cfg.WSPort         = def(cfg.WSPort, "8546")
+        cfg.P2PPort        = def(cfg.P2PPort, "30303")
+        cfg.MaxPeers       = def(cfg.MaxPeers, "25")
+        cfg.DataDir        = def(cfg.DataDir, "./data")
+        cfg.StorageLimitGB = def(cfg.StorageLimitGB, "50")
+        cfg.EnableFirewall = def(cfg.EnableFirewall, "true")
+        cfg.SSHPort        = def(cfg.SSHPort, "22")
+        cfg.LogLevel       = def(cfg.LogLevel, "info")
+        cfg.LogFormat      = def(cfg.LogFormat, "json")
 
-	ts := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+        ts := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
-	var sb strings.Builder
-	w1 := func(s string) { sb.WriteString(s + "\n") }
+        var sb strings.Builder
+        w1 := func(s string) { sb.WriteString(s + "\n") }
 
-	w1("# ══════════════════════════════════════════════════════════════════")
-	w1("#  GYDS Chain Full Node — Environment Configuration")
-	w1(fmt.Sprintf("#  Generated by setup wizard: %s", ts))
-	w1("# ══════════════════════════════════════════════════════════════════")
-	w1("")
-	w1("# ── Chain Identity ─────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_CHAIN_ID=%s", cfg.ChainID))
-	w1(fmt.Sprintf("GYDS_NETWORK_NAME=%s", cfg.NetworkName))
-	w1(fmt.Sprintf("GYDS_NODE_MODE=%s", cfg.NodeMode))
-	w1("")
-	w1("# ── Wallet ─────────────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_WALLET_ADDRESS=%s", cfg.WalletAddress))
-	w1(fmt.Sprintf("GYDS_WALLET_PRIVATE_KEY=%s", cfg.WalletKey))
-	w1("")
-	w1("# ── RPC / API Ports ────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_RPC_PORT=%s", cfg.RPCPort))
-	w1("GYDS_RPC_HOST=0.0.0.0")
-	w1(fmt.Sprintf("GYDS_WS_PORT=%s", cfg.WSPort))
-	w1("")
-	w1("# ── P2P Networking ─────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_P2P_PORT=%s", cfg.P2PPort))
-	w1(fmt.Sprintf("GYDS_MAX_PEERS=%s", cfg.MaxPeers))
-	if strings.TrimSpace(cfg.BootstrapNodes) != "" {
-		w1(fmt.Sprintf("GYDS_BOOTSTRAP_NODES=%s", cfg.BootstrapNodes))
-	} else {
-		w1("# GYDS_BOOTSTRAP_NODES=")
-	}
-	w1("")
-	w1("# ── Storage ────────────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_DATA_DIR=%s", cfg.DataDir))
-	w1(fmt.Sprintf("GYDS_STORAGE_LIMIT_GB=%s", cfg.StorageLimitGB))
-	w1("")
-	w1("# ── Firewall & Security ────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_ENABLE_FIREWALL=%s", cfg.EnableFirewall))
-	w1(fmt.Sprintf("GYDS_SSH_PORT=%s", cfg.SSHPort))
-	if strings.TrimSpace(cfg.AllowedIPs) != "" {
-		w1(fmt.Sprintf("GYDS_ALLOWED_IPS=%s", cfg.AllowedIPs))
-	} else {
-		w1("# GYDS_ALLOWED_IPS=")
-	}
-	w1("")
-	w1("# ── Logging ────────────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_LOG_LEVEL=%s", cfg.LogLevel))
-	w1(fmt.Sprintf("GYDS_LOG_FORMAT=%s", cfg.LogFormat))
+        w1("# ══════════════════════════════════════════════════════════════════")
+        w1("#  GYDS Chain Full Node — Environment Configuration")
+        w1(fmt.Sprintf("#  Generated by setup wizard: %s", ts))
+        w1("# ══════════════════════════════════════════════════════════════════")
+        w1("")
+        w1("# ── Chain Identity ─────────────────────────────────────────────")
+        w1(fmt.Sprintf("GYDS_CHAIN_ID=%s", cfg.ChainID))
+        w1(fmt.Sprintf("GYDS_NETWORK_NAME=%s", cfg.NetworkName))
+        w1(fmt.Sprintf("GYDS_NODE_MODE=%s", cfg.NodeMode))
+        w1(fmt.Sprintf("GYDS_BLOCK_TIME=%s", cfg.BlockTime))
+        w1("")
+        w1("# ── Wallet ─────────────────────────────────────────────────────")
+        w1(fmt.Sprintf("GYDS_WALLET_ADDRESS=%s", cfg.WalletAddress))
+        w1(fmt.Sprintf("GYDS_WALLET_PRIVATE_KEY=%s", cfg.WalletKey))
+        w1("")
+        w1("# ── RPC / API Ports ────────────────────────────────────────────")
+        w1(fmt.Sprintf("GYDS_RPC_PORT=%s", cfg.RPCPort))
+        w1("GYDS_RPC_HOST=0.0.0.0")
+        w1(fmt.Sprintf("GYDS_WS_PORT=%s", cfg.WSPort))
+        w1("")
+        w1("# ── P2P Networking ─────────────────────────────────────────────")
+        w1(fmt.Sprintf("GYDS_P2P_PORT=%s", cfg.P2PPort))
+        w1(fmt.Sprintf("GYDS_MAX_PEERS=%s", cfg.MaxPeers))
+        if strings.TrimSpace(cfg.BootstrapNodes) != "" {
+                w1(fmt.Sprintf("GYDS_BOOTSTRAP_NODES=%s", cfg.BootstrapNodes))
+        } else {
+                w1("# GYDS_BOOTSTRAP_NODES=")
+        }
+        w1("")
+        w1("# ── Storage ────────────────────────────────────────────────────")
+        w1(fmt.Sprintf("GYDS_DATA_DIR=%s", cfg.DataDir))
+        w1(fmt.Sprintf("GYDS_STORAGE_LIMIT_GB=%s", cfg.StorageLimitGB))
+        w1("")
+        w1("# ── Firewall & Security ────────────────────────────────────────")
+        w1(fmt.Sprintf("GYDS_ENABLE_FIREWALL=%s", cfg.EnableFirewall))
+        w1(fmt.Sprintf("GYDS_SSH_PORT=%s", cfg.SSHPort))
+        if strings.TrimSpace(cfg.AllowedIPs) != "" {
+                w1(fmt.Sprintf("GYDS_ALLOWED_IPS=%s", cfg.AllowedIPs))
+        } else {
+                w1("# GYDS_ALLOWED_IPS=")
+        }
+        w1("")
+        w1("# ── Logging ────────────────────────────────────────────────────")
+        w1(fmt.Sprintf("GYDS_LOG_LEVEL=%s", cfg.LogLevel))
+        w1(fmt.Sprintf("GYDS_LOG_FORMAT=%s", cfg.LogFormat))
 
-	content := sb.String()
+        content := sb.String()
 
-	if err := os.WriteFile(".env", []byte(content), 0600); err != nil {
-		jsonErr(w, http.StatusInternalServerError, "failed to write .env: "+err.Error())
-		return
-	}
+        if err := os.WriteFile(".env", []byte(content), 0600); err != nil {
+                jsonErr(w, http.StatusInternalServerError, "failed to write .env: "+err.Error())
+                return
+        }
 
-	jsonOK(w, map[string]interface{}{
-		"ok":      true,
-		"message": ".env saved successfully",
-		"env":     content,
-	})
+        jsonOK(w, map[string]interface{}{
+                "ok":      true,
+                "message": ".env saved successfully",
+                "env":     content,
+        })
 }
