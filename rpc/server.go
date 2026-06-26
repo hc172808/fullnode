@@ -31,6 +31,7 @@ type Server struct {
         subsMu        sync.RWMutex
         port          int
         blockTimeSecs int
+        auth          *AuthStore
 
         pendingTx   map[string]*core.Transaction
         pendingTxMu sync.RWMutex
@@ -41,11 +42,12 @@ type subscriber struct {
         ch   chan interface{}
 }
 
-func NewServer(chain *core.Chain, port int, blockTimeSecs int) *Server {
+func NewServer(chain *core.Chain, port int, blockTimeSecs int, dataDir string) *Server {
         s := &Server{
                 chain:         chain,
                 port:          port,
                 blockTimeSecs: blockTimeSecs,
+                auth:          NewAuthStore(dataDir),
                 upgrader: websocket.Upgrader{
                         CheckOrigin: func(r *http.Request) bool { return true },
                 },
@@ -74,6 +76,12 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 http.Redirect(w, r, "/setup", http.StatusFound)
                 return
         }
+        // Enforce admin PIN authentication before serving the dashboard.
+        cookie, err := r.Cookie(sessionCookieName)
+        if err != nil || !s.auth.ValidSession(cookie.Value) {
+                http.Redirect(w, r, "/admin/login", http.StatusFound)
+                return
+        }
         sub, err := fs.Sub(staticFiles, "static")
         if err != nil {
                 http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
@@ -100,6 +108,14 @@ func (s *Server) setupRoutes() {
         api.HandleFunc("/ws", s.handleWS)
         api.HandleFunc("/setup/status", s.handleSetupStatus).Methods("GET")
         api.HandleFunc("/setup/apply", s.handleSetupApply).Methods("POST", "OPTIONS")
+
+        // ── Admin auth routes (no session required) ───────────────────────────
+        r.HandleFunc("/admin/login",   s.handleAdminLoginPage).Methods("GET")
+        r.HandleFunc("/admin/login",   s.handleAdminLoginSubmit).Methods("POST")
+        r.HandleFunc("/admin/logout",  s.handleAdminLogout).Methods("GET")
+        r.HandleFunc("/admin/set-pin", s.handleAdminSetPinPage).Methods("GET")
+        r.HandleFunc("/admin/set-pin", s.handleAdminSetPinSubmit).Methods("POST")
+        r.HandleFunc("/admin/wallet",  s.handleAdminWallet).Methods("GET")
 
         // Catch-all: serve any remaining GET requests as static files from
         // the embedded rpc/static/ directory (e.g. ethers-5.7.2.umd.min.js,

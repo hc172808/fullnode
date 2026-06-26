@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>GYDS Chain — Admin Login</title>
+  <style>
+    :root {
+      --bg:     #0b0f1a;
+      --card:   #111827;
+      --card2:  #1a2235;
+      --border: #1e2d40;
+      --accent: #10b981;
+      --warn:   #f59e0b;
+      --danger: #ef4444;
+      --text:   #e2e8f0;
+      --muted:  #64748b;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .shell {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 16px;
+    }
+
+    /* ── Logo ── */
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+    .logo-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg,#10b981,#3b82f6);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 20px; color: #fff;
+    }
+    .logo-text { font-size: 22px; font-weight: 700; }
+    .logo-text span { color: var(--accent); }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+
+    .card-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+    .card-sub {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    /* ── Admin wallet badge ── */
+    .wallet-badge {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .wallet-dot {
+      width: 10px; height: 10px;
+      background: var(--accent);
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .wallet-info { min-width: 0; }
+    .wallet-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .wallet-addr {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      word-break: break-all;
+      margin-top: 2px;
+    }
+
+    /* ── Field ── */
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .pin-wrap {
+      position: relative;
+      margin-bottom: 20px;
+    }
+    .pin-wrap input {
+      width: 100%;
+      padding: 12px 44px 12px 16px;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 20px;
+      letter-spacing: 8px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .pin-wrap input:focus { border-color: var(--accent); }
+    .eye-btn {
+      position: absolute;
+      right: 12px; top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      opacity: .6;
+      color: var(--text);
+      padding: 4px;
+    }
+    .eye-btn:hover { opacity: 1; }
+
+    /* ── Error ── */
+    .error-box {
+      background: rgba(239,68,68,.12);
+      border: 1px solid rgba(239,68,68,.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #fca5a5;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .error-box.show { display: block; }
+
+    /* ── Lockout countdown ── */
+    .lockout-box {
+      background: rgba(245,158,11,.12);
+      border: 1px solid rgba(245,158,11,.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #fcd34d;
+      margin-bottom: 16px;
+      display: none;
+      text-align: center;
+    }
+    .lockout-box.show { display: block; }
+
+    /* ── Button ── */
+    .btn {
+      width: 100%;
+      padding: 13px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn:hover:not(:disabled) { opacity: .9; }
+    .btn:active:not(:disabled) { transform: scale(.98); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    .footer-note {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 20px;
+    }
+    .attempts-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .attempt-pip {
+      flex: 1; height: 4px; border-radius: 2px;
+      background: var(--border);
+      transition: background .3s;
+    }
+    .attempt-pip.used { background: var(--danger); }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="logo-row">
+    <div class="logo-icon">GY</div>
+    <div class="logo-text">GYDS <span>Chain</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔐 Admin Dashboard</div>
+    <div class="card-sub">Enter your PIN to continue</div>
+
+    <div class="wallet-badge">
+      <div class="wallet-dot"></div>
+      <div class="wallet-info">
+        <div class="wallet-label">Authorised Admin Wallet</div>
+        <div class="wallet-addr" id="adminAddr">Loading…</div>
+      </div>
+    </div>
+
+    <label for="pin">PIN</label>
+    <div class="pin-wrap">
+      <input type="password" id="pin" autocomplete="current-password"
+             placeholder="••••" maxlength="16"
+             onkeydown="if(event.key==='Enter') doLogin()"/>
+      <button class="eye-btn" onclick="togglePin(this)" type="button">👁</button>
+    </div>
+
+    <div class="attempts-row" id="pips"></div>
+    <div class="error-box"   id="errBox"></div>
+    <div class="lockout-box" id="lockBox"></div>
+
+    <button class="btn" id="loginBtn" onclick="doLogin()">Unlock Dashboard</button>
+
+    <div class="footer-note">
+      🛡 5 failed attempts = 15-minute IP lockout &nbsp;·&nbsp; All access is logged
+    </div>
+  </div>
+</div>
+
+<script>
+const MAX_ATTEMPTS = 5;
+let usedAttempts = 0;
+
+// ── Load admin wallet from server ─────────────────────────────────────────────
+fetch('/admin/wallet')
+  .then(r => r.json())
+  .then(d => { document.getElementById('adminAddr').textContent = d.adminWallet || '—'; })
+  .catch(() => { document.getElementById('adminAddr').textContent = '0x6422d12b…09017b1'; });
+
+// ── Render attempt pips ───────────────────────────────────────────────────────
+function renderPips() {
+  const row = document.getElementById('pips');
+  row.innerHTML = '';
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    const d = document.createElement('div');
+    d.className = 'attempt-pip' + (i < usedAttempts ? ' used' : '');
+    row.appendChild(d);
+  }
+}
+renderPips();
+
+function togglePin(btn) {
+  const el = document.getElementById('pin');
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.textContent = el.type === 'password' ? '👁' : '🙈';
+}
+
+function showError(msg) {
+  const b = document.getElementById('errBox');
+  b.textContent = msg;
+  b.classList.add('show');
+}
+function hideError() { document.getElementById('errBox').classList.remove('show'); }
+
+function showLockout(msg) {
+  const b = document.getElementById('lockBox');
+  b.textContent = msg;
+  b.classList.add('show');
+  document.getElementById('loginBtn').disabled = true;
+  document.getElementById('pin').disabled = true;
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const pin = document.getElementById('pin').value.trim();
+  if (!pin) { showError('Please enter your PIN.'); return; }
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+  hideError();
+
+  try {
+    const res = await fetch('/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin })
+    });
+    const data = await res.json();
+
+    if (res.status === 429) {
+      showLockout('⚠️ ' + (data.error || 'IP locked.'));
+      return;
+    }
+    if (!res.ok) {
+      usedAttempts++;
+      renderPips();
+      showError('❌ ' + (data.error || 'Login failed.'));
+      document.getElementById('pin').value = '';
+      document.getElementById('pin').focus();
+      if (usedAttempts >= MAX_ATTEMPTS) {
+        showLockout('⚠️ Maximum attempts reached. IP is now locked for 15 minutes.');
+        return;
+      }
+    } else {
+      window.location.href = data.redirect || '/';
+      return;
+    }
+  } catch(e) {
+    showError('Network error — please retry.');
+  } finally {
+    if (btn.textContent === 'Verifying…') {
+      btn.textContent = 'Unlock Dashboard';
+      btn.disabled = false;
+    }
+  }
+}
+
+document.getElementById('pin').focus();
+</script>
+</body>
+</html>
