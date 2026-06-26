@@ -50,6 +50,7 @@ ENV_FILE=".env"
 SKIP_FIREWALL=false
 SKIP_SERVICE=false
 IS_UPDATE=false
+IS_REBUILD=false
 UNINSTALL=false
 SHOW_STATUS=false
 
@@ -69,11 +70,21 @@ while [[ $# -gt 0 ]]; do
     --no-firewall)   SKIP_FIREWALL=true; shift ;;
     --no-service)    SKIP_SERVICE=true; shift ;;
     --update)        IS_UPDATE=true; shift ;;
+    --rebuild)       IS_REBUILD=true; IS_UPDATE=true; shift ;;
     --uninstall)     UNINSTALL=true; shift ;;
     --status)        SHOW_STATUS=true; shift ;;
     --help|-h)
-      echo "Usage: bash deploy.sh [--env FILE] [--no-firewall] [--no-service]"
-      echo "                      [--update] [--uninstall] [--status]"
+      echo "Usage: bash deploy.sh [OPTIONS]"
+      echo ""
+      echo "  --env FILE      Path to .env file (default: .env)"
+      echo "  --no-firewall   Skip firewall configuration"
+      echo "  --no-service    Run in foreground instead of systemd"
+      echo "  --update        Rebuild binary + restart service (preserves data)"
+      echo "  --rebuild       Full clean rebuild: wipe binary + caches, re-build"
+      echo "  --uninstall     Remove service, binary, and install files"
+      echo "  --status        Show service status and chain health"
+      echo ""
+      echo "Safe to run multiple times — skips steps already done."
       exit 0 ;;
     *) shift ;;
   esac
@@ -188,11 +199,21 @@ VERSION=$(git describe --tags --always 2>/dev/null || echo "1.0.0")
 BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 log "Version: $VERSION"
-log "Running: GOTOOLCHAIN=local go build ..."
 
+# Ensure output directory exists
+mkdir -p bin
+
+if $IS_REBUILD; then
+  log "Clean rebuild — removing cached build artifacts..."
+  rm -f "bin/${APP_NAME}"
+  GOTOOLCHAIN=local go clean -cache 2>/dev/null || true
+fi
+
+log "Running: GOTOOLCHAIN=local go build ..."
 GOTOOLCHAIN=local go build \
   -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
-  -o "bin/${APP_NAME}" .
+  -o "bin/${APP_NAME}" . \
+  || { error "Build failed — check Go source for errors"; exit 1; }
 
 log "✓ Binary built: bin/${APP_NAME} ($(du -sh "bin/${APP_NAME}" | cut -f1))"
 
@@ -263,10 +284,15 @@ if [[ $EUID -eq 0 ]]; then
   log "✓ Installed to $BINARY_PATH"
 
   mkdir -p "$INSTALL_DIR"
-  cp "$ENV_FILE" "${INSTALL_DIR}/.env"
-  chmod 640 "${INSTALL_DIR}/.env"
-  chown root:"$APP_USER" "${INSTALL_DIR}/.env" 2>/dev/null || true
-  log "✓ Config installed to ${INSTALL_DIR}/.env"
+  # Preserve existing .env on plain re-runs; only overwrite on --update/--rebuild
+  if [[ ! -f "${INSTALL_DIR}/.env" ]] || $IS_UPDATE; then
+    cp "$ENV_FILE" "${INSTALL_DIR}/.env"
+    chmod 640 "${INSTALL_DIR}/.env"
+    chown root:"$APP_USER" "${INSTALL_DIR}/.env" 2>/dev/null || true
+    log "✓ Config installed to ${INSTALL_DIR}/.env"
+  else
+    log "✓ Existing config preserved at ${INSTALL_DIR}/.env (use --update to overwrite)"
+  fi
 
   mkdir -p "$LOG_DIR"
   chown "$APP_USER":"$APP_USER" "$LOG_DIR" 2>/dev/null || true
@@ -349,9 +375,13 @@ SYSTEMD
   chmod 644 "$SERVICE_FILE"
   systemctl daemon-reload
 
-  if $IS_UPDATE; then
+  # Smart start: restart if already running, start if stopped, enable+start if new
+  if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
     systemctl restart gyds-fullnode
     log "✓ Service restarted"
+  elif systemctl is-enabled --quiet gyds-fullnode 2>/dev/null; then
+    systemctl start gyds-fullnode
+    log "✓ Service started"
   else
     systemctl enable gyds-fullnode
     systemctl start  gyds-fullnode

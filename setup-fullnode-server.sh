@@ -43,6 +43,7 @@ ALLOW_IPS=""
 DISK_ALERT_GB=10
 USE_DOCKER=true
 IS_UPDATE=false
+FORCE_REBUILD=false
 UNINSTALL=false
 
 # ── Argument parsing ───────────────────────────────────────────────────────────
@@ -66,10 +67,17 @@ OPTIONS
   --bootstrap-nodes  Comma-separated peer list  e.g. tcp://1.2.3.4:30303,tcp://5.6.7.8:30303
   --allow-ip  IP     Restrict RPC/WS to this IP only (can repeat for multiple IPs)
   --disk-alert GB    Warn when free disk drops below this GB threshold (default: 10)
+  --rebuild          Wipe the app directory and do a full clean reinstall
+                     (chain data in --datadir is always preserved)
   --no-docker        Run as native systemd service instead of Docker
-  --update           Update an existing installation (keeps data, backs up first)
+  --update           Pull latest code and restart (keeps .env and data)
   --uninstall        Remove node, service, nginx config (preserves chain data)
   --help             Show this help and exit
+
+IDEMPOTENT — safe to run multiple times:
+  • No flags  : resumes from existing state; skips already-done steps
+  • --update  : pulls latest code, backs up data, restarts service
+  • --rebuild : wipes code dir only (data safe), clones fresh, rebuilds
 
 PORT REFERENCE
   ┌─────────┬──────────┬─────────────────────────────────────────────────────┐
@@ -136,6 +144,7 @@ while [[ $# -gt 0 ]]; do
     --bootstrap-nodes) BOOTSTRAP_NODES="$2"; shift 2 ;;
     --allow-ip)        ALLOW_IPS="${ALLOW_IPS} $2"; shift 2 ;;
     --disk-alert)      DISK_ALERT_GB="$2";  shift 2 ;;
+    --rebuild)         FORCE_REBUILD=true;  shift   ;;
     --no-docker)       USE_DOCKER=false;    shift   ;;
     --update)          IS_UPDATE=true;      shift   ;;
     --uninstall)       UNINSTALL=true;      shift   ;;
@@ -284,13 +293,18 @@ info "Pre-flight: ${CORES} cores | ${RAM_MB} MB RAM | ${DISK_GB} GB free disk �
 SWAP_TOTAL=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}' || echo "0")
 SWAP_TOTAL="${SWAP_TOTAL:-0}"
 if (( RAM_MB < 2048 && SWAP_TOTAL == 0 )); then
-  log "Low RAM detected and no swap — creating 2 GB swapfile..."
-  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
-  chmod 600 /swapfile
-  mkswap /swapfile
-  swapon /swapfile
-  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-  log "Swap enabled: $(free -h | awk '/^Swap:/{print $2}')"
+  if [ -f /swapfile ]; then
+    log "Swapfile already exists — re-activating..."
+    swapon /swapfile 2>/dev/null || true
+  else
+    log "Low RAM detected and no swap — creating 2 GB swapfile..."
+    fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  fi
+  log "Swap: $(free -h | awk '/^Swap:/{print $2}')"
 fi
 
 # ── System packages ───────────────────────────────────────────────────────────
@@ -417,18 +431,39 @@ fi
 
 # ── Fail2Ban ──────────────────────────────────────────────────────────────────
 if command -v fail2ban-server &>/dev/null; then
-  cat > /etc/fail2ban/jail.local <<EOF
-[DEFAULT]
+  mkdir -p /etc/fail2ban/jail.d /etc/fail2ban/filter.d
+
+  # SSH jail — write to jail.d so we never overwrite user's jail.local
+  cat > /etc/fail2ban/jail.d/gyds-sshd.local <<EOF
+[sshd]
+enabled  = true
+port     = $SSH_PORT
 bantime  = 1h
 findtime = 10m
 maxretry = 5
-
-[sshd]
-enabled = true
-port    = $SSH_PORT
 EOF
+
+  # Admin-login jail — watches nginx access log for 401/429 on /admin/login
+  cat > /etc/fail2ban/filter.d/gyds-admin.conf <<EOF
+[Definition]
+failregex = ^<HOST> .+ "POST /admin/login .+" (401|429) .+$
+ignoreregex =
+EOF
+
+  cat > /etc/fail2ban/jail.d/gyds-admin.local <<EOF
+[gyds-admin]
+enabled  = true
+port     = http,https
+filter   = gyds-admin
+logpath  = /var/log/nginx/access.log
+bantime  = 1h
+findtime = 5m
+maxretry = 5
+EOF
+
   systemctl enable --now fail2ban
-  log "Fail2Ban configured"
+  fail2ban-client reload 2>/dev/null || true
+  log "Fail2Ban configured (SSH + admin-login jails)"
 else
   warn "fail2ban not found — skipping"
 fi
@@ -458,19 +493,53 @@ EOF
 sysctl -p /etc/sysctl.d/99-gyds-fullnode.conf --quiet 2>/dev/null || true
 log "Kernel tuning applied"
 
-# ── Clone / update repo ───────────────────────────────────────────────────────
+# ── Clone / update / rebuild repo ─────────────────────────────────────────────
 log "Setting up application directory..."
-mkdir -p "$APP_DIR"
-if [ ! -d "$APP_DIR/.git" ]; then
-  log "Cloning repository..."
-  rm -rf "${APP_DIR:?}"/* "${APP_DIR:?}"/.[!.]* 2>/dev/null || true
-  git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
-else
-  log "Updating repository..."
-  git config --global --add safe.directory "$APP_DIR"
-  git -C "$APP_DIR" fetch --depth 1 origin "$BRANCH"
-  git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+
+# Detect whether the node is already installed
+ALREADY_INSTALLED=false
+[ -d "$APP_DIR/.git" ] && ALREADY_INSTALLED=true
+
+if $FORCE_REBUILD && $ALREADY_INSTALLED; then
+  log "--rebuild requested — stopping service and wiping code directory..."
+  log "(Chain data at ${GYDS_DATADIR} is NOT touched)"
+  systemctl stop gyds-fullnode 2>/dev/null || true
+  if command -v docker &>/dev/null && [ -f "$APP_DIR/docker-compose.yml" ]; then
+    docker compose -f "$APP_DIR/docker-compose.yml" down --remove-orphans 2>/dev/null || true
+  fi
+  # Preserve .env so config survives the rebuild
+  ENV_BACKUP=""
+  if [ -f "$APP_DIR/.env" ]; then
+    ENV_BACKUP=$(mktemp)
+    cp "$APP_DIR/.env" "$ENV_BACKUP"
+    log "Saved existing .env to $ENV_BACKUP"
+  fi
+  rm -rf "$APP_DIR"
+  ALREADY_INSTALLED=false
 fi
+
+mkdir -p "$APP_DIR"
+
+if ! $ALREADY_INSTALLED; then
+  log "Cloning repository (fresh)..."
+  rm -rf "${APP_DIR:?}"/* "${APP_DIR:?}"/.[!.]* 2>/dev/null || true
+  git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR" \
+    || die "git clone failed — check network access and REPO_URL"
+  # Restore preserved .env after a rebuild
+  if [ -n "${ENV_BACKUP:-}" ] && [ -f "$ENV_BACKUP" ]; then
+    cp "$ENV_BACKUP" "$APP_DIR/.env"
+    rm -f "$ENV_BACKUP"
+    log "Restored .env from backup"
+  fi
+else
+  log "Repository already present — pulling latest from origin/${BRANCH}..."
+  git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+  git -C "$APP_DIR" fetch --depth 1 origin "$BRANCH" \
+    || warn "git fetch failed — building from existing code"
+  git -C "$APP_DIR" reset --hard "origin/$BRANCH" \
+    || warn "git reset failed — building from existing code"
+fi
+
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
 # ── Backup before update ──────────────────────────────────────────────────────
@@ -576,9 +645,11 @@ PYEOF
   fi
 
   docker compose down --remove-orphans 2>/dev/null || true
-  if $IS_UPDATE; then
+  if $IS_UPDATE || $ALREADY_INSTALLED; then
+    # Pull new code was already done above — rebuild without wiping layer cache
     docker compose build
   else
+    # Fresh install: force a clean image build
     docker compose build --no-cache
   fi
   docker compose up -d
@@ -728,9 +799,18 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable gyds-fullnode
-  systemctl restart gyds-fullnode
-  log "Systemd service 'gyds-fullnode' enabled and started"
+  # Smart start: restart if running, start if stopped, enable+start if new
+  if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
+    systemctl restart gyds-fullnode
+    log "Systemd service restarted"
+  elif systemctl is-enabled --quiet gyds-fullnode 2>/dev/null; then
+    systemctl start gyds-fullnode
+    log "Systemd service started"
+  else
+    systemctl enable gyds-fullnode
+    systemctl start gyds-fullnode
+    log "Systemd service enabled and started"
+  fi
 fi
 
 # ── Health check script ────────────────────────────────────────────────────────
