@@ -32,6 +32,7 @@ type Server struct {
         port          int
         blockTimeSecs int
         auth          *AuthStore
+        adminDB       *AdminDB
 
         pendingTx   map[string]*core.Transaction
         pendingTxMu sync.RWMutex
@@ -43,11 +44,16 @@ type subscriber struct {
 }
 
 func NewServer(chain *core.Chain, port int, blockTimeSecs int, dataDir string) *Server {
+        adb, err := NewAdminDB(dataDir)
+        if err != nil {
+                log.Warn().Err(err).Msg("admin database unavailable")
+        }
         s := &Server{
                 chain:         chain,
                 port:          port,
                 blockTimeSecs: blockTimeSecs,
                 auth:          NewAuthStore(dataDir),
+                adminDB:       adb,
                 upgrader: websocket.Upgrader{
                         CheckOrigin: func(r *http.Request) bool { return true },
                 },
@@ -116,6 +122,23 @@ func (s *Server) setupRoutes() {
         r.HandleFunc("/admin/set-pin", s.handleAdminSetPinPage).Methods("GET")
         r.HandleFunc("/admin/set-pin", s.handleAdminSetPinSubmit).Methods("POST")
         r.HandleFunc("/admin/wallet",  s.handleAdminWallet).Methods("GET")
+
+        // ── Admin database (session-protected) ────────────────────────────────
+        r.HandleFunc("/admin/db", s.handleAdminDBPage).Methods("GET")
+        r.HandleFunc("/admin/db/tables",
+                s.requireAdminSession(s.handleDBTables)).Methods("GET")
+        r.HandleFunc("/admin/db/tables",
+                s.requireAdminSession(s.handleDBCreateTable)).Methods("POST")
+        r.HandleFunc("/admin/db/tables/{table}",
+                s.requireAdminSession(s.handleDBDropTable)).Methods("DELETE")
+        r.HandleFunc("/admin/db/tables/{table}/records",
+                s.requireAdminSession(s.handleDBRecords)).Methods("GET")
+        r.HandleFunc("/admin/db/tables/{table}/records",
+                s.requireAdminSession(s.handleDBCreateRecord)).Methods("POST")
+        r.HandleFunc("/admin/db/tables/{table}/records/{key}",
+                s.requireAdminSession(s.handleDBUpdateRecord)).Methods("PUT")
+        r.HandleFunc("/admin/db/tables/{table}/records/{key}",
+                s.requireAdminSession(s.handleDBDeleteRecord)).Methods("DELETE")
 
         // Catch-all: serve any remaining GET requests as static files from
         // the embedded rpc/static/ directory (e.g. ethers-5.7.2.umd.min.js,
