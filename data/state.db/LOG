@@ -86,3 +86,49 @@
 11:30:25.091847 version@stat F·[2 1] S·162KiB[3KiB 159KiB] Sc·[0.50 0.00]
 11:30:25.097265 db@janitor F·5 G·0
 11:30:25.097705 db@open done T·11.327656ms
+=============== Jun 26, 2026 (UTC) ===============
+14:34:10.103800 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+14:34:10.104492 version@stat F·[2 1] S·162KiB[3KiB 159KiB] Sc·[0.50 0.00]
+14:34:10.104499 db@open opening
+14:34:10.104757 version@stat F·[2 1] S·162KiB[3KiB 159KiB] Sc·[0.50 0.00]
+14:34:10.111768 db@janitor F·6 G·1
+14:34:10.111820 db@janitor removing journal-8
+14:34:10.112124 db@open done T·7.618337ms
+=============== Jun 26, 2026 (UTC) ===============
+15:16:09.495081 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+15:16:09.495961 version@stat F·[2 1] S·162KiB[3KiB 159KiB] Sc·[0.50 0.00]
+15:16:09.495983 db@open opening
+15:16:09.496011 journal@recovery F·1
+15:16:09.496199 journal@recovery recovering @25
+15:16:09.504042 memdb@flush created L0@27 N·16 S·4KiB "acc..001,v696":"blk..\x00\x01\a,v695"
+15:16:09.504546 version@stat F·[3 1] S·166KiB[7KiB 159KiB] Sc·[0.75 0.00]
+15:16:09.511939 db@janitor F·6 G·0
+15:16:09.512152 db@open done T·16.153481ms
+=============== Jun 26, 2026 (UTC) ===============
+15:19:31.480229 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+15:19:31.480573 version@stat F·[3 1] S·166KiB[7KiB 159KiB] Sc·[0.75 0.00]
+15:19:31.480582 db@open opening
+15:19:31.480609 journal@recovery F·1
+15:19:31.480913 journal@recovery recovering @28
+15:19:31.486299 memdb@flush created L0@30 N·3 S·1KiB "acc..001,v700":"blk..\x00\x01\b,v699"
+15:19:31.486537 version@stat F·[4 1] S·167KiB[8KiB 159KiB] Sc·[1.00 0.00]
+15:19:31.497989 db@janitor F·7 G·0
+15:19:31.498046 db@open done T·17.425992ms
+15:19:31.498144 table@compaction L0·4 -> L1·1 S·167KiB Q·702
+15:19:31.635098 table@build created L1@33 N·266 S·166KiB "acc..001,v700":"blk..\x00\x01\b,v699"
+15:19:31.635174 version@stat F·[0 1] S·166KiB[0B 166KiB] Sc·[0.00 0.00]
+15:19:31.640314 table@compaction committed F-4 S-1002B Ke·0 D·18 T·142.130427ms
+15:19:31.640463 table@remove removed @30
+15:19:31.640551 table@remove removed @27
+15:19:31.640642 table@remove removed @22
+15:19:31.640664 table@remove removed @19
+15:19:31.640765 table@remove removed @18
+=============== Jun 26, 2026 (UTC) ===============
+15:20:45.608758 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+15:20:45.608869 version@stat F·[0 1] S·166KiB[0B 166KiB] Sc·[0.00 0.00]
+15:20:45.608875 db@open opening
+15:20:45.608898 journal@recovery F·1
+15:20:45.609557 journal@recovery recovering @31
+15:20:45.610478 version@stat F·[0 1] S·166KiB[0B 166KiB] Sc·[0.00 0.00]
+15:20:45.617238 db@janitor F·3 G·0
+15:20:45.617275 db@open done T·8.391226ms

@@ -101,6 +101,12 @@ func (s *Server) setupRoutes() {
         api.HandleFunc("/setup/status", s.handleSetupStatus).Methods("GET")
         api.HandleFunc("/setup/apply", s.handleSetupApply).Methods("POST", "OPTIONS")
 
+        // Catch-all: serve any remaining GET requests as static files from
+        // the embedded rpc/static/ directory (e.g. ethers-5.7.2.umd.min.js,
+        // CSS, images).  Must be registered last so specific routes win.
+        staticSub, _ := fs.Sub(staticFiles, "static")
+        r.PathPrefix("/").Handler(http.FileServer(http.FS(staticSub))).Methods("GET")
+
         r.Use(cors)
         s.router = r
 }
