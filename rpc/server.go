@@ -21,6 +21,12 @@ import (
         "github.com/gydschain/fullnode/core"
 )
 
+// P2PConnector is the minimal interface the RPC server needs from the P2P layer.
+type P2PConnector interface {
+        ConnectTo(addr string) error
+        PeerCount() int
+}
+
 type Server struct {
         chain      *core.Chain
         router     *mux.Router
@@ -35,6 +41,7 @@ type Server struct {
 
         auth    *AuthStore
         adminDB *AdminDB
+        p2p     P2PConnector
 }
 
 type subscriber struct {
@@ -59,6 +66,9 @@ func NewServer(chain *core.Chain, port int, blockTimeSecs int, dataDir string) *
         s.setupRoutes()
         return s
 }
+
+// SetP2P wires the P2P server so the RPC layer can connect to imported nodes.
+func (s *Server) SetP2P(p P2PConnector) { s.p2p = p }
 
 func cors(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +133,9 @@ func (s *Server) setupRoutes() {
         r.HandleFunc("/setup", s.handleSetupPage).Methods("GET")
         r.HandleFunc("/api/setup/status", s.handleSetupStatus).Methods("GET")
         r.HandleFunc("/api/setup/apply", s.handleSetupApply).Methods("POST")
+
+        // Nodes import
+        r.HandleFunc("/api/nodes/import", s.handleNodesImport).Methods("POST", "OPTIONS")
 
         r.Use(cors)
         s.router = r
@@ -627,6 +640,100 @@ func txReceiptRPC(tx *core.Transaction, chain *core.Chain) map[string]interface{
                 "type":              "0x0",
                 "effectiveGasPrice": "0x3B9ACA00",
         }
+}
+
+// ── Nodes Import ──────────────────────────────────────────────────────────────
+
+type nodesConfig struct {
+        Version string      `json:"version"`
+        Nodes   []nodeEntry `json:"nodes"`
+}
+
+type nodeEntry struct {
+        Type    string `json:"type"`
+        Name    string `json:"name"`
+        Address string `json:"address"`
+        RPC     string `json:"rpc"`
+        Host    string `json:"host"`
+        Port    int    `json:"port"`
+}
+
+func (e nodeEntry) p2pAddr() string {
+        if e.Address != "" {
+                return e.Address
+        }
+        if e.Host != "" && e.Port > 0 {
+                return fmt.Sprintf("%s:%d", e.Host, e.Port)
+        }
+        return ""
+}
+
+func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodOptions {
+                w.WriteHeader(http.StatusNoContent)
+                return
+        }
+
+        var cfg nodesConfig
+        if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+                jsonErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+                return
+        }
+        if len(cfg.Nodes) == 0 {
+                jsonErr(w, http.StatusBadRequest, "no nodes found in config")
+                return
+        }
+
+        type result struct {
+                Address string `json:"address"`
+                Name    string `json:"name"`
+                Status  string `json:"status"`
+                Error   string `json:"error,omitempty"`
+        }
+
+        results := make([]result, 0, len(cfg.Nodes))
+        connected := 0
+
+        for _, node := range cfg.Nodes {
+                addr := node.p2pAddr()
+                name := node.Name
+                if name == "" {
+                        name = node.Type
+                }
+                if name == "" {
+                        name = "node"
+                }
+
+                res := result{Address: addr, Name: name}
+
+                if addr == "" {
+                        res.Status = "skipped"
+                        res.Error = "no address or host/port provided"
+                        results = append(results, res)
+                        continue
+                }
+
+                if s.p2p != nil {
+                        if err := s.p2p.ConnectTo(addr); err != nil {
+                                res.Status = "failed"
+                                res.Error = err.Error()
+                        } else {
+                                res.Status = "connected"
+                                connected++
+                        }
+                } else {
+                        res.Status = "queued"
+                }
+                results = append(results, res)
+        }
+
+        jsonOK(w, map[string]interface{}{
+                "ok":        true,
+                "version":   cfg.Version,
+                "total":     len(cfg.Nodes),
+                "connected": connected,
+                "results":   results,
+        })
 }
 
 // hashRawTx creates a deterministic tx hash from raw hex bytes.

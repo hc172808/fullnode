@@ -106,6 +106,7 @@ func runNode() error {
         })
 
         p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+        rpcSrv.SetP2P(p2pSrv)
 
         for _, addr := range cfg.P2PBootstrap {
                 if err := p2pSrv.ConnectTo(addr); err != nil {
