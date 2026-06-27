@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GYDS Chain — Wallet</title>
-  <script src="/ethers-5.7.2.umd.min.js"></script>
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" crossorigin="anonymous"></script>
   <style>
     :root {
       --bg:      #0b0f1a;
@@ -148,40 +148,6 @@
     .toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; font-size: 13px; color: var(--accent); box-shadow: 0 8px 32px rgba(0,0,0,.4); opacity: 0; transform: translateY(10px); transition: all .3s; z-index: 9999; pointer-events: none; }
     .toast.show { opacity: 1; transform: translateY(0); }
 
-    /* ── Stats strip ── */
-    .stats-strip { background: rgba(16,185,129,.035); border-bottom: 1px solid var(--border); padding: 10px 24px; display: flex; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
-    .stats-strip::-webkit-scrollbar { display: none; }
-    .stat-item { display: flex; flex-direction: column; align-items: center; padding: 0 22px; border-right: 1px solid var(--border); white-space: nowrap; min-width: 80px; }
-    .stat-item:first-child { padding-left: 0; }
-    .stat-item:last-child { border-right: none; }
-    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; font-weight: 600; margin-bottom: 4px; }
-    .stat-val { font-size: 15px; font-weight: 800; font-family: var(--mono); color: var(--text); }
-    .stat-val.accent  { color: var(--accent); }
-    .stat-val.accent2 { color: var(--accent2); }
-    .stat-val.warn    { color: var(--warn); }
-    .stat-val.danger  { color: var(--danger); }
-    @keyframes flash-block { 0%,100%{opacity:1} 30%{opacity:.2;color:var(--accent)} }
-    .stat-val.flash { animation: flash-block .55s ease; }
-
-    /* ── Latest blocks panel ── */
-    .blocks-panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; margin-bottom: 20px; }
-    .blocks-panel-hdr { padding: 13px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-    .blocks-panel-title { font-size: 14px; font-weight: 700; }
-    .live-badge { font-size: 10px; background: rgba(16,185,129,.13); color: var(--accent); border: 1px solid rgba(16,185,129,.28); border-radius: 20px; padding: 2px 10px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
-    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
-    .block-row { display: grid; grid-template-columns: 70px 1fr 52px 58px; align-items: center; gap: 10px; padding: 11px 20px; border-bottom: 1px solid rgba(255,255,255,.04); transition: background .15s; }
-    .block-row:last-child { border-bottom: none; }
-    .block-row:hover { background: rgba(255,255,255,.025); }
-    .block-num  { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent2); }
-    .block-hash { font-family: var(--mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .block-txs  { font-size: 12px; font-weight: 600; color: var(--text); text-align: right; }
-    .block-age  { font-size: 11px; color: var(--muted); text-align: right; }
-    @keyframes slide-in { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
-    .block-row.new-block { animation: slide-in .35s ease; }
-    .blocks-col-hdr { display: grid; grid-template-columns: 70px 1fr 52px 58px; gap: 10px; padding: 7px 20px; }
-    .blocks-col-hdr span { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
-    .blocks-col-hdr span:nth-child(3), .blocks-col-hdr span:nth-child(4) { text-align: right; }
-
     /* ── Misc ── */
     .text-muted { color: var(--muted); font-size: 13px; }
     .text-center { text-align: center; }
@@ -206,57 +172,10 @@
   </div>
 </header>
 
-<!-- Live Node Stats Strip -->
-<div class="stats-strip" id="statsStrip">
-  <div class="stat-item">
-    <div class="stat-label">Status</div>
-    <div class="stat-val accent" id="sStatus">● —</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-label">Block Height</div>
-    <div class="stat-val accent" id="sHeight">—</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-label">Next Block</div>
-    <div class="stat-val accent2" id="sCountdown">—</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-label">Block Time</div>
-    <div class="stat-val" id="sBlockTime">—</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-label">Chain ID</div>
-    <div class="stat-val" id="sChainId">—</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-label">Total TXs</div>
-    <div class="stat-val" id="sTotalTxs">—</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-label">Network</div>
-    <div class="stat-val" id="sNetwork">—</div>
-  </div>
-</div>
-
 <main class="wrap">
 
   <!-- ── Entry Screen (no wallet loaded) ── -->
   <div id="entryScreen">
-
-    <!-- Latest Blocks Live Feed -->
-    <div class="blocks-panel">
-      <div class="blocks-panel-hdr">
-        <span class="blocks-panel-title">⛓ Latest Blocks</span>
-        <span class="live-badge"><span class="live-dot"></span> LIVE</span>
-      </div>
-      <div class="blocks-col-hdr">
-        <span>Block</span><span>Hash</span><span>TXs</span><span>Age</span>
-      </div>
-      <div id="blocksFeed">
-        <div class="text-center text-muted" style="padding:22px;font-size:13px">Connecting to fullnode…</div>
-      </div>
-    </div>
-
     <div class="wallet-card">
       <div class="entry">
         <h2>GYDS Chain Wallet</h2>
@@ -476,168 +395,31 @@ let provider = null;
 let wallet   = null;
 let mnemonic = null;
 
-// ── Node stats state ─────────────────────────────────────────────────────────
-let nodeBlockTimeSecs = 120;
-let lastBlockTs       = 0;
-let lastKnownHeight   = -1;
-
 // ── Init ────────────────────────────────────────────────────────────────────
-// Stats panel starts immediately — does NOT depend on ethers.js
-document.addEventListener('DOMContentLoaded', () => {
-  pollNode();
-  pollBlocks();
-  setInterval(pollNode,      5000);
-  setInterval(pollBlocks,   10000);
-  setInterval(tickCountdown, 1000);
-  connectWS();
-});
-
-// Wallet features start after ethers.js finishes loading
 window.addEventListener('load', () => {
+  // Detect node type from URL or just leave as Full Node
   const host = window.location.hostname;
   if (host.includes('lite')) document.getElementById('nodeLabel').textContent = 'Lite Node';
-
-  if (typeof ethers === 'undefined') {
-    console.warn('ethers.js unavailable — wallet features disabled');
-    return;
-  }
 
   provider = new ethers.providers.JsonRpcProvider(RPC_URL, {
     chainId: CHAIN_ID,
     name: 'GYDS Chain'
   });
 
+  pollHeight();
+  setInterval(pollHeight, 5000);
   generateKey();
   generateMnemonic();
 });
 
-// ── Live node polling ─────────────────────────────────────────────────────────
-async function pollNode() {
+async function pollHeight() {
   try {
-    const res  = await fetch('/api/status');
-    if (!res.ok) throw new Error('not ok');
-    const data = await res.json();
-    const h    = Number(data.blockHeight ?? data.height ?? 0);
-    const isNew = h > lastKnownHeight && lastKnownHeight >= 0;
-    if (isNew) {
-      flashEl('sHeight');
-      pollBlocks();
-      if (wallet) refreshBalance();
-    }
-    lastKnownHeight   = h;
-    lastBlockTs       = Number(data.lastBlockTimestamp ?? 0);
-    nodeBlockTimeSecs = Number(data.blockTimeSecs ?? nodeBlockTimeSecs);
-
-    document.getElementById('netHeight').textContent = 'Block #' + h.toLocaleString();
+    const n = await provider.getBlockNumber();
+    document.getElementById('netHeight').textContent = 'Block #' + n.toLocaleString();
     document.getElementById('netDot').className = 'dot';
-
-    setText('sStatus',    '● Online');
-    setClass('sStatus',   'stat-val accent');
-    setText('sHeight',    h.toLocaleString());
-    setText('sBlockTime', nodeBlockTimeSecs + 's');
-    setText('sChainId',   String(data.chainId ?? CHAIN_ID));
-    setText('sTotalTxs',  Number(data.totalTxs ?? 0).toLocaleString());
-    setText('sNetwork',   String(data.networkName ?? 'GYDS Chain'));
   } catch {
     document.getElementById('netDot').className = 'dot off';
-    setText('sStatus', '● Offline');
-    setClass('sStatus', 'stat-val warn');
-    setText('sCountdown', '—');
   }
-}
-
-async function pollBlocks() {
-  try {
-    const res    = await fetch('/api/blocks?limit=8');
-    if (!res.ok) return;
-    const data   = await res.json();
-    const blocks = (data.blocks || []).slice().reverse();
-    renderBlocksFeed(blocks);
-  } catch { /**/ }
-}
-
-function renderBlocksFeed(blocks) {
-  const el = document.getElementById('blocksFeed');
-  if (!el) return;
-  if (!blocks.length) {
-    el.innerHTML = '<div class="text-center text-muted" style="padding:22px;font-size:13px">No blocks yet.</div>';
-    return;
-  }
-  el.innerHTML = blocks.map((b, i) => {
-    const hash = (b.hash || '').slice(0,14) + '…' + (b.hash || '').slice(-6);
-    const txs  = b.transactions ?? 0;
-    const age  = timeAgo(Number(b.timestamp));
-    return `<div class="block-row${i===0?' new-block':''}">
-      <span class="block-num">#${Number(b.number).toLocaleString()}</span>
-      <span class="block-hash">${hash}</span>
-      <span class="block-txs">${txs} txs</span>
-      <span class="block-age">${age}</span>
-    </div>`;
-  }).join('');
-}
-
-function tickCountdown() {
-  if (!lastBlockTs || !nodeBlockTimeSecs) return;
-  const now    = Math.floor(Date.now() / 1000);
-  const remain = nodeBlockTimeSecs - ((now - lastBlockTs) % nodeBlockTimeSecs);
-  const m = Math.floor(remain / 60);
-  const s = remain % 60;
-  setText('sCountdown', m > 0 ? `${m}m ${String(s).padStart(2,'0')}s` : `${s}s`);
-  const ratio = remain / nodeBlockTimeSecs;
-  setClass('sCountdown',
-    ratio < 0.08 ? 'stat-val danger' :
-    ratio < 0.22 ? 'stat-val warn'   : 'stat-val accent2');
-}
-
-// ── WebSocket live block stream ───────────────────────────────────────────────
-function connectWS() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  let ws;
-  try { ws = new WebSocket(`${proto}://${location.host}/api/ws`); }
-  catch { setTimeout(connectWS, 6000); return; }
-  ws.onmessage = e => {
-    try {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'newBlock') {
-        const b = msg.data;
-        lastBlockTs     = Number(b.timestamp ?? Math.floor(Date.now()/1000));
-        lastKnownHeight = Number(b.number    ?? lastKnownHeight);
-        document.getElementById('netHeight').textContent = 'Block #' + lastKnownHeight.toLocaleString();
-        setText('sHeight', lastKnownHeight.toLocaleString());
-        flashEl('sHeight');
-        pollNode();
-        pollBlocks();
-        if (wallet) refreshBalance();
-      }
-    } catch { /**/ }
-  };
-  ws.onclose = () => setTimeout(connectWS, 5000);
-  ws.onerror = () => { try { ws.close(); } catch { /**/ } };
-}
-
-// ── DOM helpers ───────────────────────────────────────────────────────────────
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
-}
-function setClass(id, cls) {
-  const el = document.getElementById(id);
-  if (el) el.className = cls;
-}
-function flashEl(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.remove('flash');
-  void el.offsetWidth;
-  el.classList.add('flash');
-}
-function timeAgo(ts) {
-  if (!ts) return '—';
-  const d = Math.floor(Date.now()/1000) - ts;
-  if (d < 5)    return 'just now';
-  if (d < 60)   return d + 's ago';
-  if (d < 3600) return Math.floor(d/60) + 'm ago';
-  return Math.floor(d/3600) + 'h ago';
 }
 
 // ── Entry screen actions ─────────────────────────────────────────────────────

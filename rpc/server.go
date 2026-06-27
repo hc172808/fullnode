@@ -6,10 +6,9 @@ import (
         "encoding/hex"
         "encoding/json"
         "fmt"
-        "io/fs"
+	"io/fs"
         "math/big"
         "net/http"
-        "os"
         "strconv"
         "strings"
         "sync"
@@ -23,16 +22,13 @@ import (
 )
 
 type Server struct {
-        chain         *core.Chain
-        router        *mux.Router
-        httpServer    *http.Server
-        upgrader      websocket.Upgrader
-        subs          map[string]*subscriber
-        subsMu        sync.RWMutex
-        port          int
-        blockTimeSecs int
-        auth          *AuthStore
-        adminDB       *AdminDB
+        chain      *core.Chain
+        router     *mux.Router
+        httpServer *http.Server
+        upgrader   websocket.Upgrader
+        subs       map[string]*subscriber
+        subsMu     sync.RWMutex
+        port       int
 
         pendingTx   map[string]*core.Transaction
         pendingTxMu sync.RWMutex
@@ -43,17 +39,10 @@ type subscriber struct {
         ch   chan interface{}
 }
 
-func NewServer(chain *core.Chain, port int, blockTimeSecs int, dataDir string) *Server {
-        adb, err := NewAdminDB(dataDir)
-        if err != nil {
-                log.Warn().Err(err).Msg("admin database unavailable")
-        }
+func NewServer(chain *core.Chain, port int) *Server {
         s := &Server{
-                chain:         chain,
-                port:          port,
-                blockTimeSecs: blockTimeSecs,
-                auth:          NewAuthStore(dataDir),
-                adminDB:       adb,
+                chain: chain,
+                port:  port,
                 upgrader: websocket.Upgrader{
                         CheckOrigin: func(r *http.Request) bool { return true },
                 },
@@ -78,30 +67,19 @@ func cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-        if _, err := os.Stat(".env"); os.IsNotExist(err) {
-                http.Redirect(w, r, "/setup", http.StatusFound)
-                return
-        }
-        // Enforce admin PIN authentication before serving the dashboard.
-        cookie, err := r.Cookie(sessionCookieName)
-        if err != nil || !s.auth.ValidSession(cookie.Value) {
-                http.Redirect(w, r, "/admin/login", http.StatusFound)
-                return
-        }
-        sub, err := fs.Sub(staticFiles, "static")
-        if err != nil {
-                http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
-                return
-        }
-        http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+	sub, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
+		return
+	}
+	http.FileServer(http.FS(sub)).ServeHTTP(w, r)
 }
 
 func (s *Server) setupRoutes() {
         r := mux.NewRouter()
 
         r.HandleFunc("/health", s.handleHealth).Methods("GET")
-        r.HandleFunc("/setup", s.handleSetupPage).Methods("GET")
-        r.HandleFunc("/", s.handleDashboard).Methods("GET")
+	r.HandleFunc("/", s.handleDashboard).Methods("GET")
         r.HandleFunc("/", s.handleJSONRPC).Methods("POST", "OPTIONS")
         r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
 
@@ -112,39 +90,6 @@ func (s *Server) setupRoutes() {
         api.HandleFunc("/transactions", s.handleTransactions).Methods("GET")
         api.HandleFunc("/peers", s.handlePeers).Methods("GET")
         api.HandleFunc("/ws", s.handleWS)
-        api.HandleFunc("/setup/status", s.handleSetupStatus).Methods("GET")
-        api.HandleFunc("/setup/apply", s.handleSetupApply).Methods("POST", "OPTIONS")
-
-        // ── Admin auth routes (no session required) ───────────────────────────
-        r.HandleFunc("/admin/login",   s.handleAdminLoginPage).Methods("GET")
-        r.HandleFunc("/admin/login",   s.handleAdminLoginSubmit).Methods("POST")
-        r.HandleFunc("/admin/logout",  s.handleAdminLogout).Methods("GET")
-        r.HandleFunc("/admin/set-pin", s.handleAdminSetPinPage).Methods("GET")
-        r.HandleFunc("/admin/set-pin", s.handleAdminSetPinSubmit).Methods("POST")
-        r.HandleFunc("/admin/wallet",  s.handleAdminWallet).Methods("GET")
-
-        // ── Admin database (session-protected) ────────────────────────────────
-        r.HandleFunc("/admin/db", s.handleAdminDBPage).Methods("GET")
-        r.HandleFunc("/admin/db/tables",
-                s.requireAdminSession(s.handleDBTables)).Methods("GET")
-        r.HandleFunc("/admin/db/tables",
-                s.requireAdminSession(s.handleDBCreateTable)).Methods("POST")
-        r.HandleFunc("/admin/db/tables/{table}",
-                s.requireAdminSession(s.handleDBDropTable)).Methods("DELETE")
-        r.HandleFunc("/admin/db/tables/{table}/records",
-                s.requireAdminSession(s.handleDBRecords)).Methods("GET")
-        r.HandleFunc("/admin/db/tables/{table}/records",
-                s.requireAdminSession(s.handleDBCreateRecord)).Methods("POST")
-        r.HandleFunc("/admin/db/tables/{table}/records/{key}",
-                s.requireAdminSession(s.handleDBUpdateRecord)).Methods("PUT")
-        r.HandleFunc("/admin/db/tables/{table}/records/{key}",
-                s.requireAdminSession(s.handleDBDeleteRecord)).Methods("DELETE")
-
-        // Catch-all: serve any remaining GET requests as static files from
-        // the embedded rpc/static/ directory (e.g. ethers-5.7.2.umd.min.js,
-        // CSS, images).  Must be registered last so specific routes win.
-        staticSub, _ := fs.Sub(staticFiles, "static")
-        r.PathPrefix("/").Handler(http.FileServer(http.FS(staticSub))).Methods("GET")
 
         r.Use(cors)
         s.router = r
@@ -200,9 +145,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-        stats := s.chain.Stats()
-        stats["blockTimeSecs"] = s.blockTimeSecs
-        jsonOK(w, stats)
+        jsonOK(w, s.chain.Stats())
 }
 
 func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
