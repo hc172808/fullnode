@@ -6,7 +6,7 @@ import (
         "encoding/hex"
         "encoding/json"
         "fmt"
-	"io/fs"
+        "io/fs"
         "math/big"
         "net/http"
         "strconv"
@@ -32,6 +32,9 @@ type Server struct {
 
         pendingTx   map[string]*core.Transaction
         pendingTxMu sync.RWMutex
+
+        auth    *AuthStore
+        adminDB *AdminDB
 }
 
 type subscriber struct {
@@ -39,7 +42,9 @@ type subscriber struct {
         ch   chan interface{}
 }
 
-func NewServer(chain *core.Chain, port int) *Server {
+func NewServer(chain *core.Chain, port int, blockTimeSecs int, dataDir string) *Server {
+        auth := NewAuthStore(dataDir)
+        adminDB, _ := NewAdminDB(dataDir)
         s := &Server{
                 chain: chain,
                 port:  port,
@@ -48,6 +53,8 @@ func NewServer(chain *core.Chain, port int) *Server {
                 },
                 subs:      make(map[string]*subscriber),
                 pendingTx: make(map[string]*core.Transaction),
+                auth:      auth,
+                adminDB:   adminDB,
         }
         s.setupRoutes()
         return s
@@ -67,21 +74,25 @@ func cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	sub, err := fs.Sub(staticFiles, "static")
-	if err != nil {
-		http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
-		return
-	}
-	http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+        sub, err := fs.Sub(staticFiles, "static")
+        if err != nil {
+                http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
+                return
+        }
+        http.FileServer(http.FS(sub)).ServeHTTP(w, r)
 }
 
 func (s *Server) setupRoutes() {
         r := mux.NewRouter()
 
         r.HandleFunc("/health", s.handleHealth).Methods("GET")
-	r.HandleFunc("/", s.handleDashboard).Methods("GET")
+        r.HandleFunc("/", s.handleDashboard).Methods("GET")
         r.HandleFunc("/", s.handleJSONRPC).Methods("POST", "OPTIONS")
         r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
+
+        // Serve static assets (ethers JS, etc.) at root level paths
+        r.HandleFunc("/{file:.*\\.js}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.css}", s.handleStaticAsset).Methods("GET")
 
         api := r.PathPrefix("/api").Subrouter()
         api.HandleFunc("/status", s.handleStatus).Methods("GET")
@@ -91,8 +102,41 @@ func (s *Server) setupRoutes() {
         api.HandleFunc("/peers", s.handlePeers).Methods("GET")
         api.HandleFunc("/ws", s.handleWS)
 
+        // Admin routes
+        admin := r.PathPrefix("/admin").Subrouter()
+        admin.HandleFunc("/login", s.handleAdminLoginPage).Methods("GET")
+        admin.HandleFunc("/login", s.handleAdminLoginSubmit).Methods("POST")
+        admin.HandleFunc("/logout", s.handleAdminLogout).Methods("GET")
+        admin.HandleFunc("/set-pin", s.handleAdminSetPinPage).Methods("GET")
+        admin.HandleFunc("/set-pin", s.handleAdminSetPinSubmit).Methods("POST")
+        admin.HandleFunc("/wallet", s.handleAdminWallet).Methods("GET")
+        admin.HandleFunc("/db", s.handleAdminDBPage).Methods("GET")
+        admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBTables)).Methods("GET")
+        admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBCreateTable)).Methods("POST")
+        admin.HandleFunc("/db/tables/{table}", s.requireAdminSession(s.handleDBDropTable)).Methods("DELETE")
+        admin.HandleFunc("/db/tables/{table}/records", s.requireAdminSession(s.handleDBRecords)).Methods("GET")
+        admin.HandleFunc("/db/tables/{table}/records", s.requireAdminSession(s.handleDBCreateRecord)).Methods("POST")
+        admin.HandleFunc("/db/tables/{table}/records/{key}", s.requireAdminSession(s.handleDBUpdateRecord)).Methods("PUT")
+        admin.HandleFunc("/db/tables/{table}/records/{key}", s.requireAdminSession(s.handleDBDeleteRecord)).Methods("DELETE")
+
+        // Setup route
+        r.HandleFunc("/setup", s.handleSetupPage).Methods("GET")
+        r.HandleFunc("/api/setup/status", s.handleSetupStatus).Methods("GET")
+        r.HandleFunc("/api/setup/apply", s.handleSetupApply).Methods("POST")
+
         r.Use(cors)
         s.router = r
+}
+
+func (s *Server) handleStaticAsset(w http.ResponseWriter, r *http.Request) {
+        file := mux.Vars(r)["file"]
+        sub, err := fs.Sub(staticFiles, "static")
+        if err != nil {
+                http.NotFound(w, r)
+                return
+        }
+        http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+        _ = file
 }
 
 func (s *Server) Start() error {
