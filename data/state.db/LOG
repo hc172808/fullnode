@@ -207,3 +207,42 @@
 18:55:43.415959 version@stat F·[1 1] S·180KiB[3KiB 177KiB] Sc·[0.25 0.00]
 18:55:43.422426 db@janitor F·4 G·0
 18:55:43.422475 db@open done T·12.313093ms
+=============== Jun 27, 2026 (UTC) ===============
+20:19:47.860403 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+20:19:47.860946 version@stat F·[1 1] S·180KiB[3KiB 177KiB] Sc·[0.25 0.00]
+20:19:47.860956 db@open opening
+20:19:47.860979 journal@recovery F·1
+20:19:47.861405 journal@recovery recovering @54
+20:19:47.865797 memdb@flush created L0@56 N·69 S·15KiB "acc..001,v838":"blk..\x00\x019,v837"
+20:19:47.866027 version@stat F·[2 1] S·195KiB[18KiB 177KiB] Sc·[0.50 0.00]
+20:19:47.872623 db@janitor F·5 G·0
+20:19:47.872696 db@open done T·11.728508ms
+=============== Jun 28, 2026 (UTC) ===============
+11:52:27.872277 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:52:27.873473 version@stat F·[2 1] S·195KiB[18KiB 177KiB] Sc·[0.50 0.00]
+11:52:27.873484 db@open opening
+11:52:27.873514 journal@recovery F·1
+11:52:27.874187 journal@recovery recovering @57
+11:52:27.886101 memdb@flush created L0@59 N·474 S·117KiB "acc..001,v1313":"blk..\x00\x01\xec,v1312"
+11:52:27.886445 version@stat F·[3 1] S·313KiB[136KiB 177KiB] Sc·[0.75 0.00]
+11:52:27.897788 db@janitor F·6 G·0
+11:52:27.897862 db@open done T·24.345901ms
+=============== Jun 28, 2026 (UTC) ===============
+12:22:39.482575 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:22:39.484244 version@stat F·[3 1] S·313KiB[136KiB 177KiB] Sc·[0.75 0.00]
+12:22:39.484264 db@open opening
+12:22:39.484334 journal@recovery F·1
+12:22:39.485616 journal@recovery recovering @60
+12:22:39.489497 memdb@flush created L0@62 N·11 S·3KiB "acc..001,v1325":"blk..\x00\x01\xf1,v1324"
+12:22:39.490987 version@stat F·[4 1] S·317KiB[140KiB 177KiB] Sc·[1.00 0.00]
+12:22:39.500271 db@janitor F·7 G·0
+12:22:39.500384 table@compaction L0·4 -> L1·1 S·317KiB Q·1327
+12:22:39.500633 db@open done T·16.056115ms
+12:22:39.543611 table@build created L1@65 N·499 S·313KiB "acc..001,v1325":"blk..\x00\x01\xf1,v1324"
+12:22:39.543680 version@stat F·[0 1] S·313KiB[0B 313KiB] Sc·[0.00 0.00]
+12:22:39.554673 table@compaction committed F-4 S-4KiB Ke·0 D·355 T·54.181711ms
+12:22:39.554768 table@remove removed @62
+12:22:39.554807 table@remove removed @59
+12:22:39.554846 table@remove removed @56
+12:22:39.554896 table@remove removed @53
+12:22:39.554955 table@remove removed @52
