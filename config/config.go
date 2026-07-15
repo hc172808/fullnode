@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,16 +16,18 @@ type Config struct {
 	P2PBootstrap []string
 	MaxPeers     int
 
-	RPCPort    int
-	RPCHost    string
-	RPCEnabled bool
+	RPCPort       int
+	RPCHost       string
+	RPCEnabled    bool
+	DashboardPort int
 
 	WSPort    int
 	WSEnabled bool
 
-	DataDir    string
-	LogLevel   string
-	LogFormat  string
+	DataDir     string
+	LogLevel    string
+	LogFormat   string
+	ExternalURL string
 
 	BlockTime time.Duration
 
@@ -34,23 +37,24 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		ChainID:      13370,
-		NetworkName:  "GYDS Chain",
-		NodeMode:     "full",
-		P2PPort:      30303,
-		P2PBootstrap: []string{},
-		MaxPeers:     25,
-		RPCPort:      8545,
-		RPCHost:      "0.0.0.0",
-		RPCEnabled:   true,
-		WSPort:       8546,
-		WSEnabled:    true,
-		DataDir:      "./data",
-		LogLevel:     "info",
-		LogFormat:    "pretty",
-		BlockTime:    120 * time.Second,
-		SyncMode:     "full",
-		SnapshotSync: true,
+		ChainID:       13370,
+		NetworkName:   "GYDS Chain",
+		NodeMode:      "full",
+		P2PPort:       30303,
+		P2PBootstrap:  []string{},
+		MaxPeers:      25,
+		RPCPort:       8545,
+		DashboardPort: 5000,
+		RPCHost:       "0.0.0.0",
+		RPCEnabled:    true,
+		WSPort:        8546,
+		WSEnabled:     true,
+		DataDir:       "./data",
+		LogLevel:      "info",
+		LogFormat:     "pretty",
+		BlockTime:     120 * time.Second,
+		SyncMode:      "full",
+		SnapshotSync:  true,
 	}
 }
 
@@ -75,6 +79,11 @@ func FromEnv() *Config {
 			cfg.RPCPort = p
 		}
 	}
+	if v := os.Getenv("GYDS_DASHBOARD_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			cfg.DashboardPort = p
+		}
+	}
 	if v := os.Getenv("GYDS_RPC_HOST"); v != "" {
 		cfg.RPCHost = v
 	}
@@ -92,5 +101,11 @@ func FromEnv() *Config {
 			cfg.BlockTime = time.Duration(secs) * time.Second
 		}
 	}
+	if v := os.Getenv("GYDS_EXTERNAL_URL"); v != "" {
+		cfg.ExternalURL = v
+	} else if v := os.Getenv("REPLIT_DEV_DOMAIN"); v != "" {
+		cfg.ExternalURL = "https://" + strings.TrimPrefix(v, "https://")
+	}
+
 	return cfg
 }

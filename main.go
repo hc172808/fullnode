@@ -94,7 +94,7 @@ func runNode() error {
         vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
         engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
-        rpcSrv := rpc.NewServer(chain, cfg.RPCPort, int(cfg.BlockTime.Seconds()))
+        rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL)
         engine.OnNewBlock(func(b *core.Block) {
                 log.Info().
                         Uint64("number", b.Header.Number).
@@ -106,6 +106,7 @@ func runNode() error {
         })
 
         p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+        rpcSrv.SetP2P(p2pSrv)
 
         for _, addr := range cfg.P2PBootstrap {
                 if err := p2pSrv.ConnectTo(addr); err != nil {
@@ -119,10 +120,9 @@ func runNode() error {
         engine.Start()
         log.Info().Dur("blockTime", cfg.BlockTime).Msg("PoS engine started")
 
-        errCh := make(chan error, 1)
-        go func() {
-                errCh <- rpcSrv.Start()
-        }()
+        errCh := make(chan error, 2)
+        go func() { errCh <- rpcSrv.StartDashboard() }()
+        go func() { errCh <- rpcSrv.StartRPC() }()
 
         sig := make(chan os.Signal, 1)
         signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

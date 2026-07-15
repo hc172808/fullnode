@@ -9,7 +9,6 @@ import (
         "io/fs"
         "math/big"
         "net/http"
-        "os"
         "strconv"
         "strings"
         "sync"
@@ -22,18 +21,34 @@ import (
         "github.com/gydschain/fullnode/core"
 )
 
+// P2PConnector is the minimal interface the RPC server needs from the P2P layer.
+type P2PConnector interface {
+        ConnectTo(addr string) error
+        PeerCount() int
+}
+
 type Server struct {
-        chain         *core.Chain
-        router        *mux.Router
-        httpServer    *http.Server
-        upgrader      websocket.Upgrader
-        subs          map[string]*subscriber
-        subsMu        sync.RWMutex
-        port          int
-        blockTimeSecs int
+        chain      *core.Chain
+        upgrader   websocket.Upgrader
+        subs       map[string]*subscriber
+        subsMu     sync.RWMutex
+
+        dashPort   int
+        dashRouter *mux.Router
+        dashServer *http.Server
+
+        rpcPort   int
+        rpcRouter *mux.Router
+        rpcServer *http.Server
+
+        externalURL string
 
         pendingTx   map[string]*core.Transaction
         pendingTxMu sync.RWMutex
+
+        auth    *AuthStore
+        adminDB *AdminDB
+        p2p     P2PConnector
 }
 
 type subscriber struct {
@@ -41,20 +56,29 @@ type subscriber struct {
         ch   chan interface{}
 }
 
-func NewServer(chain *core.Chain, port int, blockTimeSecs int) *Server {
+func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir, externalURL string) *Server {
+        auth := NewAuthStore(dataDir)
+        adminDB, _ := NewAdminDB(dataDir)
         s := &Server{
-                chain:         chain,
-                port:          port,
-                blockTimeSecs: blockTimeSecs,
+                chain:    chain,
+                dashPort: dashPort,
+                rpcPort:  rpcPort,
+                externalURL: externalURL,
                 upgrader: websocket.Upgrader{
                         CheckOrigin: func(r *http.Request) bool { return true },
                 },
                 subs:      make(map[string]*subscriber),
                 pendingTx: make(map[string]*core.Transaction),
+                auth:      auth,
+                adminDB:   adminDB,
         }
-        s.setupRoutes()
+        s.setupDashboardRoutes()
+        s.setupRPCRoutes()
         return s
 }
+
+// SetP2P wires the P2P server so the RPC layer can connect to imported nodes.
+func (s *Server) SetP2P(p P2PConnector) { s.p2p = p }
 
 func cors(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -70,10 +94,6 @@ func cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-        if _, err := os.Stat(".env"); os.IsNotExist(err) {
-                http.Redirect(w, r, "/setup", http.StatusFound)
-                return
-        }
         sub, err := fs.Sub(staticFiles, "static")
         if err != nil {
                 http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
@@ -82,14 +102,23 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
         http.FileServer(http.FS(sub)).ServeHTTP(w, r)
 }
 
-func (s *Server) setupRoutes() {
+// setupDashboardRoutes builds the router for the web dashboard (UI + REST API).
+// It also handles JSON-RPC at POST /rpc so the built-in wallet works same-origin.
+func (s *Server) setupDashboardRoutes() {
         r := mux.NewRouter()
 
         r.HandleFunc("/health", s.handleHealth).Methods("GET")
-        r.HandleFunc("/setup", s.handleSetupPage).Methods("GET")
         r.HandleFunc("/", s.handleDashboard).Methods("GET")
-        r.HandleFunc("/", s.handleJSONRPC).Methods("POST", "OPTIONS")
+
+        // JSON-RPC at /rpc on the dashboard port — used by the built-in browser wallet
         r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
+
+        // Static assets
+        r.HandleFunc("/{file:.*\\.js}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.css}", s.handleStaticAsset).Methods("GET")
+
+        // Connection info download
+        r.HandleFunc("/gyds-connection-info.json", s.handleConnectionInfo).Methods("GET")
 
         api := r.PathPrefix("/api").Subrouter()
         api.HandleFunc("/status", s.handleStatus).Methods("GET")
@@ -98,26 +127,148 @@ func (s *Server) setupRoutes() {
         api.HandleFunc("/transactions", s.handleTransactions).Methods("GET")
         api.HandleFunc("/peers", s.handlePeers).Methods("GET")
         api.HandleFunc("/ws", s.handleWS)
+        api.HandleFunc("/node-info", s.handleNodeInfo).Methods("GET")
         api.HandleFunc("/setup/status", s.handleSetupStatus).Methods("GET")
-        api.HandleFunc("/setup/apply", s.handleSetupApply).Methods("POST", "OPTIONS")
+        api.HandleFunc("/setup/apply", s.handleSetupApply).Methods("POST")
+        api.HandleFunc("/nodes/import", s.handleNodesImport).Methods("POST", "OPTIONS")
+
+        admin := r.PathPrefix("/admin").Subrouter()
+        admin.HandleFunc("/login", s.handleAdminLoginPage).Methods("GET")
+        admin.HandleFunc("/login", s.handleAdminLoginSubmit).Methods("POST")
+        admin.HandleFunc("/logout", s.handleAdminLogout).Methods("GET")
+        admin.HandleFunc("/set-pin", s.handleAdminSetPinPage).Methods("GET")
+        admin.HandleFunc("/set-pin", s.handleAdminSetPinSubmit).Methods("POST")
+        admin.HandleFunc("/wallet", s.handleAdminWallet).Methods("GET")
+        admin.HandleFunc("/db", s.handleAdminDBPage).Methods("GET")
+        admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBTables)).Methods("GET")
+        admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBCreateTable)).Methods("POST")
+        admin.HandleFunc("/db/tables/{table}", s.requireAdminSession(s.handleDBDropTable)).Methods("DELETE")
+        admin.HandleFunc("/db/tables/{table}/records", s.requireAdminSession(s.handleDBRecords)).Methods("GET")
+        admin.HandleFunc("/db/tables/{table}/records", s.requireAdminSession(s.handleDBCreateRecord)).Methods("POST")
+        admin.HandleFunc("/db/tables/{table}/records/{key}", s.requireAdminSession(s.handleDBUpdateRecord)).Methods("PUT")
+        admin.HandleFunc("/db/tables/{table}/records/{key}", s.requireAdminSession(s.handleDBDeleteRecord)).Methods("DELETE")
+
+        r.HandleFunc("/setup", s.handleSetupPage).Methods("GET")
 
         r.Use(cors)
-        s.router = r
+        s.dashRouter = r
 }
 
-func (s *Server) Start() error {
-        s.httpServer = &http.Server{
-                Addr:         fmt.Sprintf(":%d", s.port),
-                Handler:      s.router,
+// setupRPCRoutes builds the minimal router for the dedicated JSON-RPC port.
+// This is what external wallets (MetaMask, etc.) connect to.
+func (s *Server) setupRPCRoutes() {
+        r := mux.NewRouter()
+        r.HandleFunc("/health", s.handleHealth).Methods("GET")
+        r.HandleFunc("/", s.handleJSONRPC).Methods("POST", "OPTIONS")
+        r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
+        r.HandleFunc("/api/ws", s.handleWS)
+        r.Use(cors)
+        s.rpcRouter = r
+}
+
+func (s *Server) handleStaticAsset(w http.ResponseWriter, r *http.Request) {
+        sub, err := fs.Sub(staticFiles, "static")
+        if err != nil {
+                http.NotFound(w, r)
+                return
+        }
+        http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+}
+
+// handleNodeInfo returns JSON with all connection endpoints for this node.
+func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
+        jsonOK(w, s.buildConnectionInfo())
+}
+
+// handleConnectionInfo serves gyds-connection-info.json as a downloadable file.
+func (s *Server) handleConnectionInfo(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        w.Header().Set("Content-Disposition", `attachment; filename="gyds-connection-info.json"`)
+        enc := json.NewEncoder(w)
+        enc.SetIndent("", "  ")
+        enc.Encode(s.buildConnectionInfo())
+}
+
+func (s *Server) buildConnectionInfo() map[string]interface{} {
+        stats := s.chain.Stats()
+        chainID := int64(13370)
+        if v, ok := stats["chainId"]; ok {
+                switch cv := v.(type) {
+                case int64:
+                        chainID = cv
+                case float64:
+                        chainID = int64(cv)
+                }
+        }
+
+        extBase := s.externalURL
+        rpcURL := fmt.Sprintf("http://0.0.0.0:%d", s.rpcPort)
+        wsURL := fmt.Sprintf("ws://0.0.0.0:%d/api/ws", s.rpcPort)
+        dashURL := fmt.Sprintf("http://0.0.0.0:%d", s.dashPort)
+        if extBase != "" {
+                rpcURL = fmt.Sprintf("%s:%d", extBase, s.rpcPort)
+                wsURL = fmt.Sprintf("%s:%d/api/ws", strings.Replace(extBase, "https://", "wss://", 1), s.rpcPort)
+                dashURL = extBase
+        }
+
+        return map[string]interface{}{
+                "network_name": "GYDS Chain",
+                "chain_id":     chainID,
+                "chain_id_hex": fmt.Sprintf("0x%x", chainID),
+                "symbol":       "GYDS",
+                "rpc_url":      rpcURL,
+                "ws_url":       wsURL,
+                "dashboard_url": dashURL,
+                "p2p_port":     30303,
+                "ports": map[string]interface{}{
+                        "dashboard": s.dashPort,
+                        "rpc":       s.rpcPort,
+                        "p2p":       30303,
+                },
+                "metamask": map[string]interface{}{
+                        "networkName":   "GYDS Chain",
+                        "rpcUrl":        rpcURL,
+                        "chainId":       chainID,
+                        "chainIdHex":    fmt.Sprintf("0x%x", chainID),
+                        "currencySymbol": "GYDS",
+                        "blockExplorer": dashURL,
+                },
+                "generated_at": time.Now().UTC().Format(time.RFC3339),
+        }
+}
+
+// StartDashboard starts the web dashboard on dashPort.
+func (s *Server) StartDashboard() error {
+        s.dashServer = &http.Server{
+                Addr:         fmt.Sprintf(":%d", s.dashPort),
+                Handler:      s.dashRouter,
                 ReadTimeout:  15 * time.Second,
                 WriteTimeout: 15 * time.Second,
         }
-        log.Info().Int("port", s.port).Msg("RPC server listening")
-        return s.httpServer.ListenAndServe()
+        log.Info().Int("port", s.dashPort).Msg("Dashboard server listening")
+        return s.dashServer.ListenAndServe()
+}
+
+// StartRPC starts the dedicated JSON-RPC server on rpcPort.
+func (s *Server) StartRPC() error {
+        s.rpcServer = &http.Server{
+                Addr:         fmt.Sprintf(":%d", s.rpcPort),
+                Handler:      s.rpcRouter,
+                ReadTimeout:  15 * time.Second,
+                WriteTimeout: 15 * time.Second,
+        }
+        log.Info().Int("port", s.rpcPort).Msg("RPC server listening")
+        return s.rpcServer.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-        return s.httpServer.Shutdown(ctx)
+        if s.dashServer != nil {
+                s.dashServer.Shutdown(ctx)
+        }
+        if s.rpcServer != nil {
+                s.rpcServer.Shutdown(ctx)
+        }
+        return nil
 }
 
 func (s *Server) NotifyNewBlock(b *core.Block) {
@@ -155,9 +306,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-        stats := s.chain.Stats()
-        stats["blockTimeSecs"] = s.blockTimeSecs
-        jsonOK(w, stats)
+        jsonOK(w, s.chain.Stats())
 }
 
 func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
@@ -595,6 +744,100 @@ func txReceiptRPC(tx *core.Transaction, chain *core.Chain) map[string]interface{
                 "type":              "0x0",
                 "effectiveGasPrice": "0x3B9ACA00",
         }
+}
+
+// ── Nodes Import ──────────────────────────────────────────────────────────────
+
+type nodesConfig struct {
+        Version string      `json:"version"`
+        Nodes   []nodeEntry `json:"nodes"`
+}
+
+type nodeEntry struct {
+        Type    string `json:"type"`
+        Name    string `json:"name"`
+        Address string `json:"address"`
+        RPC     string `json:"rpc"`
+        Host    string `json:"host"`
+        Port    int    `json:"port"`
+}
+
+func (e nodeEntry) p2pAddr() string {
+        if e.Address != "" {
+                return e.Address
+        }
+        if e.Host != "" && e.Port > 0 {
+                return fmt.Sprintf("%s:%d", e.Host, e.Port)
+        }
+        return ""
+}
+
+func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodOptions {
+                w.WriteHeader(http.StatusNoContent)
+                return
+        }
+
+        var cfg nodesConfig
+        if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+                jsonErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+                return
+        }
+        if len(cfg.Nodes) == 0 {
+                jsonErr(w, http.StatusBadRequest, "no nodes found in config")
+                return
+        }
+
+        type result struct {
+                Address string `json:"address"`
+                Name    string `json:"name"`
+                Status  string `json:"status"`
+                Error   string `json:"error,omitempty"`
+        }
+
+        results := make([]result, 0, len(cfg.Nodes))
+        connected := 0
+
+        for _, node := range cfg.Nodes {
+                addr := node.p2pAddr()
+                name := node.Name
+                if name == "" {
+                        name = node.Type
+                }
+                if name == "" {
+                        name = "node"
+                }
+
+                res := result{Address: addr, Name: name}
+
+                if addr == "" {
+                        res.Status = "skipped"
+                        res.Error = "no address or host/port provided"
+                        results = append(results, res)
+                        continue
+                }
+
+                if s.p2p != nil {
+                        if err := s.p2p.ConnectTo(addr); err != nil {
+                                res.Status = "failed"
+                                res.Error = err.Error()
+                        } else {
+                                res.Status = "connected"
+                                connected++
+                        }
+                } else {
+                        res.Status = "queued"
+                }
+                results = append(results, res)
+        }
+
+        jsonOK(w, map[string]interface{}{
+                "ok":        true,
+                "version":   cfg.Version,
+                "total":     len(cfg.Nodes),
+                "connected": connected,
+                "results":   results,
+        })
 }
 
 // hashRawTx creates a deterministic tx hash from raw hex bytes.

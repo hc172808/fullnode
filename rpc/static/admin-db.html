@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>GYDS Admin — Database</title>
+  <style>
+    :root {
+      --bg:     #0b0f1a;
+      --sidebar:#0e1420;
+      --card:   #111827;
+      --card2:  #1a2235;
+      --border: #1e2d40;
+      --accent: #10b981;
+      --blue:   #3b82f6;
+      --warn:   #f59e0b;
+      --danger: #ef4444;
+      --text:   #e2e8f0;
+      --muted:  #64748b;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text);
+           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── top bar ── */
+    .topbar {
+      height: 52px; background: var(--sidebar); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 20px; gap: 14px; flex-shrink: 0;
+    }
+    .topbar-logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+    .logo-icon { width: 28px; height: 28px; background: linear-gradient(135deg,#10b981,#3b82f6);
+                 border-radius: 6px; display: flex; align-items: center; justify-content: center;
+                 font-weight: 900; font-size: 11px; color: #fff; }
+    .topbar-logo span { color: var(--accent); }
+    .topbar-sep { flex: 1; }
+    .topbar-badge { font-size: 11px; background: rgba(16,185,129,.12); color: var(--accent);
+                    border: 1px solid rgba(16,185,129,.25); border-radius: 20px; padding: 2px 10px; }
+    .topbar-link { font-size: 12px; color: var(--muted); text-decoration: none; }
+    .topbar-link:hover { color: var(--text); }
+
+    /* ── layout ── */
+    .layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── sidebar ── */
+    .sidebar {
+      width: 220px; background: var(--sidebar); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+    }
+    .sidebar-head {
+      padding: 14px 16px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted); display: flex; align-items: center;
+      justify-content: space-between; border-bottom: 1px solid var(--border);
+    }
+    .icon-btn {
+      background: none; border: none; cursor: pointer; color: var(--muted);
+      font-size: 16px; padding: 2px 4px; border-radius: 4px; line-height: 1;
+    }
+    .icon-btn:hover { color: var(--text); background: var(--card2); }
+
+    .table-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+    .table-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px 16px; cursor: pointer;
+      font-size: 13px; color: var(--muted); border-radius: 0; transition: background .15s;
+      position: relative;
+    }
+    .table-item:hover { background: var(--card2); color: var(--text); }
+    .table-item.active { background: rgba(16,185,129,.1); color: var(--accent); }
+    .table-icon { font-size: 14px; flex-shrink: 0; }
+    .table-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .table-count { font-size: 10px; background: var(--card2); border-radius: 10px;
+                   padding: 1px 6px; color: var(--muted); }
+    .table-item.active .table-count { background: rgba(16,185,129,.15); color: var(--accent); }
+
+    /* ── main area ── */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .main-toolbar {
+      padding: 12px 20px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px; flex-shrink: 0; background: var(--card);
+    }
+    .main-title { font-size: 15px; font-weight: 700; flex: 1; }
+    .main-title .sub { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 8px; }
+
+    .btn { padding: 7px 14px; border-radius: 7px; border: none; cursor: pointer;
+           font-size: 12px; font-weight: 600; transition: opacity .2s; }
+    .btn:hover { opacity: .85; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-green  { background: var(--accent); color: #fff; }
+    .btn-blue   { background: var(--blue); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-ghost  { background: var(--card2); color: var(--text); border: 1px solid var(--border); }
+
+    /* ── table grid ── */
+    .records-wrap { flex: 1; overflow: auto; padding: 16px 20px; }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--muted); font-size: 14px;
+    }
+    .empty-state .big { font-size: 40px; margin-bottom: 12px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      text-align: left; padding: 8px 12px; background: var(--card2);
+      border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+      white-space: nowrap;
+    }
+    thead th:first-child { border-radius: 8px 0 0 0; }
+    thead th:last-child  { border-radius: 0 8px 0 0; }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:hover { background: var(--card2); }
+    tbody td { padding: 9px 12px; vertical-align: top; }
+    .key-cell  { font-family: monospace; font-size: 12px; color: var(--accent); white-space: nowrap; }
+    .val-cell  { font-family: monospace; font-size: 11px; color: #94a3b8;
+                 max-width: 420px; word-break: break-all; }
+    .date-cell { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .act-cell  { white-space: nowrap; display: flex; gap: 6px; }
+    .row-btn {
+      padding: 3px 8px; font-size: 11px; border-radius: 5px; border: none; cursor: pointer;
+      font-weight: 600;
+    }
+    .row-btn-edit   { background: rgba(59,130,246,.15); color: var(--blue); }
+    .row-btn-delete { background: rgba(239,68,68,.12); color: var(--danger); }
+    .row-btn:hover  { opacity: .8; }
+
+    /* ── modal ── */
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none;
+      align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 28px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: .05em; color: var(--muted); margin-bottom: 6px; }
+    .field input, .field textarea {
+      width: 100%; padding: 10px 12px; background: var(--card2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 13px; outline: none; resize: vertical;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); }
+    .field textarea { font-family: 'Courier New', monospace; font-size: 12px; min-height: 140px; }
+    .modal-err { font-size: 12px; color: #fca5a5; background: rgba(239,68,68,.1);
+                 border: 1px solid rgba(239,68,68,.25); border-radius: 7px;
+                 padding: 8px 12px; margin-bottom: 14px; display: none; }
+    .modal-err.show { display: block; }
+    .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+    /* ── toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px; background: var(--card);
+      border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px;
+      font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: none;
+      z-index: 200; max-width: 320px;
+    }
+    #toast.ok   { border-color: rgba(16,185,129,.4); color: #6ee7b7; }
+    #toast.err  { border-color: rgba(239,68,68,.4);  color: #fca5a5; }
+    #toast.show { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="topbar-logo">
+    <div class="logo-icon">GY</div>
+    GYDS <span>Chain</span>
+  </div>
+  <div class="topbar-badge">🔒 Admin Database</div>
+  <div class="topbar-sep"></div>
+  <a class="topbar-link" href="/">← Dashboard</a>
+  <a class="topbar-link" href="/admin/logout" style="margin-left:12px;color:var(--danger)">Logout</a>
+</div>
+
+<div class="layout">
+
+  <!-- Sidebar: table list -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      Tables
+      <button class="icon-btn" title="New table" onclick="openNewTableModal()">＋</button>
+    </div>
+    <div class="table-list" id="tableList">
+      <div style="padding:16px;font-size:12px;color:var(--muted)">Loading…</div>
+    </div>
+  </aside>
+
+  <!-- Main panel -->
+  <div class="main">
+    <div class="main-toolbar">
+      <div class="main-title" id="mainTitle">
+        Select a table
+        <span class="sub" id="mainSub"></span>
+      </div>
+      <button class="btn btn-green" id="addRecordBtn" style="display:none" onclick="openAddRecord()">＋ Add Record</button>
+      <button class="btn btn-danger" id="dropTableBtn" style="display:none" onclick="dropTable()">Drop Table</button>
+    </div>
+    <div class="records-wrap" id="recordsWrap">
+      <div class="empty-state">
+        <div class="big">🗄️</div>
+        Select a table from the sidebar to view its records
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: new table -->
+<div class="modal-bg" id="newTableModal">
+  <div class="modal">
+    <div class="modal-title">➕ Create New Table</div>
+    <div class="field">
+      <label>Table Name</label>
+      <input id="newTableName" placeholder="e.g. wallet_watchlist" maxlength="64"
+             onkeydown="if(event.key==='Enter')saveNewTable()"/>
+    </div>
+    <div class="modal-err" id="newTableErr"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('newTableModal')">Cancel</button>
+      <button class="btn btn-green" onclick="saveNewTable()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: add / edit record -->
+<div class="modal-bg" id="recordModal">
+  <div class="modal">
+    <div class="modal-title" id="recordModalTitle">Add Record</div>
+    <div class="field">
+      <label>Key <span style="font-weight:400;text-transform:none;color:var(--muted)">(leave blank to auto-generate)</span></label>
+      <input id="recKey" placeholder="optional key"/>
+    </div>
+    <div class="field">
+      <label>Value <span style="font-weight:400;text-transform:none;color:var(--muted)">(JSON)</span></label>
+      <textarea id="recValue" placeholder='{"name": "example", "note": "hello"}'></textarea>
+    </div>
+    <div class="modal-err" id="recErr"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('recordModal')">Cancel</button>
+      <button class="btn btn-green" id="recSaveBtn" onclick="saveRecord()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+let currentTable = null;
+let editingKey    = null;
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+loadTables();
+
+async function loadTables(selectTable) {
+  const res  = await fetch('/admin/db/tables');
+  const data = await res.json();
+  const list = document.getElementById('tableList');
+  if (!data.tables || data.tables.length === 0) {
+    list.innerHTML = '<div style="padding:16px;font-size:12px;color:var(--muted)">No tables yet</div>';
+    return;
+  }
+  const icons = { notes:'📝', settings:'⚙️', addresses:'🏠' };
+  list.innerHTML = data.tables.map(t => `
+    <div class="table-item ${t.name === currentTable ? 'active' : ''}"
+         onclick="selectTable('${t.name}')">
+      <span class="table-icon">${icons[t.name] || '🗂️'}</span>
+      <span class="table-name">${esc(t.name)}</span>
+      <span class="table-count">${t.count}</span>
+    </div>`).join('');
+  if (selectTable) { currentTable = null; selectTableFn(selectTable); }
+  else if (currentTable) { loadRecords(currentTable); }
+}
+
+// ── Table selection ───────────────────────────────────────────────────────────
+function selectTable(name) { selectTableFn(name); }
+async function selectTableFn(name) {
+  currentTable = name;
+  document.querySelectorAll('.table-item').forEach(el => el.classList.remove('active'));
+  const items = document.querySelectorAll('.table-item');
+  items.forEach(el => { if (el.querySelector('.table-name').textContent === name) el.classList.add('active'); });
+  document.getElementById('mainTitle').innerHTML = `<span style="font-size:13px;color:var(--muted)">TABLE</span>
+    &nbsp;<span style="color:var(--accent);font-family:monospace">${esc(name)}</span>
+    <span class="sub" id="mainSub"></span>`;
+  document.getElementById('addRecordBtn').style.display = '';
+  document.getElementById('dropTableBtn').style.display =
+    ['notes','settings','addresses'].includes(name) ? 'none' : '';
+  await loadRecords(name);
+}
+
+async function loadRecords(table) {
+  const wrap = document.getElementById('recordsWrap');
+  wrap.innerHTML = '<div style="padding:24px;color:var(--muted);font-size:13px">Loading…</div>';
+  const res  = await fetch(`/admin/db/tables/${encodeURIComponent(table)}/records`);
+  const data = await res.json();
+  if (data.error) { wrap.innerHTML = `<div class="empty-state"><div class="big">❌</div>${esc(data.error)}</div>`; return; }
+  const recs = data.records || [];
+  document.getElementById('mainSub').textContent = `${recs.length} record${recs.length !== 1 ? 's' : ''}`;
+  if (recs.length === 0) {
+    wrap.innerHTML = `<div class="empty-state"><div class="big">📭</div>No records yet — click <b>Add Record</b> to create one</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Key</th>
+        <th>Value</th>
+        <th>Created</th>
+        <th>Updated</th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody>${recs.map(r => `
+        <tr>
+          <td class="key-cell">${esc(r.key)}</td>
+          <td class="val-cell">${esc(prettyVal(r.value))}</td>
+          <td class="date-cell">${fmtDate(r.created_at)}</td>
+          <td class="date-cell">${fmtDate(r.updated_at)}</td>
+          <td class="act-cell">
+            <button class="row-btn row-btn-edit"   onclick="openEditRecord('${esc(r.key)}', ${JSON.stringify(JSON.stringify(r.value))})">Edit</button>
+            <button class="row-btn row-btn-delete" onclick="deleteRecord('${esc(r.key)}')">Delete</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ── New table modal ───────────────────────────────────────────────────────────
+function openNewTableModal() {
+  document.getElementById('newTableName').value = '';
+  showErr('newTableErr', '');
+  openModal('newTableModal');
+  setTimeout(() => document.getElementById('newTableName').focus(), 80);
+}
+async function saveNewTable() {
+  const name = document.getElementById('newTableName').value.trim();
+  if (!name) { showErr('newTableErr', 'Table name is required'); return; }
+  const res  = await fetch('/admin/db/tables', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name})
+  });
+  const data = await res.json();
+  if (!res.ok) { showErr('newTableErr', data.error); return; }
+  closeModal('newTableModal');
+  toast('Table created: ' + name, 'ok');
+  loadTables(name);
+}
+
+// ── Record modal ──────────────────────────────────────────────────────────────
+function openAddRecord() {
+  editingKey = null;
+  document.getElementById('recordModalTitle').textContent = '➕ Add Record';
+  document.getElementById('recKey').value   = '';
+  document.getElementById('recValue').value = '{\n  \n}';
+  document.getElementById('recSaveBtn').textContent = 'Add';
+  showErr('recErr', '');
+  openModal('recordModal');
+  setTimeout(() => document.getElementById('recValue').focus(), 80);
+}
+function openEditRecord(key, valueJson) {
+  editingKey = key;
+  document.getElementById('recordModalTitle').textContent = '✏️ Edit Record';
+  document.getElementById('recKey').value   = key;
+  document.getElementById('recKey').disabled = true;
+  let pretty = valueJson;
+  try { pretty = JSON.stringify(JSON.parse(valueJson), null, 2); } catch(_) {}
+  document.getElementById('recValue').value = pretty;
+  document.getElementById('recSaveBtn').textContent = 'Save';
+  showErr('recErr', '');
+  openModal('recordModal');
+}
+async function saveRecord() {
+  if (!currentTable) return;
+  const keyEl = document.getElementById('recKey');
+  const valEl = document.getElementById('recValue');
+  const key   = keyEl.disabled ? editingKey : keyEl.value.trim();
+  let value;
+  try { value = JSON.parse(valEl.value || '{}'); } catch(e) {
+    showErr('recErr', 'Value must be valid JSON: ' + e.message); return;
+  }
+  const url    = editingKey
+    ? `/admin/db/tables/${encodeURIComponent(currentTable)}/records/${encodeURIComponent(editingKey)}`
+    : `/admin/db/tables/${encodeURIComponent(currentTable)}/records`;
+  const method = editingKey ? 'PUT' : 'POST';
+  const body   = editingKey ? {value} : {key, value};
+  const res    = await fetch(url, {
+    method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) { showErr('recErr', data.error); return; }
+  keyEl.disabled = false;
+  closeModal('recordModal');
+  toast(editingKey ? 'Record updated' : 'Record added', 'ok');
+  loadTables();
+  loadRecords(currentTable);
+}
+
+// ── Delete record ─────────────────────────────────────────────────────────────
+async function deleteRecord(key) {
+  if (!confirm(`Delete record "${key}" from "${currentTable}"?`)) return;
+  const res  = await fetch(
+    `/admin/db/tables/${encodeURIComponent(currentTable)}/records/${encodeURIComponent(key)}`,
+    { method: 'DELETE' }
+  );
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'err'); return; }
+  toast('Record deleted', 'ok');
+  loadTables();
+  loadRecords(currentTable);
+}
+
+// ── Drop table ────────────────────────────────────────────────────────────────
+async function dropTable() {
+  if (!currentTable) return;
+  if (!confirm(`Drop table "${currentTable}"? All records will be permanently deleted.`)) return;
+  const res  = await fetch(`/admin/db/tables/${encodeURIComponent(currentTable)}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'err'); return; }
+  currentTable = null;
+  document.getElementById('mainTitle').textContent = 'Select a table';
+  document.getElementById('mainSub').textContent   = '';
+  document.getElementById('addRecordBtn').style.display = 'none';
+  document.getElementById('dropTableBtn').style.display = 'none';
+  document.getElementById('recordsWrap').innerHTML =
+    '<div class="empty-state"><div class="big">🗄️</div>Select a table from the sidebar to view its records</div>';
+  toast('Table dropped', 'ok');
+  loadTables();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  const k = document.getElementById('recKey');
+  if (k) k.disabled = false;
+}
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.classList.toggle('show', !!msg);
+}
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function prettyVal(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') {
+    const s = JSON.stringify(v);
+    return s.length > 120 ? s.slice(0, 117) + '…' : s;
+  }
+  const s = String(v);
+  return s.length > 120 ? s.slice(0, 117) + '…' : s;
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleString(undefined, {dateStyle:'short', timeStyle:'short'}); }
+  catch(_) { return s; }
+}
+let toastTimer;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = (type === 'ok' ? '✓ ' : '✗ ') + msg;
+  el.className   = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3000);
+}
+
+// Close modals on backdrop click
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('click', e => {
+    if (e.target === bg) { closeModal(bg.id); document.getElementById('recKey').disabled = false; }
+  });
+});
+</script>
+</body>
+</html>
