@@ -1,0 +1,14 @@
+# Runtime data — never commit LevelDB or admin state
+data/state.db/
+data/admin/
+
+# Build output
+gyds-fullnode
+
+# Environment secrets
+.env
+
+# Go
+*.test
+*.out
+vendor/
