@@ -115,3 +115,10 @@
 19:15:01.064124 table@remove removed @22
 19:15:01.064192 table@remove removed @19
 19:15:01.065210 table@remove removed @18
+=============== Jul 25, 2026 (UTC) ===============
+09:19:45.949498 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+09:19:45.949662 version@stat F·[0 1] S·178KiB[0B 178KiB] Sc·[0.00 0.00]
+09:19:45.949669 db@open opening
+09:19:45.949975 version@stat F·[0 1] S·178KiB[0B 178KiB] Sc·[0.00 0.00]
+09:19:46.026364 db@janitor F·4 G·0
+09:19:46.026425 db@open done T·76.747259ms
