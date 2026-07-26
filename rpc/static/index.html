@@ -530,8 +530,26 @@ window.addEventListener('load', () => {
     name: 'GYDS Chain'
   });
 
+  // ── Auto-restore saved wallet ────────────────────────────────────────────
+  // If the user previously activated a wallet, re-load it silently so the
+  // send/receive screen appears immediately without Create/Import buttons.
+  const savedKey = localStorage.getItem('gyds_wallet_pk');
+  if (savedKey) {
+    try {
+      const w = new ethers.Wallet(savedKey);
+      activateWallet(w, localStorage.getItem('gyds_wallet_mn') || null);
+      return; // skip generateKey / generateMnemonic — entry screen is hidden
+    } catch {
+      localStorage.removeItem('gyds_wallet_pk');
+      localStorage.removeItem('gyds_wallet_mn');
+    }
+  }
+
   generateKey();
   generateMnemonic();
+
+  // Auto-refresh balance every 30 s when a wallet is active
+  setInterval(() => { if (wallet) refreshBalance(); }, 30000);
 });
 
 // ── Live node polling ─────────────────────────────────────────────────────────
@@ -816,9 +834,18 @@ function importByMnemonic() {
 }
 
 // ── Activate wallet ──────────────────────────────────────────────────────────
+let _balRefreshTimer = null;
+
 function activateWallet(w, phrase) {
   wallet   = w.connect(provider);
   mnemonic = phrase;
+
+  // Persist so the wallet survives page refresh.
+  try {
+    localStorage.setItem('gyds_wallet_pk', w.privateKey);
+    if (phrase) localStorage.setItem('gyds_wallet_mn', phrase);
+    else        localStorage.removeItem('gyds_wallet_mn');
+  } catch { /* private mode or storage full — silently ignore */ }
 
   document.getElementById('walletAddr').textContent  = w.address;
   document.getElementById('receiveAddr').textContent = w.address;
@@ -831,11 +858,24 @@ function activateWallet(w, phrase) {
   document.getElementById('walletScreen').classList.remove('hidden');
   refreshBalance();
   loadHistory();
+
+  // Keep balance live every 30 s (cleared on disconnect).
+  clearInterval(_balRefreshTimer);
+  _balRefreshTimer = setInterval(refreshBalance, 30000);
 }
 
 function disconnectWallet() {
   if (!confirm('Disconnect this wallet from the interface?')) return;
   wallet = null; mnemonic = null;
+
+  // Remove persisted key so the entry screen reappears on next load.
+  try {
+    localStorage.removeItem('gyds_wallet_pk');
+    localStorage.removeItem('gyds_wallet_mn');
+  } catch { /**/ }
+
+  clearInterval(_balRefreshTimer);
+
   document.getElementById('walletScreen').classList.add('hidden');
   document.getElementById('entryScreen').classList.remove('hidden');
   document.getElementById('importKey').value = '';
