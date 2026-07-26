@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GYDS Chain — Wallet</title>
   <script src="/ethers-5.7.2.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <style>
     :root {
       --bg:      #0b0f1a;
@@ -116,10 +117,28 @@
     .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; margin: 18px 0; }
     .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
-    /* ── QR placeholder ── */
+    /* ── QR ── */
     .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px 0; }
-    .qr-box { width: 180px; height: 180px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #999; }
-    canvas#qrCanvas { border-radius: 10px; }
+    #qrCanvas canvas, #qrCanvas img { border-radius: 10px; display: block; }
+    #qrCanvas { border-radius: 10px; line-height: 0; }
+
+    /* ── Wallet connect grid ── */
+    .wallet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media(max-width: 520px) { .wallet-grid { grid-template-columns: repeat(2, 1fr); } }
+    .wallet-pill { background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; transition: all .2s; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .wallet-pill:hover { border-color: var(--accent2); color: var(--accent2); background: rgba(59,130,246,.06); }
+    .wallet-pill:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Network config table ── */
+    .net-config-grid { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .net-config-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    .net-config-row:last-child { border-bottom: none; }
+    .net-config-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; min-width: 130px; flex-shrink: 0; }
+    .net-config-val { font-size: 13px; color: var(--text); flex: 1; word-break: break-all; }
+    .net-config-val.mono { font-family: var(--mono); font-size: 12px; }
+
+    /* ── Pane section title ── */
+    .pane-section-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
 
     /* ── TX table ── */
     .tx-list { display: flex; flex-direction: column; gap: 10px; }
@@ -389,10 +408,11 @@
       </div>
 
       <!-- Tabs -->
-      <div class="tabs">
+      <div class="tabs" style="overflow-x:auto;scrollbar-width:none">
         <button class="tab active" data-tab="send"    onclick="switchTab('send',this)">Send</button>
         <button class="tab"         data-tab="receive" onclick="switchTab('receive',this)">Receive</button>
         <button class="tab"         data-tab="history" onclick="switchTab('history',this)">History</button>
+        <button class="tab"         data-tab="connect" onclick="switchTab('connect',this)">🔗 Connect</button>
         <button class="tab"         data-tab="keys"    onclick="switchTab('keys',this)">Keys</button>
         <button class="tab"         data-tab="search"  onclick="switchTab('search',this)">🔍 Search</button>
       </div>
@@ -421,7 +441,7 @@
         <!-- ── RECEIVE ── -->
         <div id="pane-receive" class="tab-pane">
           <div class="qr-wrap">
-            <canvas id="qrCanvas" width="180" height="180"></canvas>
+            <div id="qrCanvas"></div>
             <div style="text-align:center">
               <div style="font-family:var(--mono);font-size:13px;word-break:break-all;margin-bottom:8px" id="receiveAddr">—</div>
               <button class="btn btn-outline btn-sm" onclick="copyAddr()">⧉ Copy Address</button>
@@ -430,6 +450,77 @@
           <div class="alert alert-info mt-4" style="margin-top:16px">
             Share this address to receive GYDS. Chain ID: <strong>13370</strong> — make sure the sender is on GYDS Chain.
           </div>
+        </div>
+
+        <!-- ── CONNECT ── -->
+        <div id="pane-connect" class="tab-pane">
+
+          <div id="connectAlert" style="display:none;margin-bottom:14px"></div>
+
+          <!-- Add network one-click -->
+          <div style="margin-bottom:20px">
+            <div class="pane-section-title">Add GYDS Chain to Your Wallet</div>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:14px">One click adds GYDS Chain (ID 13370) to any EVM-compatible browser wallet.</p>
+            <div class="wallet-grid">
+              <button class="wallet-pill" id="addChainBtn_MetaMask"      data-label="🦊 MetaMask"       onclick="addChainToWallet('MetaMask',this)">🦊 MetaMask</button>
+              <button class="wallet-pill" id="addChainBtn_TrustWallet"   data-label="🛡 Trust Wallet"   onclick="addChainToWallet('Trust Wallet',this)">🛡 Trust Wallet</button>
+              <button class="wallet-pill" id="addChainBtn_Phantom"       data-label="👻 Phantom"         onclick="addChainToWallet('Phantom',this)">👻 Phantom</button>
+              <button class="wallet-pill" id="addChainBtn_Coinbase"      data-label="🔵 Coinbase Wallet" onclick="addChainToWallet('Coinbase Wallet',this)">🔵 Coinbase Wallet</button>
+              <button class="wallet-pill" id="addChainBtn_Brave"         data-label="🦁 Brave Wallet"    onclick="addChainToWallet('Brave Wallet',this)">🦁 Brave Wallet</button>
+              <button class="wallet-pill" id="addChainBtn_Other"         data-label="⬡ Other EVM"        onclick="addChainToWallet('your wallet',this)">⬡ Other EVM</button>
+            </div>
+          </div>
+
+          <div class="divider">or add manually</div>
+
+          <!-- Manual network config -->
+          <div style="margin-bottom:20px">
+            <div class="pane-section-title">Manual Network Configuration</div>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Copy these values into your wallet's "Add Network" screen.</p>
+            <div class="net-config-grid">
+              <div class="net-config-row">
+                <span class="net-config-label">Network Name</span>
+                <span class="net-config-val">GYDS Chain</span>
+                <button class="copy-btn" onclick="copyText('GYDS Chain')" title="Copy">⧉</button>
+              </div>
+              <div class="net-config-row">
+                <span class="net-config-label">RPC URL</span>
+                <span class="net-config-val mono" id="netConfigRpc">—</span>
+                <button class="copy-btn" onclick="copyText(document.getElementById('netConfigRpc').textContent)" title="Copy">⧉</button>
+              </div>
+              <div class="net-config-row">
+                <span class="net-config-label">Chain ID</span>
+                <span class="net-config-val mono">13370</span>
+                <button class="copy-btn" onclick="copyText('13370')" title="Copy">⧉</button>
+              </div>
+              <div class="net-config-row">
+                <span class="net-config-label">Currency Symbol</span>
+                <span class="net-config-val">GYDS</span>
+                <button class="copy-btn" onclick="copyText('GYDS')" title="Copy">⧉</button>
+              </div>
+              <div class="net-config-row">
+                <span class="net-config-label">Decimals</span>
+                <span class="net-config-val mono">18</span>
+                <button class="copy-btn" onclick="copyText('18')" title="Copy">⧉</button>
+              </div>
+              <div class="net-config-row">
+                <span class="net-config-label">Block Explorer</span>
+                <span class="net-config-val mono" id="netConfigExplorer">—</span>
+                <button class="copy-btn" onclick="copyText(document.getElementById('netConfigExplorer').textContent)" title="Copy">⧉</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider">sync with browser wallet</div>
+
+          <!-- Sync browser wallet -->
+          <div>
+            <div class="pane-section-title">Use Browser Wallet to Sign Transactions</div>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Connect MetaMask, Phantom, Trust, or any injected EVM wallet. Your private key stays in the browser extension — not in this app.</p>
+            <div id="syncAlert" style="display:none;margin-bottom:12px"></div>
+            <button class="btn btn-primary btn-full" id="syncWalletBtn" onclick="syncBrowserWallet()">🔗 Connect Browser Wallet</button>
+          </div>
+
         </div>
 
         <!-- ── HISTORY ── -->
@@ -529,6 +620,14 @@ window.addEventListener('load', () => {
     chainId: CHAIN_ID,
     name: 'GYDS Chain'
   });
+
+  // Populate manual network config fields in the Connect pane.
+  const rpcUrl = window.location.origin + '/rpc';
+  const explorerUrl = window.location.origin;
+  const rpcEl = document.getElementById('netConfigRpc');
+  const expEl = document.getElementById('netConfigExplorer');
+  if (rpcEl) rpcEl.textContent = rpcUrl;
+  if (expEl) expEl.textContent = explorerUrl;
 
   // ── Auto-restore saved wallet ────────────────────────────────────────────
   // If the user previously activated a wallet, re-load it silently so the
@@ -979,30 +1078,149 @@ async function loadHistory() {
   }
 }
 
-// ── QR Code (canvas-based, no lib needed) ────────────────────────────────────
+// ── QR Code (real, via qrcode library) ───────────────────────────────────────
 function drawQR(address) {
-  const canvas = document.getElementById('qrCanvas');
-  const ctx    = canvas.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, 180, 180);
-  ctx.fillStyle = '#1e2d40';
-  ctx.font = '10px monospace';
-  ctx.textAlign = 'center';
-  // Simple placeholder — shows address text in a box
-  const lines = [];
-  for (let i=0; i<address.length; i+=10) lines.push(address.slice(i,i+10));
-  ctx.fillStyle = '#0b0f1a';
-  ctx.fillRect(10, 10, 160, 160);
-  ctx.fillStyle = '#10b981';
-  ctx.font = 'bold 11px monospace';
-  ctx.fillText('GYDS Address', 90, 30);
-  ctx.fillStyle = '#e2e8f0';
-  ctx.font = '9px monospace';
-  lines.forEach((line, i) => ctx.fillText(line, 90, 52 + i * 14));
-  // border
-  ctx.strokeStyle = '#10b981';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(10, 10, 160, 160);
+  const el = document.getElementById('qrCanvas');
+  el.innerHTML = ''; // clear previous
+  if (typeof QRCode === 'undefined') return;
+  new QRCode(el, {
+    text:            address,
+    width:           180,
+    height:          180,
+    colorDark:       '#10b981',
+    colorLight:      '#111827',
+    correctLevel:    QRCode.CorrectLevel.M,
+  });
+}
+
+// ── Add GYDS Chain to external wallet (EIP-3085) ──────────────────────────────
+const GYDS_CHAIN_PARAMS = {
+  chainId:           '0x343A', // 13370
+  chainName:         'GYDS Chain',
+  nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
+  rpcUrls:           [window.location.origin + '/rpc'],
+  blockExplorerUrls: [window.location.origin],
+};
+
+async function addChainToWallet(label, btn) {
+  const alertEl = document.getElementById('connectAlert');
+  if (!window.ethereum) {
+    alertEl.className = 'alert alert-warn';
+    alertEl.innerHTML = `⚠️ No browser wallet detected. Open this page inside ${label} (mobile) or install the ${label} browser extension first.`;
+    alertEl.style.display = 'block';
+    return;
+  }
+  const origLabel = btn.dataset.label || btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [GYDS_CHAIN_PARAMS] });
+    alertEl.className = 'alert alert-success';
+    alertEl.innerHTML = `✅ GYDS Chain added to ${label} successfully!`;
+    alertEl.style.display = 'block';
+  } catch(e) {
+    if (e.code === 4001) {
+      alertEl.className = 'alert alert-warn';
+      alertEl.innerHTML = '⚠️ Request cancelled by user.';
+    } else {
+      alertEl.className = 'alert alert-danger';
+      alertEl.innerHTML = '❌ ' + (e.message || 'Could not add network.');
+    }
+    alertEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origLabel;
+  }
+}
+
+// ── Sync: connect browser wallet as signer ────────────────────────────────────
+async function syncBrowserWallet() {
+  const alertEl = document.getElementById('syncAlert');
+  const btn     = document.getElementById('syncWalletBtn');
+  alertEl.style.display = 'none';
+
+  if (!window.ethereum) {
+    alertEl.className = 'alert alert-warn';
+    alertEl.innerHTML = '⚠️ No browser wallet detected. Install MetaMask, Phantom, or another EVM browser wallet, then reload this page.';
+    alertEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Connecting…';
+
+  try {
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+
+    // Switch / add the GYDS network in the browser wallet too
+    try {
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x343A' }] });
+    } catch(switchErr) {
+      if (switchErr.code === 4902) {
+        await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [GYDS_CHAIN_PARAMS] });
+      }
+    }
+
+    const web3Provider = new ethers.providers.Web3Provider(window.ethereum, {
+      chainId: CHAIN_ID, name: 'GYDS Chain'
+    });
+    const signer  = web3Provider.getSigner();
+    const address = await signer.getAddress();
+
+    // Use the browser wallet signer — private key never leaves the extension.
+    wallet   = signer;
+    mnemonic = null;
+
+    // Don't persist to localStorage — the browser wallet manages the key.
+    document.getElementById('walletAddr').textContent  = address;
+    document.getElementById('receiveAddr').textContent = address;
+    document.getElementById('showPrivKey').value       = '(managed by browser wallet)';
+    document.getElementById('showMnemonic').value      = '(managed by browser wallet)';
+    document.getElementById('mnemonicBlock').style.opacity = '.5';
+
+    drawQR(address);
+    document.getElementById('entryScreen').classList.add('hidden');
+    document.getElementById('walletScreen').classList.remove('hidden');
+    refreshBalance();
+    loadHistory();
+
+    clearInterval(_balRefreshTimer);
+    _balRefreshTimer = setInterval(refreshBalance, 30000);
+
+    // Update alert inside the connect pane (user may not see it if they just
+    // switched to walletScreen, so also show a toast).
+    alertEl.className = 'alert alert-success';
+    alertEl.innerHTML = `✅ Connected: <span style="font-family:var(--mono);font-size:11px;word-break:break-all">${address}</span>`;
+    alertEl.style.display = 'block';
+    toast('Browser wallet connected!');
+  } catch(e) {
+    if (e.code === 4001) {
+      alertEl.className = 'alert alert-warn';
+      alertEl.innerHTML = '⚠️ Connection cancelled by user.';
+    } else {
+      alertEl.className = 'alert alert-danger';
+      alertEl.innerHTML = '❌ ' + (e.message || 'Could not connect browser wallet.');
+    }
+    alertEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔗 Connect Browser Wallet';
+  }
+}
+
+// ── Generic text copy helper ──────────────────────────────────────────────────
+function copyText(text) {
+  if (!text || text === '—') return;
+  navigator.clipboard.writeText(text).then(() => toast('Copied!')).catch(() => {
+    // Fallback for older browsers
+    const el = document.createElement('textarea');
+    el.value = text;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    toast('Copied!');
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
