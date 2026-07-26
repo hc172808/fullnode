@@ -59,6 +59,26 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
         })
 }
 
+func (s *Server) handleGuidesPage(w http.ResponseWriter, r *http.Request) {
+	f, err := staticFiles.Open("static/guides.html")
+	if err != nil {
+		http.Error(w, "guides page unavailable", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
+}
+
 func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
         var cfg setupConfig
         if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {

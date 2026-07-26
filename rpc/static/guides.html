@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GYDS Chain — Node Guides</title>
+  <style>
+    :root {
+      --bg:      #0b0f1a;
+      --card:    #111827;
+      --card2:   #1a2235;
+      --border:  #1e2d40;
+      --accent:  #10b981;
+      --accent2: #3b82f6;
+      --warn:    #f59e0b;
+      --danger:  #ef4444;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --mono:    'JetBrains Mono','Fira Code','Courier New',monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height: 100vh; }
+
+    /* Header */
+    .header { background: var(--card); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .logo-row { display: flex; align-items: center; gap: 12px; }
+    .logo { width: 34px; height: 34px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; color: #fff; }
+    .brand { font-size: 17px; font-weight: 700; }
+    .brand span { color: var(--accent); }
+    .nav-links { display: flex; align-items: center; gap: 20px; }
+    .nav-link { font-size: 13px; color: var(--muted); text-decoration: none; }
+    .nav-link:hover { color: var(--text); }
+    .nav-link.active { color: var(--accent); font-weight: 600; }
+
+    /* Layout */
+    .wrap { max-width: 900px; margin: 0 auto; padding: 40px 16px 80px; }
+
+    /* Hero */
+    .hero { text-align: center; margin-bottom: 48px; }
+    .hero h1 { font-size: 32px; font-weight: 900; margin-bottom: 12px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p { color: var(--muted); font-size: 16px; max-width: 560px; margin: 0 auto 24px; line-height: 1.7; }
+
+    /* Mode picker */
+    .mode-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 40px; }
+    .mode-tab { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted); transition: all .2s; }
+    .mode-tab:hover { border-color: var(--accent2); color: var(--accent2); }
+    .mode-tab.active { background: linear-gradient(135deg, var(--accent), #059669); border-color: transparent; color: #fff; }
+
+    /* Guide sections */
+    .guide { display: none; }
+    .guide.active { display: block; }
+
+    /* Section headers */
+    .guide-hero { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 28px 32px; margin-bottom: 28px; display: flex; align-items: flex-start; gap: 20px; }
+    .guide-icon { font-size: 40px; flex-shrink: 0; line-height: 1; }
+    .guide-hero h2 { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+    .guide-hero p { color: var(--muted); font-size: 14px; line-height: 1.7; }
+    .guide-tags { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .tag { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+    .tag-green  { background: rgba(16,185,129,.12); color: var(--accent); border: 1px solid rgba(16,185,129,.3); }
+    .tag-blue   { background: rgba(59,130,246,.12);  color: var(--accent2); border: 1px solid rgba(59,130,246,.3); }
+    .tag-yellow { background: rgba(245,158,11,.12);  color: var(--warn);   border: 1px solid rgba(245,158,11,.3); }
+    .tag-red    { background: rgba(239,68,68,.12);   color: var(--danger); border: 1px solid rgba(239,68,68,.3); }
+
+    /* Requirements */
+    .req-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 28px; }
+    @media(max-width:600px){ .req-grid { grid-template-columns: 1fr; } }
+    .req-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+    .req-card .req-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+    .req-card .req-val { font-size: 15px; font-weight: 700; }
+    .req-card .req-note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* Step cards */
+    .steps { display: flex; flex-direction: column; gap: 20px; }
+    .step-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .step-card-header { padding: 18px 22px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--border); }
+    .step-num { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent2), #2563eb); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0; }
+    .step-title { font-size: 16px; font-weight: 700; }
+    .step-body { padding: 20px 22px; }
+    .step-body p { font-size: 14px; color: var(--muted); line-height: 1.7; margin-bottom: 14px; }
+    .step-body p:last-child { margin-bottom: 0; }
+    .step-body ul { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+    .step-body ul li { font-size: 14px; color: var(--muted); padding-left: 20px; position: relative; line-height: 1.6; }
+    .step-body ul li::before { content: '▸'; position: absolute; left: 0; color: var(--accent); }
+
+    /* Code blocks */
+    .code-block { background: #060a12; border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; font-family: var(--mono); font-size: 12px; line-height: 1.8; color: #a0b4c8; margin: 12px 0; overflow-x: auto; position: relative; }
+    .code-block .comment { color: var(--muted); }
+    .code-block .key { color: var(--accent2); }
+    .code-block .val { color: var(--accent); }
+    .code-block .cmd { color: #e2e8f0; }
+    .copy-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,.08); border: none; color: var(--muted); font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+    .copy-btn:hover { color: var(--text); background: rgba(255,255,255,.12); }
+
+    /* Alert boxes */
+    .alert { border-radius: 10px; padding: 14px 16px; font-size: 13px; line-height: 1.6; margin: 14px 0; }
+    .alert-info  { background: rgba(59,130,246,.07);  border: 1px solid rgba(59,130,246,.25);  color: #93c5fd; }
+    .alert-warn  { background: rgba(245,158,11,.07);  border: 1px solid rgba(245,158,11,.25);  color: #fcd34d; }
+    .alert-ok    { background: rgba(16,185,129,.07);  border: 1px solid rgba(16,185,129,.25);  color: var(--accent); }
+    .alert-danger{ background: rgba(239,68,68,.07);   border: 1px solid rgba(239,68,68,.25);   color: #fca5a5; }
+    .alert strong { color: inherit; }
+    .alert code  { font-family: var(--mono); font-size: 11px; background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 4px; }
+
+    /* Comparison table */
+    .compare-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+    .compare-table th { text-align: left; padding: 10px 14px; background: var(--card2); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border); }
+    .compare-table td { padding: 10px 14px; border-bottom: 1px solid rgba(30,45,64,.5); vertical-align: top; }
+    .compare-table tr:last-child td { border-bottom: none; }
+    .compare-table .ok  { color: var(--accent); }
+    .compare-table .no  { color: var(--muted); }
+    .compare-table .yes { color: var(--accent); }
+    .compare-table .warn-cell { color: var(--warn); }
+
+    /* Section divider */
+    .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 32px 0 14px; }
+
+    /* Quick-start card */
+    .quick-start { background: linear-gradient(135deg, rgba(16,185,129,.08), rgba(59,130,246,.06)); border: 1px solid rgba(16,185,129,.2); border-radius: 14px; padding: 22px 26px; margin-bottom: 28px; }
+    .quick-start h3 { font-size: 15px; font-weight: 700; margin-bottom: 10px; color: var(--accent); }
+
+    /* CTA buttons */
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all .2s; text-decoration: none; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), #059669); color: #fff; }
+    .btn-primary:hover { opacity: .88; }
+    .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-outline:hover { border-color: var(--accent2); color: var(--accent2); }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+    .hidden { display: none !important; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; font-size: 13px; color: var(--accent); box-shadow: 0 8px 32px rgba(0,0,0,.4); opacity: 0; transform: translateY(10px); transition: all .3s; z-index: 9999; pointer-events: none; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo-row">
+    <div class="logo">GY</div>
+    <span class="brand">GYDS <span>Chain</span></span>
+  </div>
+  <nav class="nav-links">
+    <a href="/" class="nav-link">Dashboard</a>
+    <a href="/setup" class="nav-link">Setup Wizard</a>
+    <a href="/guides" class="nav-link active">Guides</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <div class="hero">
+    <h1>Node Operator Guides</h1>
+    <p>Step-by-step instructions for every GYDS Chain node mode — from a quick-start lite node to a high-performance boost validator.</p>
+  </div>
+
+  <!-- Mode selector -->
+  <div class="mode-tabs">
+    <button class="mode-tab active" onclick="showGuide('full',this)">⛓ Full Node</button>
+    <button class="mode-tab" onclick="showGuide('lite',this)">⚡ Lite Node</button>
+    <button class="mode-tab" onclick="showGuide('rpc',this)">🔌 RPC Node</button>
+    <button class="mode-tab" onclick="showGuide('boost',this)">🚀 Boost Node</button>
+    <button class="mode-tab" onclick="showGuide('genesis',this)">🌱 Genesis Node</button>
+    <button class="mode-tab" onclick="showGuide('sync',this)">🔄 Sync Full Node</button>
+  </div>
+
+  <!-- ══════════════════  FULL NODE  ══════════════════════════════════ -->
+  <div class="guide active" id="guide-full">
+
+    <div class="guide-hero">
+      <div class="guide-icon">⛓</div>
+      <div>
+        <h2>Full Node</h2>
+        <p>Stores the complete chain history. Runs PoS block production, P2P gossip, and the full JSON-RPC API. The standard choice for node operators who want to participate in the network and serve queries without relying on third parties.</p>
+        <div class="guide-tags">
+          <span class="tag tag-green">Recommended</span>
+          <span class="tag tag-blue">Block Production</span>
+          <span class="tag tag-blue">P2P</span>
+          <span class="tag tag-blue">Full RPC</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="req-grid">
+      <div class="req-card"><div class="req-label">CPU</div><div class="req-val">2+ vCPUs</div><div class="req-note">4+ recommended for validators</div></div>
+      <div class="req-card"><div class="req-label">RAM</div><div class="req-val">4 GB+</div><div class="req-note">8 GB recommended</div></div>
+      <div class="req-card"><div class="req-label">Storage</div><div class="req-val">50 GB+ SSD</div><div class="req-note">Grows ~1–3 GB/month</div></div>
+    </div>
+
+    <div class="section-title">Quick Start</div>
+    <div class="quick-start">
+      <h3>1. Run the setup wizard, then deploy</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># 1. Open the setup wizard and choose "Full Node"</span>
+<span class="comment">#    It generates a .env file with all your config.</span>
+
+<span class="comment"># 2. Deploy (builds binary + installs systemd service)</span>
+<span class="cmd">sudo bash deploy.sh</span>
+
+<span class="comment"># 3. Check node status</span>
+<span class="cmd">sudo systemctl status gyds-fullnode</span>
+
+<span class="comment"># 4. Tail logs</span>
+<span class="cmd">sudo journalctl -u gyds-fullnode -f</span></div>
+    </div>
+
+    <div class="section-title">Step-by-Step Guide</div>
+    <div class="steps">
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">1</div><div class="step-title">Provision your server</div></div>
+        <div class="step-body">
+          <p>A full node runs 24/7. Choose a VPS or dedicated server with a reliable internet connection (1 Gbps recommended). Popular providers: Hetzner, DigitalOcean, AWS EC2, Vultr.</p>
+          <ul>
+            <li>Ubuntu 22.04 LTS or Debian 12 (recommended OS)</li>
+            <li>At least 2 vCPUs and 4 GB RAM</li>
+            <li>50 GB SSD minimum — NVMe preferred for faster LevelDB I/O</li>
+            <li>Open ports: <strong>30303/tcp</strong> (P2P), <strong>8545/tcp</strong> (RPC), <strong>5000/tcp</strong> (Dashboard)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">2</div><div class="step-title">Configure via the setup wizard</div></div>
+        <div class="step-body">
+          <p>Visit <code>/setup</code> on your node dashboard. Select <strong>Full Node</strong> mode and complete all 7 steps. The wizard generates a <code>.env</code> file you can save directly to the server.</p>
+          <div class="alert alert-warn">⚠️ Keep your private key safe. Never commit <code>.env</code> to a public repository.</div>
+          <p>Key settings for a full node:</p>
+          <div class="code-block">
+<span class="key">GYDS_NODE_MODE</span>=<span class="val">full</span>
+<span class="key">GYDS_CHAIN_ID</span>=<span class="val">13370</span>
+<span class="key">GYDS_P2P_PORT</span>=<span class="val">30303</span>
+<span class="key">GYDS_RPC_PORT</span>=<span class="val">8545</span>
+<span class="key">GYDS_MAX_PEERS</span>=<span class="val">25</span>
+<span class="key">GYDS_BOOTSTRAP_NODES</span>=<span class="val">tcp://bootnode1.gydschain.io:30303</span>
+<span class="key">GYDS_DATA_DIR</span>=<span class="val">/var/lib/gyds-fullnode</span></div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">3</div><div class="step-title">Deploy the node</div></div>
+        <div class="step-body">
+          <p>Run <code>deploy.sh</code> as root. It builds the Go binary, installs it as a systemd service, configures the firewall (UFW + fail2ban), and sets up log rotation.</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="cmd">sudo bash deploy.sh</span></div>
+          <p>The script outputs progress for each step. If any step fails, it prints an error and exits — fix the issue and re-run; it is idempotent.</p>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">4</div><div class="step-title">Verify the node is syncing</div></div>
+        <div class="step-body">
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># Check the block height is increasing</span>
+<span class="cmd">curl -s http://localhost:8545 \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'</span>
+
+<span class="comment"># Tail live logs</span>
+<span class="cmd">sudo journalctl -u gyds-fullnode -f --no-pager</span></div>
+          <div class="alert alert-info">ℹ️ A fresh full node replays the genesis and all stored blocks on first start. This takes a few seconds. Subsequent starts are instant.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">5</div><div class="step-title">Connect MetaMask or ethers.js</div></div>
+        <div class="step-body">
+          <p>Your node exposes a standard Ethereum-compatible JSON-RPC. Add it to MetaMask as a custom network:</p>
+          <ul>
+            <li><strong>Network Name:</strong> GYDS Chain</li>
+            <li><strong>RPC URL:</strong> <code>http://&lt;your-server-ip&gt;:8545</code></li>
+            <li><strong>Chain ID:</strong> 13370</li>
+            <li><strong>Currency Symbol:</strong> GYDS</li>
+          </ul>
+          <p>Or download the pre-filled connection config from your dashboard at <code>/gyds-connection-info.json</code>.</p>
+        </div>
+      </div>
+
+    </div><!-- /steps -->
+  </div><!-- /guide-full -->
+
+  <!-- ══════════════════  LITE NODE  ══════════════════════════════════ -->
+  <div class="guide" id="guide-lite">
+
+    <div class="guide-hero">
+      <div class="guide-icon">⚡</div>
+      <div>
+        <h2>Lite Node</h2>
+        <p>Downloads only block headers — roughly 95% less storage than a full node. Cannot validate full transaction history or serve archive queries. Ideal for wallets, light clients, and low-resource VPS instances that need chain awareness without storing everything.</p>
+        <div class="guide-tags">
+          <span class="tag tag-blue">Header Sync</span>
+          <span class="tag tag-green">Low Storage</span>
+          <span class="tag tag-yellow">No Archive</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="req-grid">
+      <div class="req-card"><div class="req-label">CPU</div><div class="req-val">1 vCPU</div><div class="req-note">Minimal compute needed</div></div>
+      <div class="req-card"><div class="req-label">RAM</div><div class="req-val">1 GB+</div><div class="req-note">2 GB recommended</div></div>
+      <div class="req-card"><div class="req-label">Storage</div><div class="req-val">2–5 GB SSD</div><div class="req-note">Headers only, ~95% smaller</div></div>
+    </div>
+
+    <div class="section-title">Quick Start</div>
+    <div class="quick-start">
+      <h3>Set mode to <code>lite</code> and point to a bootstrap node</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="key">GYDS_NODE_MODE</span>=<span class="val">lite</span>
+<span class="key">GYDS_BOOTSTRAP_NODES</span>=<span class="val">tcp://bootnode1.gydschain.io:30303</span>
+<span class="key">GYDS_DATA_DIR</span>=<span class="val">/var/lib/gyds-litenode</span></div>
+    </div>
+
+    <div class="section-title">Step-by-Step Guide</div>
+    <div class="steps">
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">1</div><div class="step-title">Choose a lightweight server</div></div>
+        <div class="step-body">
+          <p>A lite node can run on the cheapest VPS tier available — even a $4/month instance is sufficient for most use cases.</p>
+          <ul>
+            <li>1 vCPU, 1 GB RAM minimum</li>
+            <li>5 GB disk is plenty</li>
+            <li>Only port <strong>8545</strong> (RPC) and <strong>5000</strong> (dashboard) need to be open publicly — P2P is outbound-only</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">2</div><div class="step-title">Configure via setup wizard</div></div>
+        <div class="step-body">
+          <p>Visit <code>/setup</code> and select <strong>⚡ Lite Node</strong>. The wizard adjusts the recommended storage limit and peer settings automatically.</p>
+          <p>The most important setting: provide at least one <strong>Bootstrap Node</strong> address. Without it the lite node runs isolated and cannot sync headers from the network.</p>
+          <div class="alert alert-info">ℹ️ Lite node data is stored in a separate <code>/lite</code> subdirectory of your data dir, keeping it isolated from any full node data.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">3</div><div class="step-title">Deploy and verify</div></div>
+        <div class="step-body">
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="cmd">sudo bash deploy.sh</span>
+
+<span class="comment"># Confirm lite mode in logs</span>
+<span class="cmd">sudo journalctl -u gyds-fullnode -f | grep -i lite</span></div>
+          <div class="alert alert-warn">⚠️ <strong>Limitation:</strong> <code>eth_getBalance</code> and other state queries may be inaccurate for accounts not in the light client's local state cache. Use a full node for reliable balance checks.</div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /guide-lite -->
+
+  <!-- ══════════════════  RPC NODE  ══════════════════════════════════ -->
+  <div class="guide" id="guide-rpc">
+
+    <div class="guide-hero">
+      <div class="guide-icon">🔌</div>
+      <div>
+        <h2>RPC Node</h2>
+        <p>API-only endpoint. No block production, no P2P gossip. Reads the chain state from an existing data directory and exposes the full JSON-RPC API and dashboard. Use this when you want a dedicated read/query endpoint — e.g. a load-balanced API pool — without the overhead of a full node.</p>
+        <div class="guide-tags">
+          <span class="tag tag-blue">API Only</span>
+          <span class="tag tag-green">Low CPU</span>
+          <span class="tag tag-yellow">No Block Production</span>
+          <span class="tag tag-yellow">No P2P</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="req-grid">
+      <div class="req-card"><div class="req-label">CPU</div><div class="req-val">2+ vCPUs</div><div class="req-note">Scales with RPC traffic</div></div>
+      <div class="req-card"><div class="req-label">RAM</div><div class="req-val">2 GB+</div><div class="req-note">More RAM = better caching</div></div>
+      <div class="req-card"><div class="req-label">Storage</div><div class="req-val">Shared with Full Node</div><div class="req-note">Points to existing data dir</div></div>
+    </div>
+
+    <div class="section-title">Architecture</div>
+    <div class="step-card" style="margin-bottom:20px">
+      <div class="step-body" style="padding-top:20px">
+        <p>A common production pattern is to run <strong>one full node</strong> that produces blocks and syncs the chain, and <strong>one or more RPC nodes</strong> that read from a shared or replicated data directory:</p>
+        <div class="code-block">
+<span class="comment">┌─────────────────────────┐         ┌─────────────────────────┐</span>
+<span class="comment">│  Full Node              │         │  RPC Node (read-only)   │</span>
+<span class="comment">│  GYDS_NODE_MODE=full    │──data──▶│  GYDS_NODE_MODE=rpc     │</span>
+<span class="comment">│  Port 8545 (internal)   │  dir    │  Port 8545 (public)     │</span>
+<span class="comment">│  Port 30303 (P2P)       │         │  Port 5000 (dashboard)  │</span>
+<span class="comment">└─────────────────────────┘         └─────────────────────────┘</span></div>
+        <div class="alert alert-warn">⚠️ Point <code>GYDS_DATA_DIR</code> to the same directory as your full node only if both processes run on the same host — concurrent LevelDB access from two processes is not supported. For separate hosts, use a read replica or snapshot copy of the data.</div>
+      </div>
+    </div>
+
+    <div class="section-title">Quick Start</div>
+    <div class="quick-start">
+      <h3>Set mode to <code>rpc</code></h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="key">GYDS_NODE_MODE</span>=<span class="val">rpc</span>
+<span class="key">GYDS_DATA_DIR</span>=<span class="val">/var/lib/gyds-fullnode</span>
+<span class="key">GYDS_RPC_PORT</span>=<span class="val">8545</span>
+<span class="comment"># No GYDS_BOOTSTRAP_NODES needed — RPC node doesn't connect to peers</span></div>
+    </div>
+
+    <div class="section-title">Step-by-Step Guide</div>
+    <div class="steps">
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">1</div><div class="step-title">Ensure chain data is available</div></div>
+        <div class="step-body">
+          <p>The RPC node reads from an existing <code>GYDS_DATA_DIR</code>. Either:</p>
+          <ul>
+            <li>Run it alongside a full node on the same host (use the same data directory, but ensure LevelDB isn't opened concurrently)</li>
+            <li>Copy a snapshot of the data directory from a synced full node</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">2</div><div class="step-title">Configure and deploy</div></div>
+        <div class="step-body">
+          <p>Visit <code>/setup</code>, select <strong>🔌 RPC Node</strong>. The wizard hides P2P and firewall settings that don't apply. Save the generated <code>.env</code> then run:</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="cmd">sudo bash deploy.sh</span></div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">3</div><div class="step-title">Load balance across multiple RPC nodes</div></div>
+        <div class="step-body">
+          <p>For production API endpoints, run multiple RPC nodes behind nginx or HAProxy for high availability:</p>
+          <div class="code-block">
+<span class="comment"># /etc/nginx/conf.d/gyds-rpc.conf</span>
+<span class="cmd">upstream gyds_rpc {
+    server 10.0.0.1:8545;
+    server 10.0.0.2:8545;
+    server 10.0.0.3:8545;
+}
+server {
+    listen 80;
+    location / { proxy_pass http://gyds_rpc; }
+}</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /guide-rpc -->
+
+  <!-- ══════════════════  BOOST NODE  ══════════════════════════════════ -->
+  <div class="guide" id="guide-boost">
+
+    <div class="guide-hero">
+      <div class="guide-icon">🚀</div>
+      <div>
+        <h2>Boost Node</h2>
+        <p>High-performance validator node. Identical to a full node but with extended peer limits, aggressive bootstrap connections, and optimised block propagation. Best for validators and infrastructure providers on high-bandwidth servers (1 Gbps+).</p>
+        <div class="guide-tags">
+          <span class="tag tag-blue">Block Production</span>
+          <span class="tag tag-blue">Extended P2P</span>
+          <span class="tag tag-yellow">High Bandwidth</span>
+          <span class="tag tag-red">High Resource</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="req-grid">
+      <div class="req-card"><div class="req-label">CPU</div><div class="req-val">4+ vCPUs</div><div class="req-note">8+ for heavy validator load</div></div>
+      <div class="req-card"><div class="req-label">RAM</div><div class="req-val">8 GB+</div><div class="req-note">16 GB recommended</div></div>
+      <div class="req-card"><div class="req-label">Network</div><div class="req-val">1 Gbps+</div><div class="req-note">Low-latency connection critical</div></div>
+    </div>
+
+    <div class="section-title">Quick Start</div>
+    <div class="quick-start">
+      <h3>Set mode to <code>boost</code> with higher peer limits</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="key">GYDS_NODE_MODE</span>=<span class="val">boost</span>
+<span class="key">GYDS_MAX_PEERS</span>=<span class="val">100</span>
+<span class="key">GYDS_P2P_PORT</span>=<span class="val">30303</span>
+<span class="key">GYDS_BOOTSTRAP_NODES</span>=<span class="val">tcp://bootnode1.gydschain.io:30303,tcp://bootnode2.gydschain.io:30303</span></div>
+    </div>
+
+    <div class="section-title">Step-by-Step Guide</div>
+    <div class="steps">
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">1</div><div class="step-title">Choose a high-performance server</div></div>
+        <div class="step-body">
+          <p>Boost nodes are most effective on bare-metal or high-tier VPS instances with guaranteed CPU and low-latency networking. Recommended specs:</p>
+          <ul>
+            <li>4–8 dedicated vCPUs (not shared/burstable)</li>
+            <li>16 GB RAM for optimal LevelDB caching</li>
+            <li>NVMe SSD with &gt;500 MB/s sequential write</li>
+            <li>1 Gbps unmetered or very high-cap bandwidth</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">2</div><div class="step-title">Configure multiple bootstrap peers</div></div>
+        <div class="step-body">
+          <p>The boost node connects to <strong>all</strong> configured bootstrap peers simultaneously on startup. Provide as many as possible for the fastest initial sync and best block propagation:</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="key">GYDS_BOOTSTRAP_NODES</span>=<span class="val">tcp://node1.gydschain.io:30303,tcp://node2.gydschain.io:30303,tcp://node3.gydschain.io:30303</span></div>
+          <p>In the setup wizard, enter one peer per line in the Bootstrap Peers field.</p>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">3</div><div class="step-title">Deploy and tune OS settings</div></div>
+        <div class="step-body">
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="cmd">sudo bash deploy.sh</span>
+
+<span class="comment"># Increase file descriptor limits for high peer counts</span>
+<span class="cmd">echo "gyds-fullnode soft nofile 65536" | sudo tee -a /etc/security/limits.conf
+echo "gyds-fullnode hard nofile 65536" | sudo tee -a /etc/security/limits.conf</span>
+
+<span class="comment"># Optimise TCP for high peer counts</span>
+<span class="cmd">echo "net.core.somaxconn=1024" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /guide-boost -->
+
+  <!-- ══════════════════  GENESIS NODE  ══════════════════════════════════ -->
+  <div class="guide" id="guide-genesis">
+
+    <div class="guide-hero">
+      <div class="guide-icon">🌱</div>
+      <div>
+        <h2>Genesis Node</h2>
+        <p>Network bootstrapper and initial validator. Starts the chain from block 0 (or inherits existing chain state) and seeds the network by accepting P2P connections. Other nodes connect to this node as their first bootstrap peer. Run this to start a new GYDS network or to act as the first always-on peer in a private network.</p>
+        <div class="guide-tags">
+          <span class="tag tag-green">Network Bootstrap</span>
+          <span class="tag tag-blue">Initial Validator</span>
+          <span class="tag tag-yellow">Must Be Always-On</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="req-grid">
+      <div class="req-card"><div class="req-label">Uptime</div><div class="req-val">99.9%+</div><div class="req-note">Other nodes depend on you</div></div>
+      <div class="req-card"><div class="req-label">Network</div><div class="req-val">Public IP</div><div class="req-note">Static IP strongly recommended</div></div>
+      <div class="req-card"><div class="req-label">Storage</div><div class="req-val">50 GB+ SSD</div><div class="req-note">Same as full node</div></div>
+    </div>
+
+    <div class="section-title">Quick Start</div>
+    <div class="quick-start">
+      <h3>Start the genesis node, then share your connection info</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="key">GYDS_NODE_MODE</span>=<span class="val">genesis</span>
+<span class="key">GYDS_P2P_PORT</span>=<span class="val">30303</span>
+<span class="key">GYDS_DATA_DIR</span>=<span class="val">/var/lib/gyds-genesis</span>
+<span class="comment"># No GYDS_BOOTSTRAP_NODES — genesis node IS the bootstrap node</span></div>
+    </div>
+
+    <div class="section-title">Step-by-Step Guide</div>
+    <div class="steps">
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">1</div><div class="step-title">Inspect the genesis block</div></div>
+        <div class="step-body">
+          <p>The genesis block defines the initial chain state — validators, pre-funded accounts, and chain parameters. View it with:</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="cmd">./gyds-fullnode genesis</span></div>
+          <p>The genesis hash is deterministic — every node on the same network must produce the same genesis hash, or they cannot connect to each other.</p>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">2</div><div class="step-title">Configure and deploy</div></div>
+        <div class="step-body">
+          <p>Visit <code>/setup</code>, select <strong>🌱 Genesis Node</strong>. The wizard pre-fills a fresh data directory and hides bootstrap node fields (not needed).</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="cmd">sudo bash deploy.sh</span></div>
+          <div class="alert alert-ok">✓ The genesis node prints its P2P address and a link to <code>/gyds-connection-info.json</code> in the startup log. Share this with all nodes that want to join your network.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">3</div><div class="step-title">Share connection info with other nodes</div></div>
+        <div class="step-body">
+          <p>Other nodes need your genesis node's address as their <code>GYDS_BOOTSTRAP_NODES</code> value:</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># On joining nodes, set this in their .env:</span>
+<span class="key">GYDS_BOOTSTRAP_NODES</span>=<span class="val">tcp://&lt;your-genesis-node-ip&gt;:30303</span></div>
+          <p>You can also download the pre-filled connection config from your genesis node's dashboard at <code>/gyds-connection-info.json</code>.</p>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">4</div><div class="step-title">Monitor and maintain</div></div>
+        <div class="step-body">
+          <p>Because all new nodes connect to the genesis node first, its uptime directly affects network health. Set up monitoring and alerting:</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># Health check endpoint — returns {"status":"ok","height":N}</span>
+<span class="cmd">watch -n 5 curl -s http://localhost:8545/health</span>
+
+<span class="comment"># Set up a cron health-check email alert</span>
+<span class="cmd">echo "*/5 * * * * curl -f http://localhost:8545/health || mail -s 'GYDS genesis node down' admin@example.com" | crontab -</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /guide-genesis -->
+
+  <!-- ══════════════════  SYNC FULL NODE  ══════════════════════════════════ -->
+  <div class="guide" id="guide-sync">
+
+    <div class="guide-hero">
+      <div class="guide-icon">🔄</div>
+      <div>
+        <h2>Sync Full Node</h2>
+        <p>Actively pulls the complete chain history from configured bootstrap peers. Behaves like a full node once synced: stores all blocks, serves the full JSON-RPC API, and participates in PoS block production. Requires at least one bootstrap peer to sync from.</p>
+        <div class="guide-tags">
+          <span class="tag tag-blue">Full Sync</span>
+          <span class="tag tag-blue">Block Production</span>
+          <span class="tag tag-yellow">Needs Bootstrap Peers</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="req-grid">
+      <div class="req-card"><div class="req-label">CPU</div><div class="req-val">2+ vCPUs</div><div class="req-note">4+ for faster sync</div></div>
+      <div class="req-card"><div class="req-label">RAM</div><div class="req-val">4 GB+</div><div class="req-note">8 GB recommended</div></div>
+      <div class="req-card"><div class="req-label">Bootstrap</div><div class="req-val">Required</div><div class="req-note">At least 1 peer needed</div></div>
+    </div>
+
+    <div class="section-title">Quick Start</div>
+    <div class="quick-start">
+      <h3>Set mode to <code>sync</code> and configure bootstrap peers</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="key">GYDS_NODE_MODE</span>=<span class="val">sync</span>
+<span class="key">GYDS_BOOTSTRAP_NODES</span>=<span class="val">tcp://bootnode1.gydschain.io:30303</span>
+<span class="key">GYDS_DATA_DIR</span>=<span class="val">/var/lib/gyds-fullnode</span>
+<span class="key">GYDS_P2P_PORT</span>=<span class="val">30303</span>
+<span class="key">GYDS_MAX_PEERS</span>=<span class="val">25</span></div>
+    </div>
+
+    <div class="section-title">Step-by-Step Guide</div>
+    <div class="steps">
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">1</div><div class="step-title">Obtain bootstrap node addresses</div></div>
+        <div class="step-body">
+          <p>You need the address of at least one existing GYDS node to sync from. Options:</p>
+          <ul>
+            <li>Download <code>gyds-connection-info.json</code> from an existing node's dashboard and use the P2P address</li>
+            <li>Use official bootnodes if your network has published them</li>
+            <li>Ask the genesis node operator for their bootstrap address</li>
+          </ul>
+          <p>The P2P address format is: <code>tcp://&lt;ip-or-hostname&gt;:&lt;p2p-port&gt;</code></p>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">2</div><div class="step-title">Configure via setup wizard</div></div>
+        <div class="step-body">
+          <p>Visit <code>/setup</code>, select <strong>🔄 Sync Full Node</strong>. Enter your bootstrap peer addresses in the Bootstrap Peers field (one per line). Complete the remaining steps and save your <code>.env</code>.</p>
+          <div class="alert alert-warn">⚠️ Without bootstrap peers, the sync node starts but logs a warning and cannot pull remote chain data. Add peers and restart.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">3</div><div class="step-title">Deploy and monitor sync progress</div></div>
+        <div class="step-body">
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="cmd">sudo bash deploy.sh</span>
+
+<span class="comment"># Watch block height increase as the node syncs</span>
+<span class="cmd">watch -n 5 'curl -s http://localhost:8545 \
+  -X POST -H "Content-Type: application/json" \
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(\"Height:\", int(d[\"result\"],16))"'</span></div>
+          <div class="alert alert-info">ℹ️ Sync speed depends on network latency to bootstrap peers and disk I/O speed. A fresh node with a fast SSD and nearby peers can sync thousands of blocks per minute.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">4</div><div class="step-title">After sync — operating as a full node</div></div>
+        <div class="step-body">
+          <p>Once the sync node has caught up to the network's head, it behaves exactly like a full node:</p>
+          <ul>
+            <li>Participates in PoS block production</li>
+            <li>Serves the full JSON-RPC API and dashboard</li>
+            <li>Gossips new blocks and transactions via P2P</li>
+          </ul>
+          <p>You can switch the mode to <code>full</code> in <code>.env</code> and restart if you want to be explicit about the role after sync is complete.</p>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /guide-sync -->
+
+  <!-- Mode comparison table -->
+  <div style="margin-top:48px">
+    <div class="section-title">Mode Comparison</div>
+    <div style="overflow-x:auto">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Mode</th>
+            <th>Block Production</th>
+            <th>P2P</th>
+            <th>Full History</th>
+            <th>RPC</th>
+            <th>Storage</th>
+            <th>Best For</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>⛓ Full</strong></td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td>~50 GB+</td>
+            <td>Most operators</td>
+          </tr>
+          <tr>
+            <td><strong>⚡ Lite</strong></td>
+            <td class="no">✗</td>
+            <td class="yes">✓ outbound</td>
+            <td class="no">Headers only</td>
+            <td class="yes">✓ partial</td>
+            <td>~2–5 GB</td>
+            <td>Wallets, light clients</td>
+          </tr>
+          <tr>
+            <td><strong>🔌 RPC</strong></td>
+            <td class="no">✗</td>
+            <td class="no">✗</td>
+            <td class="yes">✓ (from disk)</td>
+            <td class="yes">✓</td>
+            <td>Shared</td>
+            <td>API / query endpoint</td>
+          </tr>
+          <tr>
+            <td><strong>🚀 Boost</strong></td>
+            <td class="yes">✓</td>
+            <td class="yes">✓ extended</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td>~50 GB+</td>
+            <td>Validators, infra</td>
+          </tr>
+          <tr>
+            <td><strong>🌱 Genesis</strong></td>
+            <td class="yes">✓</td>
+            <td class="yes">✓ inbound</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td>~50 GB+</td>
+            <td>Network bootstrap</td>
+          </tr>
+          <tr>
+            <td><strong>🔄 Sync</strong></td>
+            <td class="yes">✓ after sync</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓ after sync</td>
+            <td class="yes">✓</td>
+            <td>~50 GB+</td>
+            <td>Joining the network</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="btn-row" style="justify-content:center;margin-top:40px">
+    <a href="/setup" class="btn btn-primary">⚙ Open Setup Wizard</a>
+    <a href="/" class="btn btn-outline">← Back to Dashboard</a>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function showGuide(mode, btn) {
+  document.querySelectorAll('.guide').forEach(g => g.classList.remove('active'));
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  const guide = document.getElementById('guide-' + mode);
+  if (guide) guide.classList.add('active');
+  if (btn) btn.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function copyCode(btn) {
+  const block = btn.closest('.code-block');
+  // Extract text content without the copy button text
+  const clone = block.cloneNode(true);
+  clone.querySelectorAll('.copy-btn').forEach(b => b.remove());
+  const text = clone.innerText || clone.textContent;
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    btn.textContent = '✓';
+    setTimeout(() => btn.textContent = 'copy', 1500);
+    showToast('Copied!');
+  }).catch(() => {});
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// Open guide from URL hash
+const hash = location.hash.replace('#', '');
+if (['full','lite','rpc','boost','genesis','sync'].includes(hash)) {
+  const btn = document.querySelector(`.mode-tab[onclick*="'${hash}'"]`);
+  showGuide(hash, btn);
+}
+</script>
+</body>
+</html>

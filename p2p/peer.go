@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -127,6 +128,17 @@ func (p *Peer) pingLoop() {
 	}
 }
 
+// GetBlocksPayload is the wire payload for a MsgGetBlocks request.
+type GetBlocksPayload struct {
+	From  uint64 `json:"from"`
+	Count int    `json:"count"`
+}
+
+// BlockFetcher is called by the server when a peer requests a block range.
+// It should return the JSON-marshalled []Block slice for blocks [from, from+count).
+// Returning nil or an empty payload causes no MsgBlocks reply to be sent.
+type BlockFetcher func(from uint64, count int) json.RawMessage
+
 type Server struct {
 	mu        sync.RWMutex
 	peers     map[string]*Peer
@@ -134,6 +146,7 @@ type Server struct {
 	chainID   int64
 	height    func() uint64
 	onMsg     func(*Peer, Message)
+	blockProv BlockFetcher
 	quit      chan struct{}
 }
 
@@ -149,6 +162,23 @@ func NewServer(port int, chainID int64, height func() uint64) *Server {
 
 func (s *Server) OnMessage(fn func(*Peer, Message)) {
 	s.onMsg = fn
+}
+
+// SetBlockProvider registers a callback used to serve MsgGetBlocks requests from
+// remote peers. The callback receives the start block number and desired count and
+// must return JSON-marshalled block data (typically a []Block array). If not set,
+// incoming MsgGetBlocks requests are silently ignored.
+func (s *Server) SetBlockProvider(fn BlockFetcher) {
+	s.mu.Lock()
+	s.blockProv = fn
+	s.mu.Unlock()
+}
+
+// RequestBlocks broadcasts a MsgGetBlocks message to all connected peers asking
+// for `count` blocks starting at block number `from`.
+func (s *Server) RequestBlocks(from uint64, count int) {
+	payload, _ := json.Marshal(GetBlocksPayload{From: from, Count: count})
+	s.Broadcast(Message{Type: MsgGetBlocks, Payload: payload})
 }
 
 func (s *Server) Start() error {
@@ -197,7 +227,25 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 	case MsgHandshake:
 		var info PeerInfo
 		if err := json.Unmarshal(msg.Payload, &info); err == nil {
+			peer.mu.Lock()
 			peer.info = &info
+			peer.mu.Unlock()
+		}
+	case MsgGetBlocks:
+		// Serve a block range to the requesting peer.
+		s.mu.RLock()
+		prov := s.blockProv
+		s.mu.RUnlock()
+		if prov != nil {
+			var req GetBlocksPayload
+			if err := json.Unmarshal(msg.Payload, &req); err == nil && req.Count > 0 {
+				if req.Count > 200 {
+					req.Count = 200 // cap to prevent abuse
+				}
+				if payload := prov(req.From, req.Count); len(payload) > 0 {
+					peer.Send(Message{Type: MsgBlocks, Payload: payload})
+				}
+			}
 		}
 	default:
 		if s.onMsg != nil {
@@ -220,7 +268,22 @@ func (s *Server) PeerCount() int {
 	return len(s.peers)
 }
 
+// NormalizeAddr strips the optional tcp:// scheme from a peer address so it
+// can be dialled directly by net.Dial. Addresses are assumed to already be
+// normalised when they arrive from config.FromEnv (which strips the scheme at
+// parse time), but callers that construct addresses ad-hoc can use this helper.
+func NormalizeAddr(addr string) string {
+	addr = strings.TrimPrefix(addr, "tcp://")
+	addr = strings.TrimPrefix(addr, "TCP://")
+	return strings.TrimSpace(addr)
+}
+
+// ConnectTo dials a bootstrap peer. addr must be in host:port form (no scheme).
 func (s *Server) ConnectTo(addr string) error {
+	addr = NormalizeAddr(addr)
+	if addr == "" {
+		return fmt.Errorf("empty peer address")
+	}
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", addr, err)
@@ -230,6 +293,30 @@ func (s *Server) ConnectTo(addr string) error {
 	s.peers[addr] = peer
 	s.mu.Unlock()
 	peer.Start()
+	// Send our own handshake so the remote side learns our height and mode.
+	handshake, _ := json.Marshal(PeerInfo{
+		ChainID:  s.chainID,
+		Height:   s.height(),
+		NodeMode: "full",
+		Version:  "1.0.0",
+	})
+	peer.Send(Message{Type: MsgHandshake, Payload: handshake})
 	log.Info().Str("addr", addr).Msg("connected to bootstrap peer")
 	return nil
+}
+
+// MaxPeerHeight returns the highest block height reported by any connected peer,
+// or 0 if no peers have completed a handshake yet.
+func (s *Server) MaxPeerHeight() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var max uint64
+	for _, p := range s.peers {
+		p.mu.Lock()
+		if p.info != nil && p.info.Height > max {
+			max = p.info.Height
+		}
+		p.mu.Unlock()
+	}
+	return max
 }

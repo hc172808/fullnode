@@ -149,6 +149,7 @@ func (s *Server) setupDashboardRoutes() {
         admin.HandleFunc("/db/tables/{table}/records/{key}", s.requireAdminSession(s.handleDBDeleteRecord)).Methods("DELETE")
 
         r.HandleFunc("/setup", s.handleSetupPage).Methods("GET")
+        r.HandleFunc("/guides", s.handleGuidesPage).Methods("GET")
 
         r.Use(cors)
         s.dashRouter = r

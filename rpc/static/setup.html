@@ -224,17 +224,40 @@
       </div>
       <div class="field" style="margin-top:18px">
         <label>Node Mode</label>
-        <div class="radio-cards">
+        <div class="radio-cards" style="grid-template-columns:1fr 1fr 1fr">
           <label class="radio-card selected" id="modeFull" onclick="selectMode('full',this)">
             <input type="radio" name="nodeMode" value="full" checked />
             <div class="radio-card-title">⛓ Full Node</div>
-            <div class="radio-card-desc">Stores the complete chain history. Recommended for most operators.</div>
+            <div class="radio-card-desc">Complete chain history, P2P, PoS block production, and RPC. Recommended for most operators.</div>
           </label>
           <label class="radio-card" id="modeLite" onclick="selectMode('lite',this)">
             <input type="radio" name="nodeMode" value="lite" />
             <div class="radio-card-title">⚡ Lite Node</div>
-            <div class="radio-card-desc">Downloads only block headers. Lower storage, faster sync.</div>
+            <div class="radio-card-desc">Header-only sync. ~95% less storage than a full node. Ideal for wallets and light clients.</div>
           </label>
+          <label class="radio-card" id="modeRpc" onclick="selectMode('rpc',this)">
+            <input type="radio" name="nodeMode" value="rpc" />
+            <div class="radio-card-title">🔌 RPC Node</div>
+            <div class="radio-card-desc">API-only endpoint. No block production, no P2P. Best for dedicated query servers.</div>
+          </label>
+          <label class="radio-card" id="modeBoost" onclick="selectMode('boost',this)">
+            <input type="radio" name="nodeMode" value="boost" />
+            <div class="radio-card-title">🚀 Boost Node</div>
+            <div class="radio-card-desc">High-performance validator with extended peer limits. For high-bandwidth infrastructure.</div>
+          </label>
+          <label class="radio-card" id="modeGenesis" onclick="selectMode('genesis',this)">
+            <input type="radio" name="nodeMode" value="genesis" />
+            <div class="radio-card-title">🌱 Genesis Node</div>
+            <div class="radio-card-desc">Network bootstrapper and initial validator. Share your connection info for others to join.</div>
+          </label>
+          <label class="radio-card" id="modeSync" onclick="selectMode('sync',this)">
+            <input type="radio" name="nodeMode" value="sync" />
+            <div class="radio-card-title">🔄 Sync Full Node</div>
+            <div class="radio-card-desc">Pulls complete chain state from bootstrap peers. Requires BOOTSTRAP_NODES configured.</div>
+          </label>
+        </div>
+        <div class="field-hint" id="modeHint" style="margin-top:10px;padding:10px 12px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:8px">
+          ⛓ <strong>Full Node</strong> — stores the complete chain, participates in block production via PoS, and serves the full JSON-RPC API. Requires ~5–10 GB initially, growing ~1–3 GB/month. Recommended for most node operators.
         </div>
       </div>
     </div>
@@ -612,11 +635,24 @@ function goStep(n) {
 }
 
 // ── Step 1: Node mode ─────────────────────────────────────────────────────────
+const MODE_HINTS = {
+  full:    '⛓ <strong>Full Node</strong> — stores the complete chain, participates in block production via PoS, and serves the full JSON-RPC API. Requires ~5–10 GB initially, growing ~1–3 GB/month. Recommended for most node operators.',
+  lite:    '⚡ <strong>Lite Node</strong> — downloads only block headers (~95% less storage). Cannot validate full tx history. Ideal for wallets, light clients, and low-resource VPS instances.',
+  rpc:     '🔌 <strong>RPC Node</strong> — API-only endpoint. No block production, no P2P gossip. Reads existing chain state from disk and exposes JSON-RPC + dashboard. Use for dedicated query/read endpoints.',
+  boost:   '🚀 <strong>Boost Node</strong> — high-performance validator with extended peer limits and aggressive bootstrap connections. Best for validators and infra providers on high-bandwidth servers.',
+  genesis: '🌱 <strong>Genesis Node</strong> — network bootstrapper and initial validator. Starts the chain from block 0 and seeds the network. Other nodes use your IP:P2PPort as their first bootstrap peer.',
+  sync:    '🔄 <strong>Sync Full Node</strong> — actively pulls the complete chain history from configured bootstrap peers. Once fully synced, behaves like a full node. Requires at least one BOOTSTRAP_NODES entry.',
+};
+
 function selectMode(mode, el) {
   nodeMode = mode;
-  document.getElementById('modeFull').classList.remove('selected');
-  document.getElementById('modeLite').classList.remove('selected');
+  ['modeFull','modeLite','modeRpc','modeBoost','modeGenesis','modeSync'].forEach(id => {
+    const card = document.getElementById(id);
+    if (card) card.classList.remove('selected');
+  });
   el.classList.add('selected');
+  const hint = document.getElementById('modeHint');
+  if (hint && MODE_HINTS[mode]) hint.innerHTML = MODE_HINTS[mode];
 }
 
 // ── Step 2: Wallet ────────────────────────────────────────────────────────────

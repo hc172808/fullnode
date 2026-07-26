@@ -94,7 +94,17 @@ func FromEnv() *Config {
 		cfg.LogLevel = v
 	}
 	if v := os.Getenv("GYDS_BOOTSTRAP_NODES"); v != "" {
-		cfg.P2PBootstrap = []string{v}
+		// Support comma-separated list of peers.
+		// Strip the optional tcp:// scheme before storing so addresses are
+		// safe to pass directly to net.Dial.
+		for _, raw := range strings.Split(v, ",") {
+			addr := strings.TrimSpace(raw)
+			addr = strings.TrimPrefix(addr, "tcp://")
+			addr = strings.TrimPrefix(addr, "TCP://")
+			if addr != "" {
+				cfg.P2PBootstrap = append(cfg.P2PBootstrap, addr)
+			}
+		}
 	}
 	if v := os.Getenv("GYDS_BLOCK_TIME"); v != "" {
 		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
