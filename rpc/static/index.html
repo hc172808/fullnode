@@ -441,14 +441,19 @@
         <!-- ── RECEIVE ── -->
         <div id="pane-receive" class="tab-pane">
           <div class="qr-wrap">
-            <div id="qrCanvas"></div>
-            <div style="text-align:center">
-              <div style="font-family:var(--mono);font-size:13px;word-break:break-all;margin-bottom:8px" id="receiveAddr">—</div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Receive GYDS</div>
+            <!-- White frame keeps QR scannable regardless of dark theme -->
+            <div style="background:#fff;border-radius:14px;padding:14px;line-height:0;box-shadow:0 4px 28px rgba(0,0,0,.45)">
+              <div id="qrCanvas"></div>
+            </div>
+            <div style="text-align:center;max-width:300px">
+              <div style="font-family:var(--mono);font-size:11px;color:var(--muted);word-break:break-all;margin-bottom:10px;line-height:1.5" id="receiveAddr">—</div>
               <button class="btn btn-outline btn-sm" onclick="copyAddr()">⧉ Copy Address</button>
             </div>
-          </div>
-          <div class="alert alert-info mt-4" style="margin-top:16px">
-            Share this address to receive GYDS. Chain ID: <strong>13370</strong> — make sure the sender is on GYDS Chain.
+            <div style="font-size:12px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:6px">
+              <span style="width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block"></span>
+              GYDS Chain · ID 13370
+            </div>
           </div>
         </div>
 
@@ -1078,18 +1083,19 @@ async function loadHistory() {
   }
 }
 
-// ── QR Code (real, via qrcode library) ───────────────────────────────────────
+// ── QR Code ───────────────────────────────────────────────────────────────────
 function drawQR(address) {
   const el = document.getElementById('qrCanvas');
   el.innerHTML = ''; // clear previous
   if (typeof QRCode === 'undefined') return;
+  // Dark-on-white for maximum scanner compatibility across all phone cameras.
   new QRCode(el, {
-    text:            address,
-    width:           180,
-    height:          180,
-    colorDark:       '#10b981',
-    colorLight:      '#111827',
-    correctLevel:    QRCode.CorrectLevel.M,
+    text:         address,
+    width:        240,
+    height:       240,
+    colorDark:    '#0f172a',
+    colorLight:   '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
   });
 }
 
