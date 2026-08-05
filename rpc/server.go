@@ -137,6 +137,9 @@ func (s *Server) setupDashboardRoutes() {
         api.HandleFunc("/token-info", s.handleTokenInfo).Methods("GET")
         api.HandleFunc("/tokens/{address}", s.handleTokenBalances).Methods("GET")
         api.HandleFunc("/node-id", s.handleNodeIDInfo).Methods("GET")
+        api.HandleFunc("/lock/status", s.handleLockStatus).Methods("GET")
+        api.HandleFunc("/lock/set", s.handleLockSet).Methods("POST", "OPTIONS")
+        api.HandleFunc("/lock/verify", s.handleLockVerify).Methods("POST", "OPTIONS")
 
         admin := r.PathPrefix("/admin").Subrouter()
         admin.HandleFunc("/login", s.handleAdminLoginPage).Methods("GET")

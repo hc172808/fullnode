@@ -133,7 +133,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo ""
   echo "  Option 2 — use the web setup wizard:"
   echo "    go run . start"
-  echo "    Then open: http://localhost:8545/setup"
+  echo "    Then open: http://localhost:${GYDS_DASHBOARD_PORT:-8080}/setup"
   echo ""
   exit 1
 fi
@@ -146,6 +146,7 @@ set +a
 # Apply defaults for anything not in .env
 GYDS_CHAIN_ID="${GYDS_CHAIN_ID:-13370}"
 GYDS_NODE_MODE="${GYDS_NODE_MODE:-full}"
+GYDS_DASHBOARD_PORT="${GYDS_DASHBOARD_PORT:-8080}"
 GYDS_RPC_PORT="${GYDS_RPC_PORT:-8545}"
 GYDS_WS_PORT="${GYDS_WS_PORT:-8546}"
 GYDS_P2P_PORT="${GYDS_P2P_PORT:-30303}"
@@ -159,6 +160,7 @@ GYDS_ENABLE_FIREWALL="${GYDS_ENABLE_FIREWALL:-true}"
 
 log "Chain ID       : $GYDS_CHAIN_ID"
 log "Node mode      : $GYDS_NODE_MODE"
+log "Dashboard port : $GYDS_DASHBOARD_PORT"
 log "RPC port       : $GYDS_RPC_PORT"
 log "P2P port       : $GYDS_P2P_PORT"
 log "Data directory : $GYDS_DATA_DIR"
@@ -311,10 +313,11 @@ elif [[ $EUID -ne 0 ]]; then
   warn "Firewall configuration requires root. Run: sudo bash setup-firewall.sh"
 elif command -v ufw &>/dev/null; then
   bash "${SCRIPT_DIR}/setup-firewall.sh" \
-    --ssh-port "${GYDS_SSH_PORT:-22}" \
-    --rpc-port "$GYDS_RPC_PORT" \
-    --ws-port  "$GYDS_WS_PORT" \
-    --p2p-port "$GYDS_P2P_PORT"
+    --ssh-port       "${GYDS_SSH_PORT:-22}" \
+    --dashboard-port "$GYDS_DASHBOARD_PORT" \
+    --rpc-port       "$GYDS_RPC_PORT" \
+    --ws-port        "$GYDS_WS_PORT" \
+    --p2p-port       "$GYDS_P2P_PORT"
   log "✓ Firewall rules applied"
 else
   warn "ufw not found — install with: sudo apt install ufw"
@@ -435,11 +438,11 @@ echo -e "║        ✓  GYDS Chain Full Node  —  Deployed Successfully      �
 echo -e "╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  ${BOLD}Endpoints${NC}"
+echo -e "  Dashboard :  http://$(hostname -I | awk '{print $1}'):${GYDS_DASHBOARD_PORT}/"
+echo -e "  Setup     :  http://$(hostname -I | awk '{print $1}'):${GYDS_DASHBOARD_PORT}/setup"
 echo -e "  JSON-RPC  :  http://$(hostname -I | awk '{print $1}'):${GYDS_RPC_PORT}/"
 echo -e "  WebSocket :  ws://$(hostname -I | awk '{print $1}'):${GYDS_WS_PORT}/"
 echo -e "  P2P       :  $(hostname -I | awk '{print $1}'):${GYDS_P2P_PORT}"
-echo -e "  Dashboard :  http://$(hostname -I | awk '{print $1}'):${GYDS_RPC_PORT}/"
-echo -e "  Setup     :  http://$(hostname -I | awk '{print $1}'):${GYDS_RPC_PORT}/setup"
 echo ""
 echo -e "  ${BOLD}Useful commands${NC}"
 echo -e "  Status   :  sudo systemctl status gyds-fullnode"

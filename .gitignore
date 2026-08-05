@@ -1,6 +1,6 @@
-# Runtime data — never commit LevelDB or admin state
-data/state.db/
-data/admin/
+# Runtime data — never commit chain state, LevelDB files, or admin secrets
+data/
+
 
 # Build output
 gyds-fullnode

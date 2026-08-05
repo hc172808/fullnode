@@ -16,6 +16,7 @@
 set -euo pipefail
 
 SSH_PORT="${SSH_PORT:-22}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
 RPC_PORT="${RPC_PORT:-8545}"
 WS_PORT="${WS_PORT:-8546}"
 P2P_PORT="${P2P_PORT:-30303}"
@@ -23,10 +24,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --ssh-port) SSH_PORT="$2"; shift 2 ;;
-    --rpc-port) RPC_PORT="$2"; shift 2 ;;
-    --ws-port)  WS_PORT="$2";  shift 2 ;;
-    --p2p-port) P2P_PORT="$2"; shift 2 ;;
+    --ssh-port)       SSH_PORT="$2";       shift 2 ;;
+    --dashboard-port) DASHBOARD_PORT="$2"; shift 2 ;;
+    --rpc-port)       RPC_PORT="$2";       shift 2 ;;
+    --ws-port)        WS_PORT="$2";        shift 2 ;;
+    --p2p-port)       P2P_PORT="$2";       shift 2 ;;
     --status)
       ufw status numbered
       for j in gyds-rpc-flood gyds-rpc-badrpc gyds-scan sshd recidive; do
@@ -51,13 +53,14 @@ log "Applying UFW firewall rules..."
 ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
-ufw limit   "${SSH_PORT}"/tcp   comment "SSH (rate-limited)"
-ufw allow   80/tcp               comment "HTTP"
-ufw allow   443/tcp              comment "HTTPS"
-ufw allow   "${RPC_PORT}"/tcp    comment "GYDS RPC"
-ufw allow   "${WS_PORT}"/tcp     comment "GYDS WebSocket"
-ufw allow   "${P2P_PORT}"/tcp    comment "GYDS P2P"
-ufw allow   "${P2P_PORT}"/udp    comment "GYDS P2P UDP"
+ufw limit   "${SSH_PORT}"/tcp        comment "SSH (rate-limited)"
+ufw allow   80/tcp                   comment "HTTP"
+ufw allow   443/tcp                  comment "HTTPS"
+ufw allow   "${DASHBOARD_PORT}"/tcp  comment "GYDS Dashboard"
+ufw allow   "${RPC_PORT}"/tcp        comment "GYDS RPC"
+ufw allow   "${WS_PORT}"/tcp         comment "GYDS WebSocket"
+ufw allow   "${P2P_PORT}"/tcp        comment "GYDS P2P"
+ufw allow   "${P2P_PORT}"/udp        comment "GYDS P2P UDP"
 ufw allow   51820/udp            comment "WireGuard VPN"
 for port in 23 2375 3306 5432 6379 27017; do
   ufw deny ${port}/tcp comment "Block common attack port" 2>/dev/null || true

@@ -208,9 +208,90 @@
     .flex-between { display: flex; align-items: center; justify-content: space-between; }
     .gap-2 { gap: 8px; }
     .hidden { display: none !important; }
+
+    /* ── Lock overlay ── */
+    #lockOverlay {
+      position: fixed; inset: 0; background: var(--bg);
+      z-index: 20000; display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .lock-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+      padding: 40px 36px; width: 100%; max-width: 400px; text-align: center;
+      box-shadow: 0 24px 80px rgba(0,0,0,.6);
+    }
+    .lock-icon { font-size: 44px; margin-bottom: 16px; line-height: 1; }
+    .lock-card h2 { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+    .lock-card p { color: var(--muted); font-size: 13px; margin-bottom: 24px; line-height: 1.6; }
+    .lock-card .field { text-align: left; margin-bottom: 14px; }
+    .lock-timeout-bar {
+      height: 3px; background: var(--border); border-radius: 3px;
+      margin-top: 20px; overflow: hidden;
+    }
+    .lock-timeout-fill {
+      height: 100%; background: var(--accent); border-radius: 3px;
+      transition: width 1s linear;
+    }
+    .lock-timeout-label { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    #lockAttemptMsg { font-size: 12px; color: var(--danger); margin-top: 8px; min-height: 18px; }
+
+    /* ── Add-to-wallet card on entry screen ── */
+    .add-wallet-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 20px 24px; margin-bottom: 20px;
+    }
+    .add-wallet-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .add-wallet-card p { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+    .add-wallet-row { display: flex; gap: 8px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
+
+<!-- ── Dashboard PIN Lock Overlay ─────────────────────────────────────────── -->
+<div id="lockOverlay">
+
+  <!-- Set PIN (first time) -->
+  <div id="lockSetPin" class="lock-card">
+    <div class="lock-icon">🔒</div>
+    <h2>Protect Your Dashboard</h2>
+    <p>Set a PIN to lock your private keys from unauthorised viewers. You'll be asked for it every time the dashboard opens or after 5 minutes of inactivity.</p>
+    <div class="field">
+      <label>New PIN (4 – 16 characters)</label>
+      <input type="password" id="setPinA" placeholder="Enter PIN" autocomplete="new-password"
+             onkeydown="if(event.key==='Enter')document.getElementById('setPinB').focus()" />
+    </div>
+    <div class="field">
+      <label>Confirm PIN</label>
+      <input type="password" id="setPinB" placeholder="Repeat PIN" autocomplete="new-password"
+             onkeydown="if(event.key==='Enter')doSetPin()" />
+    </div>
+    <div id="setPinErr" style="font-size:12px;color:var(--danger);min-height:18px;margin-bottom:12px"></div>
+    <button class="btn btn-primary btn-full" onclick="doSetPin()">Set PIN &amp; Unlock →</button>
+    <p style="font-size:11px;color:var(--muted);margin-top:14px;margin-bottom:0">
+      PIN is hashed and stored only in your browser. It cannot be recovered — use something you won't forget.
+    </p>
+  </div>
+
+  <!-- Enter PIN (locked) -->
+  <div id="lockEnterPin" class="lock-card hidden">
+    <div class="lock-icon">🔐</div>
+    <h2>Dashboard Locked</h2>
+    <p>Enter your PIN to view keys and wallet details.</p>
+    <div class="field">
+      <input type="password" id="enterPin" placeholder="Enter PIN" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter')doUnlock()" style="text-align:center;font-size:18px;letter-spacing:.15em" />
+    </div>
+    <div id="lockAttemptMsg"></div>
+    <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="doUnlock()">Unlock →</button>
+    <div class="lock-timeout-bar" id="lockBar" style="display:none">
+      <div class="lock-timeout-fill" id="lockBarFill" style="width:100%"></div>
+    </div>
+    <div class="lock-timeout-label" id="lockTimerLabel"></div>
+    <button class="btn btn-outline btn-sm" style="margin-top:18px;font-size:11px;opacity:.6"
+            onclick="confirmClearPin()">Forgot PIN? Reset (clears saved wallet)</button>
+  </div>
+
+</div>
 
 <!-- Header -->
 <header class="header">
@@ -271,6 +352,21 @@
 
   <!-- ── Entry Screen (no wallet loaded) ── -->
   <div id="entryScreen">
+
+    <!-- One-click Add GYDS Chain to External Wallet -->
+    <div class="add-wallet-card">
+      <h3>🔗 Add GYDS Chain to Your Wallet</h3>
+      <p>One click adds GYDS Chain (ID 13370) to MetaMask, Trust Wallet, or any EVM-compatible browser wallet.</p>
+      <div id="entryConnectAlert" style="display:none;margin-bottom:10px"></div>
+      <div class="add-wallet-row">
+        <button class="wallet-pill" onclick="quickAddChain('MetaMask', this)">🦊 MetaMask</button>
+        <button class="wallet-pill" onclick="quickAddChain('Trust Wallet', this)">🛡 Trust Wallet</button>
+        <button class="wallet-pill" onclick="quickAddChain('Phantom', this)">👻 Phantom</button>
+        <button class="wallet-pill" onclick="quickAddChain('Coinbase Wallet', this)">🔵 Coinbase</button>
+        <button class="wallet-pill" onclick="quickAddChain('Brave Wallet', this)">🦁 Brave</button>
+        <button class="wallet-pill" onclick="quickAddChain('your wallet', this)">⬡ Other EVM</button>
+      </div>
+    </div>
 
     <!-- Latest Blocks Live Feed -->
     <div class="blocks-panel">
@@ -1453,6 +1549,205 @@ function sr(label, html) {
 
 function srchErr(msg) {
   return `<div class="alert alert-danger" style="margin-top:10px">❌ ${msg}</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── PIN Lock System (server-side verification — HTTP and HTTPS compatible) ────
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// PIN is verified by the node at /api/lock/verify (no client-side crypto needed).
+// Unlock state lives in sessionStorage so it resets when the tab closes.
+
+const LOCK_TIMEOUT = 300;             // seconds of inactivity → auto-lock
+const LOCK_TS_KEY  = 'gyds_lock_ts'; // sessionStorage key
+
+let lockTimer    = null;
+let lockBarTimer = null;
+
+// ── Server helpers ─────────────────────────────────────────────────────────
+async function lockPost(path, body) {
+  try {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { ok: r.ok, data: await r.json() };
+  } catch(e) {
+    return { ok: false, data: { error: 'Network error: ' + e.message } };
+  }
+}
+
+// ── Unlock-state helpers ───────────────────────────────────────────────────
+function markUnlocked() { sessionStorage.setItem(LOCK_TS_KEY, String(Date.now())); }
+function clearUnlocked() {
+  sessionStorage.removeItem(LOCK_TS_KEY);
+  localStorage.removeItem('gyds_wallet_pk');
+  localStorage.removeItem('gyds_wallet_mn');
+}
+function isUnlocked() {
+  const ts = parseInt(sessionStorage.getItem(LOCK_TS_KEY) || '0', 10);
+  return ts > 0 && (Date.now() - ts) < LOCK_TIMEOUT * 1000;
+}
+
+// ── Show lock overlay ──────────────────────────────────────────────────────
+async function showLockOverlay() {
+  stopLockTimer();
+  const overlay    = document.getElementById('lockOverlay');
+  const setPanel   = document.getElementById('lockSetPin');
+  const enterPanel = document.getElementById('lockEnterPin');
+  overlay.style.display = 'flex';
+
+  try {
+    const r      = await fetch('/api/lock/status');
+    const status = await r.json();
+    if (status.pinSet) {
+      setPanel.classList.add('hidden');
+      enterPanel.classList.remove('hidden');
+      document.getElementById('enterPin').value = '';
+      document.getElementById('lockAttemptMsg').textContent = '';
+      startLockBar();
+      setTimeout(() => document.getElementById('enterPin').focus(), 80);
+    } else {
+      enterPanel.classList.add('hidden');
+      setPanel.classList.remove('hidden');
+      setTimeout(() => document.getElementById('setPinA').focus(), 80);
+    }
+  } catch {
+    // Node not reachable — hide overlay so the page remains usable
+    overlay.style.display = 'none';
+  }
+}
+
+function hideLockOverlay() {
+  document.getElementById('lockOverlay').style.display = 'none';
+  markUnlocked();
+  resetInactivityTimer();
+}
+
+// ── Set PIN (first-time setup) ─────────────────────────────────────────────
+async function doSetPin() {
+  const a   = document.getElementById('setPinA').value;
+  const b   = document.getElementById('setPinB').value;
+  const err = document.getElementById('setPinErr');
+  err.textContent = '';
+  if (a.length < 4 || a.length > 16) { err.textContent = 'PIN must be 4–16 characters.'; return; }
+  if (a !== b)                        { err.textContent = 'PINs do not match.'; return; }
+  const { ok, data } = await lockPost('/api/lock/set', { pin: a, confirm: b });
+  if (ok) {
+    hideLockOverlay();
+  } else {
+    err.textContent = (data && data.error) || 'Could not set PIN.';
+  }
+}
+
+// ── Unlock ─────────────────────────────────────────────────────────────────
+async function doUnlock() {
+  const pin   = document.getElementById('enterPin').value;
+  const msgEl = document.getElementById('lockAttemptMsg');
+  if (!pin) { msgEl.textContent = 'Enter your PIN.'; return; }
+  const { ok, data } = await lockPost('/api/lock/verify', { pin });
+  if (ok) {
+    hideLockOverlay();
+  } else {
+    msgEl.textContent = (data && data.error) || 'Incorrect PIN.';
+    document.getElementById('enterPin').value = '';
+    document.getElementById('enterPin').focus();
+  }
+}
+
+// ── Forgot PIN ─────────────────────────────────────────────────────────────
+function confirmClearPin() {
+  if (!confirm('Reset?\n\nThis clears your saved wallet from this browser (funds are safe on-chain). The node PIN must be reset separately at /admin/set-pin after an admin factory reset.')) return;
+  clearUnlocked();
+  window.location.reload();
+}
+
+// ── Inactivity auto-lock ───────────────────────────────────────────────────
+function resetInactivityTimer() {
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(() => {
+    clearUnlocked();
+    showLockOverlay();
+  }, LOCK_TIMEOUT * 1000);
+}
+
+function stopLockTimer() {
+  clearTimeout(lockTimer);
+  lockTimer = null;
+}
+
+// Reset on any real user activity
+['mousemove','keydown','mousedown','touchstart','scroll','click'].forEach(ev => {
+  document.addEventListener(ev, () => { if (!isLocked()) resetInactivityTimer(); }, { passive: true });
+});
+
+function isLocked() {
+  return document.getElementById('lockOverlay').style.display !== 'none';
+}
+
+// ── Countdown bar inside the lock screen ───────────────────────────────────
+function startLockBar() {
+  clearInterval(lockBarTimer);
+  const bar   = document.getElementById('lockBar');
+  const fill  = document.getElementById('lockBarFill');
+  const label = document.getElementById('lockTimerLabel');
+  if (!bar) return;
+  bar.style.display = 'block';
+  let t = 30; // show a 30-second "last chance" bar for UX — doesn't affect actual lock
+  fill.style.width = '100%';
+  label.textContent = '';
+  lockBarTimer = setInterval(() => {
+    t = Math.max(0, t - 1);
+    fill.style.width = (t / 30 * 100) + '%';
+    if (t <= 10) {
+      fill.style.background = 'var(--danger)';
+      label.textContent = 'Auto-locked due to inactivity.';
+    }
+    if (t === 0) clearInterval(lockBarTimer);
+  }, 1000);
+}
+
+// ── Initialise lock on page load ───────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  showLockOverlay();     // show set-pin or enter-pin depending on state
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── One-click Add GYDS Chain (entry screen helper) ───────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function quickAddChain(label, btn) {
+  const alertEl = document.getElementById('entryConnectAlert');
+  if (!window.ethereum) {
+    alertEl.className = 'alert alert-warn';
+    alertEl.innerHTML = `⚠️ No browser wallet detected. Open this page inside ${label} (mobile) or install the browser extension first, then reload.`;
+    alertEl.style.display = 'block';
+    return;
+  }
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  const params = {
+    chainId:           '0x343A',
+    chainName:         'GYDS Chain',
+    nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
+    rpcUrls:           [window.location.origin + '/rpc'],
+    blockExplorerUrls: [window.location.origin],
+  };
+  try {
+    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [params] });
+    alertEl.className = 'alert alert-success';
+    alertEl.innerHTML = `✅ GYDS Chain added to ${label}!`;
+    alertEl.style.display = 'block';
+  } catch(e) {
+    alertEl.className = e.code === 4001 ? 'alert alert-warn' : 'alert alert-danger';
+    alertEl.innerHTML = e.code === 4001 ? '⚠️ Cancelled by user.' : '❌ ' + (e.message || 'Could not add network.');
+    alertEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
 }
 </script>
 </body>
