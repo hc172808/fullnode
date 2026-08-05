@@ -286,3 +286,11 @@
 14:30:22.848828 version@stat F·[2 1] S·242KiB[14KiB 227KiB] Sc·[0.50 0.00]
 14:30:22.867209 db@janitor F·5 G·0
 14:30:22.867276 db@open done T·31.349106ms
+=============== Aug 5, 2026 (UTC) ===============
+15:54:43.405110 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+15:54:43.405306 CURRENT: missing target file: MANIFEST-000075
+15:54:43.405354 CURRENT.bak: missing target file: MANIFEST-000072
+15:54:43.435755 db@open opening
+15:54:43.440114 version@stat F·[] S·0B[] Sc·[]
+15:54:43.452978 db@janitor F·2 G·0
+15:54:43.453140 db@open done T·17.239391ms
