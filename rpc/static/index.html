@@ -221,7 +221,7 @@
   </div>
   <div style="display:flex;align-items:center;gap:20px">
     <nav style="display:flex;gap:16px;align-items:center">
-      <a href="/setup" style="font-size:12px;color:var(--muted);text-decoration:none" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">⚙ Setup</a>
+      <a id="setupNavLink" href="/setup" style="font-size:12px;color:var(--muted);text-decoration:none" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">⚙ Setup</a>
       <a href="/guides" style="font-size:12px;color:var(--muted);text-decoration:none" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">📖 Guides</a>
     </nav>
     <div class="net-status">
@@ -260,6 +260,10 @@
   <div class="stat-item">
     <div class="stat-label">Network</div>
     <div class="stat-val" id="sNetwork">—</div>
+  </div>
+  <div class="stat-item" id="nodeIdStatItem" style="display:none" title="This node's P2P identity — share with peers who want to whitelist you">
+    <div class="stat-label">Node ID <span style="font-size:9px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#f87171;border-radius:8px;padding:1px 5px;font-weight:700;vertical-align:middle">AUTH</span></div>
+    <div class="stat-val" style="font-family:var(--mono);font-size:11px;cursor:pointer" id="sNodeId" onclick="copyNodeId()" title="Click to copy full Node ID">—</div>
   </div>
 </div>
 
@@ -403,6 +407,9 @@
         </div>
         <div class="balance-block">
           <div class="balance-val"><span id="walletBalance">—</span> GYDS</div>
+          <div style="font-size:13px;font-weight:600;color:#a78bfa;margin-top:2px">
+            <span id="gydBalance">—</span> GYD <span style="font-size:10px;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);border-radius:10px;padding:1px 7px;font-weight:700;vertical-align:middle">STABLE</span>
+          </div>
           <div class="balance-sub" id="balanceSub">Loading…</div>
         </div>
       </div>
@@ -609,11 +616,51 @@ let lastKnownHeight   = -1;
 document.addEventListener('DOMContentLoaded', () => {
   pollNode();
   pollBlocks();
+  fetchNodeIdentity();
   setInterval(pollNode,      5000);
   setInterval(pollBlocks,   10000);
   setInterval(tickCountdown, 1000);
   connectWS();
 });
+
+// Fetch this node's P2P identity and show it in the stats strip when present.
+async function fetchNodeIdentity() {
+  try {
+    const res = await fetch('/api/node-id');
+    if (!res.ok) return;
+    const d = await res.json();
+    if (d.nodeId && d.nodeId.length >= 8) {
+      const short = d.nodeId.slice(0, 12) + '…';
+      document.getElementById('sNodeId').textContent = short;
+      document.getElementById('sNodeId').dataset.full = d.nodeId;
+      document.getElementById('nodeIdStatItem').style.display = '';
+    }
+  } catch { /* non-fatal */ }
+}
+
+function copyNodeId() {
+  const el = document.getElementById('sNodeId');
+  const full = el.dataset.full || el.textContent;
+  navigator.clipboard.writeText(full).then(() => {
+    showToast('Node ID copied!');
+  }).catch(() => {
+    prompt('Your Node ID (copy manually):', full);
+  });
+}
+
+function showToast(msg) {
+  let t = document.getElementById('_toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = '_toast';
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1e293b;color:#e2e8f0;padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999;pointer-events:none;transition:opacity .3s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2400);
+}
 
 window.addEventListener('load', () => {
   const host = window.location.hostname;
@@ -633,6 +680,16 @@ window.addEventListener('load', () => {
   const expEl = document.getElementById('netConfigExplorer');
   if (rpcEl) rpcEl.textContent = rpcUrl;
   if (expEl) expEl.textContent = explorerUrl;
+
+  // ── Hide Setup link once node is configured ──────────────────────────────
+  // After the setup wizard has been completed (.env exists on the server),
+  // the Setup link is no longer needed and is removed from the header nav.
+  fetch('/api/setup/status').then(r => r.json()).then(d => {
+    if (d.configured) {
+      const link = document.getElementById('setupNavLink');
+      if (link) link.style.display = 'none';
+    }
+  }).catch(() => {});
 
   // ── Auto-restore saved wallet ────────────────────────────────────────────
   // If the user previously activated a wallet, re-load it silently so the
@@ -961,11 +1018,12 @@ function activateWallet(w, phrase) {
   document.getElementById('entryScreen').classList.add('hidden');
   document.getElementById('walletScreen').classList.remove('hidden');
   refreshBalance();
+  refreshTokenBalances(w.address);
   loadHistory();
 
   // Keep balance live every 30 s (cleared on disconnect).
   clearInterval(_balRefreshTimer);
-  _balRefreshTimer = setInterval(refreshBalance, 30000);
+  _balRefreshTimer = setInterval(() => { refreshBalance(); }, 30000);
 }
 
 function disconnectWallet() {
@@ -992,13 +1050,31 @@ function disconnectWallet() {
 async function refreshBalance() {
   if (!wallet) return;
   try {
-    const bal = await provider.getBalance(wallet.address);
+    const addr = wallet.address || (await wallet.getAddress());
+    const bal = await provider.getBalance(addr);
     const fmt = parseFloat(ethers.utils.formatEther(bal));
     document.getElementById('walletBalance').textContent = fmt.toLocaleString(undefined, {maximumFractionDigits: 6});
     document.getElementById('balanceSub').textContent = 'Chain ID ' + CHAIN_ID + ' · GYDS Chain';
+    refreshTokenBalances(addr);
   } catch {
     document.getElementById('balanceSub').textContent = 'Could not load balance';
   }
+}
+
+// Fetch GYD (and any future genesis tokens) from the node API.
+async function refreshTokenBalances(addr) {
+  try {
+    const res = await fetch('/api/tokens/' + addr);
+    if (!res.ok) return;
+    const data = await res.json();
+    const balances = data.balances || {};
+
+    // GYD stablecoin
+    const gydWei = BigInt(balances['GYD'] || '0');
+    const gydFmt = parseFloat((Number(gydWei) / 1e18).toFixed(2));
+    document.getElementById('gydBalance').textContent =
+      gydFmt.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  } catch { /* non-fatal */ }
 }
 
 // ── Send ─────────────────────────────────────────────────────────────────────

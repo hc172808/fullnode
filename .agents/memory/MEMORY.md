@@ -1,2 +1,3 @@
 - [Project identity](project-identity.md) — this is a GYDS Chain fullnode (Go blockchain node, PoS, Ethereum-compatible JSON-RPC)
 - [Deploy & setup wizard](deploy-setup.md) — deploy.sh + /setup 7-step web wizard + /api/setup/* endpoints built; .env written server-side
+- [Peer authorization system](peer-auth-system.md) — ed25519 node keypairs, challenge-response handshake, whitelist; GYDS_PEER_AUTH + GYDS_ALLOWED_NODES env vars

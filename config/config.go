@@ -33,6 +33,12 @@ type Config struct {
 
 	SyncMode     string
 	SnapshotSync bool
+
+	ValidatorKey string // hex private key for PoS validator signing
+
+	// P2P peer authorization
+	PeerAuth     bool     // if true, only AllowedNodes may connect
+	AllowedNodes []string // whitelist of peer Node IDs (hex ed25519 public keys)
 }
 
 func DefaultConfig() *Config {
@@ -109,6 +115,19 @@ func FromEnv() *Config {
 	if v := os.Getenv("GYDS_BLOCK_TIME"); v != "" {
 		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
 			cfg.BlockTime = time.Duration(secs) * time.Second
+		}
+	}
+	if v := os.Getenv("GYDS_VALIDATOR_KEY"); v != "" {
+		cfg.ValidatorKey = v
+	}
+	if v := os.Getenv("GYDS_PEER_AUTH"); v == "true" || v == "1" || v == "yes" {
+		cfg.PeerAuth = true
+	}
+	if v := os.Getenv("GYDS_ALLOWED_NODES"); v != "" {
+		for _, raw := range strings.Split(v, ",") {
+			if id := strings.TrimSpace(raw); id != "" {
+				cfg.AllowedNodes = append(cfg.AllowedNodes, id)
+			}
 		}
 	}
 	if v := os.Getenv("GYDS_EXTERNAL_URL"); v != "" {

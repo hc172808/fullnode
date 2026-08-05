@@ -247,3 +247,42 @@
 11:36:22.460346 db@janitor F·7 G·1
 11:36:22.460770 db@janitor removing manifest-64
 11:36:22.461022 db@open done T·19.109127ms
+=============== Aug 4, 2026 (UTC) ===============
+12:47:00.779142 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:47:00.780631 version@stat F·[3 1] S·226KiB[23KiB 203KiB] Sc·[0.75 0.00]
+12:47:00.780643 db@open opening
+12:47:00.780674 journal@recovery F·1
+12:47:00.781715 journal@recovery recovering @64
+12:47:00.787786 memdb@flush created L0@66 N·13 S·3KiB "acc..001,v969":"blk..\x00\x01l,v968"
+12:47:00.788613 version@stat F·[4 1] S·230KiB[26KiB 203KiB] Sc·[1.00 0.00]
+12:47:00.795515 db@janitor F·7 G·0
+12:47:00.795608 db@open done T·14.953215ms
+12:47:00.795705 table@compaction L0·4 -> L1·1 S·230KiB Q·971
+12:47:00.983569 table@build created L1@69 N·366 S·227KiB "acc..001,v969":"blk..\x00\x01l,v968"
+12:47:00.983686 version@stat F·[0 1] S·227KiB[0B 227KiB] Sc·[0.00 0.00]
+12:47:00.988611 table@compaction committed F-4 S-2KiB Ke·0 D·64 T·192.792227ms
+12:47:01.004399 table@remove removed @66
+12:47:01.004487 table@remove removed @55
+12:47:01.004595 table@remove removed @52
+12:47:01.004643 table@remove removed @49
+12:47:01.004713 table@remove removed @46
+=============== Aug 5, 2026 (UTC) ===============
+14:20:35.336354 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+14:20:35.340346 version@stat F·[0 1] S·227KiB[0B 227KiB] Sc·[0.00 0.00]
+14:20:35.340356 db@open opening
+14:20:35.340388 journal@recovery F·1
+14:20:35.341750 journal@recovery recovering @67
+14:20:35.358779 memdb@flush created L0@70 N·47 S·12KiB "acc..001,v1018":"blk..\x00\x01~,v1016"
+14:20:35.360983 version@stat F·[1 1] S·239KiB[12KiB 227KiB] Sc·[0.25 0.00]
+14:20:35.377851 db@janitor F·4 G·0
+14:20:35.377928 db@open done T·37.559048ms
+=============== Aug 5, 2026 (UTC) ===============
+14:30:22.835730 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+14:30:22.835909 version@stat F·[1 1] S·239KiB[12KiB 227KiB] Sc·[0.25 0.00]
+14:30:22.835918 db@open opening
+14:30:22.835944 journal@recovery F·1
+14:30:22.837831 journal@recovery recovering @71
+14:30:22.846738 memdb@flush created L0@73 N·13 S·2KiB "acc..001,v1031":"blk..\x00\x01\x82,v1029"
+14:30:22.848828 version@stat F·[2 1] S·242KiB[14KiB 227KiB] Sc·[0.50 0.00]
+14:30:22.867209 db@janitor F·5 G·0
+14:30:22.867276 db@open done T·31.349106ms

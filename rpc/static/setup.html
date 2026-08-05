@@ -255,6 +255,11 @@
             <div class="radio-card-title">🔄 Sync Full Node</div>
             <div class="radio-card-desc">Pulls complete chain state from bootstrap peers. Requires BOOTSTRAP_NODES configured.</div>
           </label>
+          <label class="radio-card" id="modeValidator" onclick="selectMode('validator',this)">
+            <input type="radio" name="nodeMode" value="validator" />
+            <div class="radio-card-title">🔐 Validator Node</div>
+            <div class="radio-card-desc">PoS block producer with a dedicated signing key. Set GYDS_VALIDATOR_KEY to identify your validator address.</div>
+          </label>
         </div>
         <div class="field-hint" id="modeHint" style="margin-top:10px;padding:10px 12px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:8px">
           ⛓ <strong>Full Node</strong> — stores the complete chain, participates in block production via PoS, and serves the full JSON-RPC API. Requires ~5–10 GB initially, growing ~1–3 GB/month. Recommended for most node operators.
@@ -387,6 +392,34 @@
         <label>Bootstrap Peers <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></label>
         <textarea id="bootstrapNodes" placeholder="tcp://node1.gydschain.io:30303&#10;tcp://node2.gydschain.io:30303"></textarea>
         <div class="field-hint">One peer per line. Leave blank to run as an isolated node.</div>
+      </div>
+
+      <!-- ── Peer Authorization ─────────────────────────────────────────── -->
+      <div style="margin-top:20px;padding:16px;border:1px solid var(--border);border-radius:12px;background:rgba(239,68,68,.03)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <div style="font-size:13px;font-weight:700">🔒 Peer Authorization</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">Only allow whitelisted nodes to connect to this node</div>
+          </div>
+          <label style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer">
+            <input type="checkbox" id="peerAuthEnabled" style="opacity:0;width:0;height:0" onchange="togglePeerAuth(this.checked)" />
+            <span id="peerAuthToggle" style="position:absolute;inset:0;border-radius:12px;background:var(--border);transition:.2s;cursor:pointer"></span>
+            <span id="peerAuthKnob"   style="position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s;pointer-events:none"></span>
+          </label>
+        </div>
+        <div id="peerAuthFields" style="display:none">
+          <div class="field">
+            <label>Allowed Node IDs <span style="color:var(--muted);font-weight:400;text-transform:none">(one per line)</span></label>
+            <textarea id="allowedNodes" rows="4" placeholder="Paste the Node IDs of peers you want to allow.&#10;Each node's ID appears in its dashboard under Node ID.&#10;Leave empty to allow any node that can prove its identity (challenge-response)." style="font-family:var(--mono);font-size:12px"></textarea>
+            <div class="field-hint">
+              💡 A node's ID is its hex-encoded ed25519 public key. Peers with unknown IDs will be rejected after failing the challenge handshake.
+              Leave blank to allow any authenticated node (challenge-response still required, but no whitelist check).
+            </div>
+          </div>
+        </div>
+        <div id="peerAuthOff" style="font-size:12px;color:var(--muted)">
+          When disabled, any node can connect as long as they are on the same chain. Enable to restrict connections to a trusted set.
+        </div>
       </div>
     </div>
     <div class="step-footer">
@@ -636,17 +669,36 @@ function goStep(n) {
 
 // ── Step 1: Node mode ─────────────────────────────────────────────────────────
 const MODE_HINTS = {
-  full:    '⛓ <strong>Full Node</strong> — stores the complete chain, participates in block production via PoS, and serves the full JSON-RPC API. Requires ~5–10 GB initially, growing ~1–3 GB/month. Recommended for most node operators.',
-  lite:    '⚡ <strong>Lite Node</strong> — downloads only block headers (~95% less storage). Cannot validate full tx history. Ideal for wallets, light clients, and low-resource VPS instances.',
-  rpc:     '🔌 <strong>RPC Node</strong> — API-only endpoint. No block production, no P2P gossip. Reads existing chain state from disk and exposes JSON-RPC + dashboard. Use for dedicated query/read endpoints.',
-  boost:   '🚀 <strong>Boost Node</strong> — high-performance validator with extended peer limits and aggressive bootstrap connections. Best for validators and infra providers on high-bandwidth servers.',
-  genesis: '🌱 <strong>Genesis Node</strong> — network bootstrapper and initial validator. Starts the chain from block 0 and seeds the network. Other nodes use your IP:P2PPort as their first bootstrap peer.',
-  sync:    '🔄 <strong>Sync Full Node</strong> — actively pulls the complete chain history from configured bootstrap peers. Once fully synced, behaves like a full node. Requires at least one BOOTSTRAP_NODES entry.',
+  full:      '⛓ <strong>Full Node</strong> — stores the complete chain, participates in block production via PoS, and serves the full JSON-RPC API. Requires ~5–10 GB initially, growing ~1–3 GB/month. Recommended for most node operators.',
+  lite:      '⚡ <strong>Lite Node</strong> — downloads only block headers (~95% less storage). Cannot validate full tx history. Ideal for wallets, light clients, and low-resource VPS instances.',
+  rpc:       '🔌 <strong>RPC Node</strong> — API-only endpoint. No block production, no P2P gossip. Reads existing chain state from disk and exposes JSON-RPC + dashboard. Use for dedicated query/read endpoints.',
+  boost:     '🚀 <strong>Boost Node</strong> — high-performance validator with extended peer limits and aggressive bootstrap connections. Best for validators and infra providers on high-bandwidth servers.',
+  genesis:   '🌱 <strong>Genesis Node</strong> — network bootstrapper and initial validator. Starts the chain from block 0 and seeds the network. Other nodes use your IP:P2PPort as their first bootstrap peer.',
+  sync:      '🔄 <strong>Sync Full Node</strong> — actively pulls the complete chain history from configured bootstrap peers. Once fully synced, behaves like a full node. Requires at least one BOOTSTRAP_NODES entry.',
+  validator: '🔐 <strong>Validator Node</strong> — PoS block producer with an explicit signing key set via <code>GYDS_VALIDATOR_KEY</code>. Same full-node capabilities plus clear validator identity. Recommended for staking operators and infrastructure providers who want dedicated signing.',
 };
+
+function togglePeerAuth(enabled) {
+  const toggle = document.getElementById('peerAuthToggle');
+  const knob   = document.getElementById('peerAuthKnob');
+  const fields = document.getElementById('peerAuthFields');
+  const offMsg = document.getElementById('peerAuthOff');
+  if (enabled) {
+    toggle.style.background = 'var(--accent)';
+    knob.style.left = '21px';
+    fields.style.display = '';
+    offMsg.style.display  = 'none';
+  } else {
+    toggle.style.background = 'var(--border)';
+    knob.style.left = '3px';
+    fields.style.display = 'none';
+    offMsg.style.display  = '';
+  }
+}
 
 function selectMode(mode, el) {
   nodeMode = mode;
-  ['modeFull','modeLite','modeRpc','modeBoost','modeGenesis','modeSync'].forEach(id => {
+  ['modeFull','modeLite','modeRpc','modeBoost','modeGenesis','modeSync','modeValidator'].forEach(id => {
     const card = document.getElementById(id);
     if (card) card.classList.remove('selected');
   });
@@ -759,6 +811,11 @@ function collectConfig() {
     ? allowedRaw.split('\n').map(s => s.trim()).filter(Boolean).join(',')
     : '';
 
+  const allowedNodesRaw = document.getElementById('allowedNodes').value.trim();
+  const allowedNodes = allowedNodesRaw
+    ? allowedNodesRaw.split('\n').map(s => s.trim()).filter(Boolean).join(',')
+    : '';
+
   return {
     chainId:        document.getElementById('chainId').value,
     networkName:    document.getElementById('networkName').value,
@@ -771,6 +828,8 @@ function collectConfig() {
     p2pPort:        document.getElementById('p2pPort').value,
     maxPeers:       document.getElementById('maxPeers').value,
     bootstrapNodes: bootstrap,
+    peerAuth:       document.getElementById('peerAuthEnabled').checked,
+    allowedNodes:   allowedNodes,
     dataDir:        document.getElementById('dataDir').value,
     storageLimitGb: document.getElementById('storageLimitGb').value,
     enableFirewall: document.getElementById('enableFirewall').checked ? 'true' : 'false',
@@ -869,6 +928,12 @@ function buildEnvText(cfg) {
     cfg.bootstrapNodes
       ? `GYDS_BOOTSTRAP_NODES=${cfg.bootstrapNodes}`
       : `# GYDS_BOOTSTRAP_NODES=`,
+    ``,
+    `# ── Peer Authorization ─────────────────────────────────────────`,
+    `GYDS_PEER_AUTH=${cfg.peerAuth ? 'true' : 'false'}`,
+    cfg.allowedNodes
+      ? `GYDS_ALLOWED_NODES=${cfg.allowedNodes}`
+      : `# GYDS_ALLOWED_NODES=`,
     ``,
     `# ── Storage ────────────────────────────────────────────────────`,
     `GYDS_DATA_DIR=${cfg.dataDir}`,

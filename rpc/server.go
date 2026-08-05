@@ -19,12 +19,15 @@ import (
         "github.com/rs/zerolog/log"
 
         "github.com/gydschain/fullnode/core"
+        "github.com/gydschain/fullnode/p2p"
 )
 
 // P2PConnector is the minimal interface the RPC server needs from the P2P layer.
 type P2PConnector interface {
         ConnectTo(addr string) error
         PeerCount() int
+        NodeID() string
+        Peers() []p2p.PeerStatus
 }
 
 type Server struct {
@@ -131,6 +134,9 @@ func (s *Server) setupDashboardRoutes() {
         api.HandleFunc("/setup/status", s.handleSetupStatus).Methods("GET")
         api.HandleFunc("/setup/apply", s.handleSetupApply).Methods("POST")
         api.HandleFunc("/nodes/import", s.handleNodesImport).Methods("POST", "OPTIONS")
+        api.HandleFunc("/token-info", s.handleTokenInfo).Methods("GET")
+        api.HandleFunc("/tokens/{address}", s.handleTokenBalances).Methods("GET")
+        api.HandleFunc("/node-id", s.handleNodeIDInfo).Methods("GET")
 
         admin := r.PathPrefix("/admin").Subrouter()
         admin.HandleFunc("/login", s.handleAdminLoginPage).Methods("GET")
@@ -373,7 +379,60 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
-        jsonOK(w, map[string]interface{}{"peers": []interface{}{}, "count": 0})
+        if s.p2p == nil {
+                jsonOK(w, map[string]interface{}{"peers": []map[string]interface{}{}, "count": 0})
+                return
+        }
+        peers := s.p2p.Peers()
+        out := make([]map[string]interface{}, 0, len(peers))
+        for _, ps := range peers {
+                out = append(out, map[string]interface{}{
+                        "addr":       ps.Addr,
+                        "nodeId":     ps.NodeID,
+                        "height":     ps.Height,
+                        "nodeMode":   ps.NodeMode,
+                        "version":    ps.Version,
+                        "authorized": ps.Authorized,
+                })
+        }
+        jsonOK(w, map[string]interface{}{"peers": out, "count": len(out)})
+}
+
+// handleNodeIDInfo returns this node's P2P identity so operators can share it.
+func (s *Server) handleNodeIDInfo(w http.ResponseWriter, r *http.Request) {
+        nodeID := ""
+        if s.p2p != nil {
+                nodeID = s.p2p.NodeID()
+        }
+        jsonOK(w, map[string]interface{}{"nodeId": nodeID})
+}
+
+// handleTokenInfo returns metadata for every genesis-defined token.
+func (s *Server) handleTokenInfo(w http.ResponseWriter, r *http.Request) {
+        tokens := s.chain.TokenInfoList()
+        out := make([]map[string]interface{}, 0, len(tokens))
+        for _, t := range tokens {
+                out = append(out, map[string]interface{}{
+                        "symbol":       t.Symbol,
+                        "name":         t.Name,
+                        "decimals":     t.Decimals,
+                        "isStablecoin": t.IsStablecoin,
+                        "totalSupply":  t.TotalSupply.String(),
+                })
+        }
+        jsonOK(w, map[string]interface{}{"tokens": out})
+}
+
+// handleTokenBalances returns all token balances for a given address.
+func (s *Server) handleTokenBalances(w http.ResponseWriter, r *http.Request) {
+        vars := mux.Vars(r)
+        addr := vars["address"]
+        balances := s.chain.GetAllTokenBalances(addr)
+        out := make(map[string]string, len(balances))
+        for sym, bal := range balances {
+                out[sym] = bal.String()
+        }
+        jsonOK(w, map[string]interface{}{"address": addr, "balances": out})
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {

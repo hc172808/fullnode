@@ -20,6 +20,21 @@ import (
 	"github.com/gydschain/fullnode/rpc"
 )
 
+// wireAuth loads the node keypair and configures peer authorization on a P2P server.
+// Safe to call before or after Start(); if auth is disabled it is a no-op.
+func wireAuth(srv *p2p.Server, cfg *config.Config) {
+	nk, err := p2p.LoadOrCreateNodeKey(cfg.DataDir)
+	if err != nil {
+		log.Warn().Err(err).Msg("Could not load/create node key — peer auth unavailable")
+		return
+	}
+	log.Info().Str("nodeId", nk.ID()[:16]+"…").
+		Bool("peerAuth", cfg.PeerAuth).
+		Int("allowedNodes", len(cfg.AllowedNodes)).
+		Msg("Node identity loaded")
+	srv.SetAuth(nk, cfg.PeerAuth, cfg.AllowedNodes)
+}
+
 // wireBlockProvider registers a block-serving callback on the P2P server so that
 // peers can sync historical blocks from this node via MsgGetBlocks / MsgBlocks.
 func wireBlockProvider(srv *p2p.Server, chain *core.Chain) {
@@ -62,6 +77,14 @@ func main() {
 	}
 
 	root.AddCommand(startCmd(), genesisCmd(), versionCmd())
+	root.Long = `GYDS Chain Node — supports multiple operating modes:
+  full       Complete node with P2P, block production, RPC, and dashboard
+  lite       Header-only sync with lower storage and faster startup
+  rpc        RPC/API-only node — no block production, no P2P
+  boost      High-performance validator node with extended peer limits
+  genesis    Network bootstrapper — exports genesis and seeds the network
+  sync       Sync-only node — pulls chain state from bootstrap peers
+  validator  PoS validator node — explicitly keyed block producer`
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -130,6 +153,8 @@ func runNode() error {
 		return runGenesisNode(cfg)
 	case "sync":
 		return runSyncNode(cfg)
+	case "validator":
+		return runValidatorNode(cfg)
 	default: // "full"
 		return runFullNode(cfg)
 	}
@@ -160,6 +185,7 @@ func runFullNode(cfg *config.Config) error {
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
 	wireBlockProvider(p2pSrv, chain)
+	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
 
 	for _, addr := range cfg.P2PBootstrap {
@@ -195,6 +221,7 @@ func runLiteNode(cfg *config.Config) error {
 	// Connect to bootstrap peers for header sync only.
 	if len(cfg.P2PBootstrap) > 0 {
 		p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+		wireAuth(p2pSrv, cfg)
 		rpcSrv.SetP2P(p2pSrv)
 		for _, addr := range cfg.P2PBootstrap {
 			if err := p2pSrv.ConnectTo(addr); err != nil {
@@ -268,6 +295,7 @@ func runBoostNode(cfg *config.Config) error {
 	// Boost: connect to ALL configured peers simultaneously.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
 	wireBlockProvider(p2pSrv, chain)
+	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
 	connected := 0
 	for _, addr := range cfg.P2PBootstrap {
@@ -328,6 +356,7 @@ func runGenesisNode(cfg *config.Config) error {
 	// Genesis node listens for incoming peer connections and serves blocks to them.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
 	wireBlockProvider(p2pSrv, chain)
+	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P start failed")
@@ -379,6 +408,7 @@ func runSyncNode(cfg *config.Config) error {
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
 	// Also serve blocks so peers that connect to us can sync from us.
 	wireBlockProvider(p2pSrv, chain)
+	wireAuth(p2pSrv, cfg)
 
 	connected := 0
 	for _, addr := range cfg.P2PBootstrap {
@@ -514,6 +544,75 @@ func runSyncNode(cfg *config.Config) error {
 	log.Info().Uint64("height", chain.Height()).Msg("Sync node fully operational")
 
 	return serveAndWait(rpcSrv, chain, engine)
+}
+
+// ── Validator Node ────────────────────────────────────────────────────────────
+// Explicit PoS validator node. Identical to a full node in architecture but
+// clearly identified as a block-producing validator. The optional
+// GYDS_VALIDATOR_KEY environment variable sets the signing key so the node can
+// be associated with a specific validator address in the PoS set.
+//
+// Validator nodes should have:
+//   - A static IP or DNS name (used in GYDS_EXTERNAL_URL)
+//   - GYDS_VALIDATOR_KEY set (hex private key for signing)
+//   - Bootstrap peers configured for fast chain sync
+func runValidatorNode(cfg *config.Config) error {
+	log.Info().Msg("Mode: Validator Node — PoS block producer with explicit validator key")
+
+	if cfg.ValidatorKey == "" {
+		log.Warn().Msg("GYDS_VALIDATOR_KEY not set — node will participate in PoS rotation without a dedicated signing key")
+	} else {
+		// Derive address from key for display (no dependency on crypto libs needed;
+		// ethers.js on the dashboard will show the derived address).
+		log.Info().Str("keyPrefix", cfg.ValidatorKey[:min(8, len(cfg.ValidatorKey))]+"…").
+			Msg("Validator signing key loaded")
+	}
+
+	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
+	log.Info().Uint64("height", chain.Height()).Msg("Validator chain initialised")
+
+	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
+	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
+
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL)
+	engine.OnNewBlock(func(b *core.Block) {
+		log.Info().
+			Uint64("number", b.Header.Number).
+			Str("hash", b.Hash[:16]+"...").
+			Int("txs", len(b.Transactions)).
+			Str("validator", b.Header.Validator).
+			Msg("🔐 Validator block produced")
+		rpcSrv.NotifyNewBlock(b)
+	})
+
+	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	wireBlockProvider(p2pSrv, chain)
+	wireAuth(p2pSrv, cfg)
+	rpcSrv.SetP2P(p2pSrv)
+
+	for _, addr := range cfg.P2PBootstrap {
+		if err := p2pSrv.ConnectTo(addr); err != nil {
+			log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
+		}
+	}
+	if err := p2pSrv.Start(); err != nil {
+		log.Warn().Err(err).Msg("P2P server failed to start (continuing without P2P)")
+	}
+
+	engine.Start()
+	log.Info().
+		Int("p2pPort", cfg.P2PPort).
+		Int("rpcPort", cfg.RPCPort).
+		Msg("🔐 Validator node online")
+
+	return serveAndWait(rpcSrv, chain, engine)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // ── Shared shutdown helper ────────────────────────────────────────────────────

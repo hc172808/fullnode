@@ -15,10 +15,11 @@ var (
         ErrParentNotFound = errors.New("parent block not found")
 )
 
-// AccountState tracks the wei balance and nonce for an address.
+// AccountState tracks the wei balance, nonce, and any genesis token balances.
 type AccountState struct {
         Balance *big.Int
         Nonce   uint64
+        Tokens  map[string]*big.Int // symbol → wei-scaled balance
 }
 
 type Chain struct {
@@ -56,6 +57,27 @@ func NewChain(genesis *GenesisConfig, dataDir string) *Chain {
                 c.accounts[addr] = &AccountState{
                         Balance: new(big.Int).Set(bal),
                         Nonce:   alloc.Nonce,
+                        Tokens:  make(map[string]*big.Int),
+                }
+        }
+        // Distribute genesis token balances (e.g. GYD stablecoin).
+        for _, tok := range genesis.Tokens {
+                for _, ta := range tok.Alloc {
+                        addr := strings.ToLower(ta.Address)
+                        if c.accounts[addr] == nil {
+                                c.accounts[addr] = &AccountState{
+                                        Balance: big.NewInt(0),
+                                        Tokens:  make(map[string]*big.Int),
+                                }
+                        }
+                        if c.accounts[addr].Tokens == nil {
+                                c.accounts[addr].Tokens = make(map[string]*big.Int)
+                        }
+                        amt := ta.Amount
+                        if amt == nil {
+                                amt = big.NewInt(0)
+                        }
+                        c.accounts[addr].Tokens[tok.Symbol] = new(big.Int).Set(amt)
                 }
         }
         genBlock := GenesisBlock(genesis)
@@ -202,6 +224,38 @@ func (c *Chain) applyTx(tx *Transaction) {
                         c.accounts[to].Balance.Add(c.accounts[to].Balance, tx.Value)
                 }
         }
+}
+
+// GetTokenBalance returns the genesis-allocated token balance for an address.
+func (c *Chain) GetTokenBalance(addr, symbol string) *big.Int {
+        c.accountsMu.RLock()
+        defer c.accountsMu.RUnlock()
+        if a, ok := c.accounts[strings.ToLower(addr)]; ok {
+                if a.Tokens != nil {
+                        if b, ok := a.Tokens[symbol]; ok {
+                                return new(big.Int).Set(b)
+                        }
+                }
+        }
+        return big.NewInt(0)
+}
+
+// GetAllTokenBalances returns every token balance held by an address.
+func (c *Chain) GetAllTokenBalances(addr string) map[string]*big.Int {
+        c.accountsMu.RLock()
+        defer c.accountsMu.RUnlock()
+        out := make(map[string]*big.Int)
+        if a, ok := c.accounts[strings.ToLower(addr)]; ok {
+                for sym, bal := range a.Tokens {
+                        out[sym] = new(big.Int).Set(bal)
+                }
+        }
+        return out
+}
+
+// TokenInfoList returns metadata for every token defined in the genesis config.
+func (c *Chain) TokenInfoList() []TokenDefinition {
+        return c.genesis.Tokens
 }
 
 // GetBalance returns the wei balance of an address.
