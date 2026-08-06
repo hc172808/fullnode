@@ -133,7 +133,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo ""
   echo "  Option 2 — use the web setup wizard:"
   echo "    go run . start"
-  echo "    Then open: http://localhost:${GYDS_DASHBOARD_PORT:-8080}/setup"
+  echo "    Then open: http://localhost:${GYDS_DASHBOARD_PORT:-5000}/setup"
   echo ""
   exit 1
 fi
@@ -144,9 +144,9 @@ source "$ENV_FILE"
 set +a
 
 # Apply defaults for anything not in .env
-GYDS_CHAIN_ID="${GYDS_CHAIN_ID:-13370}"
+GYDS_CHAIN_ID="${GYDS_CHAIN_ID:-198282}"
 GYDS_NODE_MODE="${GYDS_NODE_MODE:-full}"
-GYDS_DASHBOARD_PORT="${GYDS_DASHBOARD_PORT:-8080}"
+GYDS_DASHBOARD_PORT="${GYDS_DASHBOARD_PORT:-5000}"
 GYDS_RPC_PORT="${GYDS_RPC_PORT:-8545}"
 GYDS_WS_PORT="${GYDS_WS_PORT:-8546}"
 GYDS_P2P_PORT="${GYDS_P2P_PORT:-30303}"
@@ -293,7 +293,8 @@ mkdir -p "$GYDS_DATA_DIR"
 log "✓ Data directory: $GYDS_DATA_DIR"
 
 # Check available disk space
-AVAIL_GB=$(df -BG "$GYDS_DATA_DIR" 2>/dev/null | awk 'NR==2{print $4}' | tr -d 'G' || echo "0")
+AVAIL_GB=$(df -BG "$GYDS_DATA_DIR" 2>/dev/null | awk 'NR==2{print $4}' | tr -d 'G')
+AVAIL_GB="${AVAIL_GB:-0}"
 log "Available disk space: ${AVAIL_GB} GB"
 
 if [[ "$AVAIL_GB" -lt "$GYDS_STORAGE_LIMIT_GB" ]]; then
@@ -302,9 +303,12 @@ if [[ "$AVAIL_GB" -lt "$GYDS_STORAGE_LIMIT_GB" ]]; then
 fi
 
 # Write disk-limit monitoring script
-mkdir -p /etc/gyds-fullnode 2>/dev/null || mkdir -p "${INSTALL_DIR}/scripts"
-SCRIPTS_DIR="/etc/gyds-fullnode"
-[[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="${SCRIPT_DIR}"
+if mkdir -p /etc/gyds-fullnode 2>/dev/null; then
+  SCRIPTS_DIR="/etc/gyds-fullnode"
+else
+  mkdir -p "${INSTALL_DIR}/scripts"
+  SCRIPTS_DIR="${INSTALL_DIR}/scripts"
+fi
 
 cat > "${SCRIPTS_DIR}/check-storage.sh" <<STORAGESCRIPT
 #!/usr/bin/env bash
@@ -377,12 +381,6 @@ step "Setting Up System Service"
 if $SKIP_SERVICE; then
   warn "Skipping systemd service setup."
 else
-  ENV_VARS=""
-  while IFS='=' read -r key val; do
-    [[ -z "$key" || "$key" == \#* ]] && continue
-    ENV_VARS+="Environment=\"${key}=${val}\"\n"
-  done < "${INSTALL_DIR}/.env"
-
   cat > "$SERVICE_FILE" <<SYSTEMD
 [Unit]
 Description=GYDS Chain Full Node
