@@ -9,6 +9,8 @@ import (
         "io/fs"
         "math/big"
         "net/http"
+        "os"
+        "path/filepath"
         "strconv"
         "strings"
         "sync"
@@ -54,6 +56,8 @@ type Server struct {
         adminDB   *AdminDB
         p2p       P2PConnector
         updates   *UpdateChecker
+
+        accessLogFile *os.File
 }
 
 type subscriber struct {
@@ -66,6 +70,22 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
         adminDB, _ := NewAdminDB(dataDir)
         updater := NewUpdateChecker(nodeVersion)
         updater.Start(24 * time.Hour)
+
+        // Open HTTP access log for fail2ban (Combined Log Format).
+        // Written to <dataDir>/access.log; silently skipped if unavailable.
+        var accessLogFile *os.File
+        if dataDir != "" {
+                if err := os.MkdirAll(dataDir, 0o755); err == nil {
+                        f, err := os.OpenFile(
+                                filepath.Join(dataDir, "access.log"),
+                                os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644,
+                        )
+                        if err == nil {
+                                accessLogFile = f
+                        }
+                }
+        }
+
         s := &Server{
                 chain:    chain,
                 dashPort: dashPort,
@@ -74,11 +94,12 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
                 upgrader: websocket.Upgrader{
                         CheckOrigin: func(r *http.Request) bool { return true },
                 },
-                subs:      make(map[string]*subscriber),
-                pendingTx: make(map[string]*core.Transaction),
-                auth:      auth,
-                adminDB:   adminDB,
-                updates:   updater,
+                subs:          make(map[string]*subscriber),
+                pendingTx:     make(map[string]*core.Transaction),
+                auth:          auth,
+                adminDB:       adminDB,
+                updates:       updater,
+                accessLogFile: accessLogFile,
         }
         s.setupDashboardRoutes()
         s.setupRPCRoutes()
@@ -103,6 +124,50 @@ func cors(next http.Handler) http.Handler {
                         return
                 }
                 next.ServeHTTP(w, r)
+        })
+}
+
+// ── HTTP access logging (Combined Log Format — compatible with fail2ban) ──────
+
+// loggingResponseWriter wraps http.ResponseWriter to capture status + bytes.
+type loggingResponseWriter struct {
+        http.ResponseWriter
+        status int
+        bytes  int
+}
+
+func (lw *loggingResponseWriter) WriteHeader(code int) {
+        lw.status = code
+        lw.ResponseWriter.WriteHeader(code)
+}
+
+func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
+        n, err := lw.ResponseWriter.Write(b)
+        lw.bytes += n
+        return n, err
+}
+
+// accessLog returns a middleware that writes one Combined Log Format line per
+// request to s.accessLogFile (opened in NewServer from <dataDir>/access.log).
+func (s *Server) accessLog(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                lw := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
+                next.ServeHTTP(lw, r)
+                if s.accessLogFile == nil {
+                        return
+                }
+                // Combined Log Format: IP - - [timestamp] "METHOD URI PROTO" STATUS BYTES
+                ip := r.RemoteAddr
+                if i := strings.LastIndex(ip, ":"); i > 0 {
+                        ip = ip[:i]
+                }
+                ts := time.Now().UTC().Format("02/Jan/2006:15:04:05 +0000")
+                proto := r.Proto
+                if proto == "" {
+                        proto = "HTTP/1.1"
+                }
+                fmt.Fprintf(s.accessLogFile, "%s - - [%s] \"%s %s %s\" %d %d\n",
+                        ip, ts, r.Method, r.URL.RequestURI(), proto, lw.status, lw.bytes)
         })
 }
 
@@ -179,6 +244,7 @@ func (s *Server) setupDashboardRoutes() {
         r.HandleFunc("/guides", s.handleGuidesPage).Methods("GET")
 
         r.Use(cors)
+        r.Use(s.accessLog)
         s.dashRouter = r
 }
 
@@ -191,6 +257,7 @@ func (s *Server) setupRPCRoutes() {
         r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
         r.HandleFunc("/api/ws", s.handleWS)
         r.Use(cors)
+        r.Use(s.accessLog)
         s.rpcRouter = r
 }
 
