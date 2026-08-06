@@ -162,6 +162,7 @@
     <button class="mode-tab" onclick="showGuide('boost',this)">🚀 Boost Node</button>
     <button class="mode-tab" onclick="showGuide('genesis',this)">🌱 Genesis Node</button>
     <button class="mode-tab" onclick="showGuide('sync',this)">🔄 Sync Full Node</button>
+    <button class="mode-tab" onclick="showGuide('testnode',this)">🧪 Test Node</button>
   </div>
 
   <!-- ══════════════════  FULL NODE  ══════════════════════════════════ -->
@@ -229,7 +230,7 @@
           <p>Key settings for a full node:</p>
           <div class="code-block">
 <span class="key">GYDS_NODE_MODE</span>=<span class="val">full</span>
-<span class="key">GYDS_CHAIN_ID</span>=<span class="val">13370</span>
+<span class="key">GYDS_CHAIN_ID</span>=<span class="val">198282</span>
 <span class="key">GYDS_P2P_PORT</span>=<span class="val">30303</span>
 <span class="key">GYDS_RPC_PORT</span>=<span class="val">8545</span>
 <span class="key">GYDS_MAX_PEERS</span>=<span class="val">25</span>
@@ -272,7 +273,7 @@
           <ul>
             <li><strong>Network Name:</strong> GYDS Chain</li>
             <li><strong>RPC URL:</strong> <code>http://&lt;your-server-ip&gt;:8545</code></li>
-            <li><strong>Chain ID:</strong> 13370</li>
+            <li><strong>Chain ID:</strong> 198282</li>
             <li><strong>Currency Symbol:</strong> GYDS</li>
           </ul>
           <p>Or download the pre-filled connection config from your dashboard at <code>/gyds-connection-info.json</code>.</p>
@@ -706,6 +707,139 @@ sudo sysctl -p</span></div>
     </div>
   </div><!-- /guide-sync -->
 
+  <!-- ══════════════════  TEST NODE  ══════════════════════════════════ -->
+  <div class="guide" id="guide-testnode">
+
+    <div class="guide-hero">
+      <div class="guide-icon">🧪</div>
+      <div>
+        <h2>Test Node</h2>
+        <p>Fully isolated ephemeral node for local development and testing. Data is wiped on every start for a guaranteed clean chain. Binds to loopback only (<code>127.0.0.1</code>) — never reachable externally, even with a misconfigured firewall. Produces blocks every 5 seconds for rapid feedback. No P2P — completely disconnected from the main network.</p>
+        <div class="guide-tags">
+          <span class="tag tag-blue">Loopback Only</span>
+          <span class="tag tag-green">5s Blocks</span>
+          <span class="tag tag-yellow">No P2P</span>
+          <span class="tag tag-red">Data Wiped on Restart</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="req-grid">
+      <div class="req-card"><div class="req-label">CPU</div><div class="req-val">Any</div><div class="req-note">Runs on laptops and CI</div></div>
+      <div class="req-card"><div class="req-label">RAM</div><div class="req-val">512 MB+</div><div class="req-note">Minimal footprint</div></div>
+      <div class="req-card"><div class="req-label">Storage</div><div class="req-val">&lt; 100 MB</div><div class="req-note">Wiped on each restart</div></div>
+    </div>
+
+    <div class="section-title">Quick Start</div>
+    <div class="quick-start">
+      <h3>Run a test node with a single command</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># Using the pre-built binary</span>
+<span class="cmd">GYDS_NODE_MODE=testnode GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_DATA_DIR=./data \
+  ./bin/gyds-fullnode start</span>
+
+<span class="comment"># Or directly with go run (from source)</span>
+<span class="cmd">GYDS_NODE_MODE=testnode GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_DATA_DIR=./data \
+  go run . start</span>
+
+<span class="comment"># Or using the .env.testnode preset</span>
+<span class="cmd">set -a &amp;&amp; source .env.testnode &amp;&amp; set +a &amp;&amp; go run . start</span></div>
+    </div>
+
+    <div class="section-title">Step-by-Step Guide</div>
+    <div class="steps">
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">1</div><div class="step-title">Understand what the test node does</div></div>
+        <div class="step-body">
+          <p>When the node starts in <code>testnode</code> mode it:</p>
+          <ul>
+            <li>Wipes <code>&lt;GYDS_DATA_DIR&gt;/test/</code> on every start — always a fresh chain from block 0</li>
+            <li>Sets block time to <strong>5 seconds</strong> regardless of the <code>GYDS_BLOCK_TIME</code> value</li>
+            <li>Disables P2P entirely — no inbound or outbound peer connections</li>
+            <li>Binds the dashboard and RPC server to <code>127.0.0.1</code> (loopback) — not accessible from outside the machine</li>
+            <li>Exposes the full JSON-RPC API on the configured <code>GYDS_RPC_PORT</code></li>
+          </ul>
+          <div class="alert alert-warn">⚠️ Do not use test node in production. The data wipe is automatic and cannot be disabled in this mode.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">2</div><div class="step-title">Configure using the .env.testnode preset</div></div>
+        <div class="step-body">
+          <p>The repository includes a ready-to-use testnode environment file at <code>.env.testnode</code>. It sets safe local ports and the correct mode — no editing required for basic use.</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># View the preset</span>
+<span class="cmd">cat .env.testnode</span>
+
+<span class="comment"># Source it and start</span>
+<span class="cmd">set -a &amp;&amp; source .env.testnode &amp;&amp; set +a
+go run . start</span></div>
+          <div class="alert alert-info">ℹ️ You can override any variable by setting it <em>after</em> sourcing the file, e.g. <code>export GYDS_RPC_PORT=9545</code>.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">3</div><div class="step-title">Connect MetaMask or ethers.js</div></div>
+        <div class="step-body">
+          <p>Add the test node as a custom network in MetaMask or point your ethers.js / web3.js client at the local RPC endpoint:</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment">// ethers.js v6</span>
+<span class="cmd">const provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
+const blockNumber = await provider.getBlockNumber(); // Should increase every 5s</span></div>
+          <ul style="margin-top:14px">
+            <li><strong>Network Name:</strong> GYDS Test Node</li>
+            <li><strong>RPC URL:</strong> <code>http://127.0.0.1:8545</code></li>
+            <li><strong>Chain ID:</strong> 198282</li>
+            <li><strong>Currency Symbol:</strong> GYDS</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">4</div><div class="step-title">Send test transactions</div></div>
+        <div class="step-body">
+          <p>Use standard Ethereum JSON-RPC calls against <code>http://127.0.0.1:8545</code>. Transactions are included in the next block (≤ 5 seconds).</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># Check block number</span>
+<span class="cmd">curl -s http://127.0.0.1:8545 \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'</span>
+
+<span class="comment"># Check node health</span>
+<span class="cmd">curl -s http://127.0.0.1:8545/health | jq .</span></div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">5</div><div class="step-title">Use in CI / automated tests</div></div>
+        <div class="step-body">
+          <p>The test node starts in under 3 seconds and produces blocks every 5 seconds, making it ideal for integration test suites.</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># Example: start test node in background, wait for RPC, run tests, stop</span>
+<span class="cmd">set -a &amp;&amp; source .env.testnode &amp;&amp; set +a
+./bin/gyds-fullnode start &amp;
+NODE_PID=$!
+
+# Wait until the RPC responds
+until curl -sf http://127.0.0.1:8545/health &gt;/dev/null; do sleep 1; done
+
+# Run your test suite
+npm test   # or: go test ./... or: forge test
+
+kill $NODE_PID</span></div>
+          <div class="alert alert-info">ℹ️ Because data is wiped on each start, every CI run begins from a clean genesis — no state leakage between runs.</div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /guide-testnode -->
+
   <!-- Mode comparison table -->
   <div style="margin-top:48px">
     <div class="section-title">Mode Comparison</div>
@@ -777,6 +911,15 @@ sudo sysctl -p</span></div>
             <td>~50 GB+</td>
             <td>Joining the network</td>
           </tr>
+          <tr>
+            <td><strong>🧪 Test Node</strong></td>
+            <td class="yes">✓</td>
+            <td class="no">✗</td>
+            <td class="no">Wiped on restart</td>
+            <td class="yes">✓ loopback</td>
+            <td>&lt; 100 MB</td>
+            <td>Dev &amp; CI testing</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -823,7 +966,7 @@ function showToast(msg) {
 
 // Open guide from URL hash
 const hash = location.hash.replace('#', '');
-if (['full','lite','rpc','boost','genesis','sync'].includes(hash)) {
+if (['full','lite','rpc','boost','genesis','sync','testnode'].includes(hash)) {
   const btn = document.querySelector(`.mode-tab[onclick*="'${hash}'"]`);
   showGuide(hash, btn);
 }

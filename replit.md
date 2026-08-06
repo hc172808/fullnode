@@ -27,7 +27,7 @@ Or use the "Start application" workflow (already configured).
 
 ## Key environment variables
 ```
-GYDS_CHAIN_ID=13370
+GYDS_CHAIN_ID=198282
 GYDS_NODE_MODE=full
 GYDS_DASHBOARD_PORT=5000
 GYDS_RPC_PORT=8545

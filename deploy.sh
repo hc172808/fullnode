@@ -157,7 +157,7 @@ source "$ENV_FILE"
 set +a
 
 # Apply defaults for any variable not present in .env
-GYDS_CHAIN_ID="${GYDS_CHAIN_ID:-13370}"
+GYDS_CHAIN_ID="${GYDS_CHAIN_ID:-198282}"
 GYDS_NODE_MODE="${GYDS_NODE_MODE:-full}"
 GYDS_DASHBOARD_PORT="${GYDS_DASHBOARD_PORT:-5000}"
 GYDS_RPC_PORT="${GYDS_RPC_PORT:-8545}"
