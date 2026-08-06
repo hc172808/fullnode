@@ -1,4 +1,4 @@
-modules = ["web", "go-1.21", "bash"]
+modules = ["web", "go-1.21", "bash", "python-base-3.13"]
 [agent]
 expertMode = true
 stack = "BEST_EFFORT_FALLBACK"

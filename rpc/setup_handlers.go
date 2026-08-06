@@ -97,7 +97,7 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 		return strings.TrimSpace(v)
 	}
 
-	cfg.ChainID        = def(cfg.ChainID, "13370")
+	cfg.ChainID        = def(cfg.ChainID, "198282")
 	cfg.NetworkName    = def(cfg.NetworkName, "GYDS Chain")
 	cfg.NodeMode       = def(cfg.NodeMode, "full")
 	cfg.BlockTime      = def(cfg.BlockTime, "120")

@@ -228,7 +228,7 @@ func (s *Server) handleConnectionInfo(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) buildConnectionInfo() map[string]interface{} {
         stats := s.chain.Stats()
-        chainID := int64(13370)
+        chainID := int64(198282)
         if v, ok := stats["chainId"]; ok {
                 switch cv := v.(type) {
                 case int64:

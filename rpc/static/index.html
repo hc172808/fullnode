@@ -507,7 +507,7 @@
         </div>
 
         <div class="coin-story-stats">
-          <div class="cs-stat"><span class="cs-val">13370</span><span class="cs-lbl">Chain ID</span></div>
+          <div class="cs-stat"><span class="cs-val">198282</span><span class="cs-lbl">Chain ID</span></div>
           <div class="cs-stat"><span class="cs-val">120s</span><span class="cs-lbl">Block Time</span></div>
           <div class="cs-stat"><span class="cs-val">PoS</span><span class="cs-lbl">Consensus</span></div>
           <div class="cs-stat"><span class="cs-val">EVM</span><span class="cs-lbl">Compatible</span></div>
@@ -523,7 +523,7 @@
     <!-- One-click Add GYDS Chain to External Wallet -->
     <div class="add-wallet-card">
       <h3>🔗 Add GYDS Chain to Your Wallet</h3>
-      <p>One click adds GYDS Chain (ID 13370) to MetaMask, Trust Wallet, or any EVM-compatible browser wallet.</p>
+      <p>One click adds GYDS Chain (ID 198282) to MetaMask, Trust Wallet, or any EVM-compatible browser wallet.</p>
       <div id="entryConnectAlert" style="display:none;margin-bottom:10px"></div>
       <div class="add-wallet-row">
         <button class="wallet-pill" onclick="quickAddChain('MetaMask', this)">🦊 MetaMask</button>
@@ -722,7 +722,7 @@
             </div>
             <div style="font-size:12px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:6px">
               <span style="width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block"></span>
-              GYDS Chain · ID 13370
+              GYDS Chain · ID 198282
             </div>
           </div>
         </div>
@@ -735,7 +735,7 @@
           <!-- Add network one-click -->
           <div style="margin-bottom:20px">
             <div class="pane-section-title">Add GYDS Chain to Your Wallet</div>
-            <p style="font-size:13px;color:var(--muted);margin-bottom:14px">One click adds GYDS Chain (ID 13370) to any EVM-compatible browser wallet.</p>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:14px">One click adds GYDS Chain (ID 198282) to any EVM-compatible browser wallet.</p>
             <div class="wallet-grid">
               <button class="wallet-pill" id="addChainBtn_MetaMask"      data-label="🦊 MetaMask"       onclick="addChainToWallet('MetaMask',this)">🦊 MetaMask</button>
               <button class="wallet-pill" id="addChainBtn_TrustWallet"   data-label="🛡 Trust Wallet"   onclick="addChainToWallet('Trust Wallet',this)">🛡 Trust Wallet</button>
@@ -765,8 +765,8 @@
               </div>
               <div class="net-config-row">
                 <span class="net-config-label">Chain ID</span>
-                <span class="net-config-val mono">13370</span>
-                <button class="copy-btn" onclick="copyText('13370')" title="Copy">⧉</button>
+                <span class="net-config-val mono">198282</span>
+                <button class="copy-btn" onclick="copyText('198282')" title="Copy">⧉</button>
               </div>
               <div class="net-config-row">
                 <span class="net-config-label">Currency Symbol</span>
@@ -858,7 +858,7 @@
 
 <script>
 // ── Config ──────────────────────────────────────────────────────────────────
-const CHAIN_ID   = 13370;
+const CHAIN_ID   = 198282;
 const SYMBOL     = 'GYDS';
 const GAS_LIMIT  = 21000;
 const GAS_PRICE  = ethers.utils.parseUnits('1', 'gwei');
@@ -1440,7 +1440,7 @@ function drawQR(address) {
 
 // ── Add GYDS Chain to external wallet (EIP-3085) ──────────────────────────────
 const GYDS_CHAIN_PARAMS = {
-  chainId:           '0x343A', // 13370
+  chainId:           '0x3068a', // 198282
   chainName:         'GYDS Chain',
   nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
   rpcUrls:           [window.location.origin + '/rpc'],
@@ -1500,7 +1500,7 @@ async function syncBrowserWallet() {
 
     // Switch / add the GYDS network in the browser wallet too
     try {
-      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x343A' }] });
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x3068a' }] });
     } catch(switchErr) {
       if (switchErr.code === 4902) {
         await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [GYDS_CHAIN_PARAMS] });
@@ -1897,7 +1897,7 @@ async function quickAddChain(label, btn) {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>';
   const params = {
-    chainId:           '0x343A',
+    chainId:           '0x3068a',
     chainName:         'GYDS Chain',
     nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
     rpcUrls:           [window.location.origin + '/rpc'],
