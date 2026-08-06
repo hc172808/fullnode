@@ -243,6 +243,110 @@
     .add-wallet-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
     .add-wallet-card p { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
     .add-wallet-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Coin Story Hero ── */
+    .coin-story-hero {
+      background: linear-gradient(160deg, #0b1525 0%, #0d1f35 50%, #0b1a10 100%);
+      border: 1px solid var(--border); border-radius: 20px;
+      padding: 36px 28px; margin-bottom: 24px;
+      overflow: hidden; position: relative;
+    }
+    .coin-story-hero::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 10% 20%, rgba(16,185,129,.06) 0%, transparent 60%),
+                  radial-gradient(ellipse at 90% 80%, rgba(245,158,11,.06) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .coin-story-coins {
+      display: flex; justify-content: center; gap: 24px; margin-bottom: 28px;
+    }
+    .coin-story-coin {
+      position: relative; flex: 0 0 auto;
+    }
+    .coin-story-coin img {
+      width: 130px; height: 130px; border-radius: 50%;
+      object-fit: cover;
+      box-shadow: 0 0 40px rgba(245,158,11,.35), 0 8px 32px rgba(0,0,0,.6);
+      border: 3px solid rgba(245,158,11,.3);
+      transition: transform .3s ease, box-shadow .3s ease;
+    }
+    .coin-story-coin img:hover {
+      transform: scale(1.07) rotate(-2deg);
+      box-shadow: 0 0 60px rgba(245,158,11,.5), 0 12px 40px rgba(0,0,0,.7);
+    }
+    .coin-story-tag {
+      position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+      font-size: 11px; font-weight: 800; letter-spacing: .08em;
+      padding: 3px 12px; border-radius: 20px;
+      white-space: nowrap;
+    }
+    .gyds-tag { background: linear-gradient(90deg,#d97706,#f59e0b); color: #0b0f1a; }
+    .gyd-tag  { background: linear-gradient(90deg,#10b981,#34d399); color: #0b0f1a; }
+
+    .coin-story-title {
+      font-size: 22px; font-weight: 900; text-align: center;
+      background: linear-gradient(135deg, #f59e0b 20%, #10b981 80%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; margin-bottom: 6px; line-height: 1.25;
+    }
+    .coin-story-sub {
+      text-align: center; font-size: 13px; color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .coin-story-cards {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px;
+    }
+    @media(max-width: 600px) { .coin-story-cards { grid-template-columns: 1fr; } }
+
+    .coin-card {
+      border-radius: 14px; padding: 18px; border: 1px solid transparent;
+      font-size: 13px; line-height: 1.6;
+    }
+    .gyds-card {
+      background: rgba(245,158,11,.07);
+      border-color: rgba(245,158,11,.2);
+    }
+    .gyd-card {
+      background: rgba(16,185,129,.07);
+      border-color: rgba(16,185,129,.2);
+    }
+    .coin-card-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+    }
+    .coin-symbol {
+      font-size: 18px; font-weight: 900; letter-spacing: .04em;
+    }
+    .gyds-card .coin-symbol { color: #f59e0b; }
+    .gyd-card  .coin-symbol { color: #10b981; }
+    .coin-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
+      color: var(--muted);
+    }
+    .coin-card p { color: #94a3b8; margin-bottom: 10px; }
+    .coin-card p strong { color: var(--text); }
+    .coin-uses {
+      list-style: none; padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .coin-uses li { font-size: 12px; color: #94a3b8; }
+
+    .coin-story-stats {
+      display: flex; justify-content: center; gap: 0; margin-bottom: 20px;
+      border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+      background: rgba(255,255,255,.02);
+    }
+    .cs-stat {
+      flex: 1; padding: 14px 8px; text-align: center;
+      border-right: 1px solid var(--border);
+    }
+    .cs-stat:last-child { border-right: none; }
+    .cs-val { display: block; font-size: 18px; font-weight: 800; color: var(--accent); }
+    .cs-lbl { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+
+    .coin-story-footer {
+      text-align: center; font-size: 12px; color: var(--muted);
+      line-height: 1.6; padding-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -352,6 +456,69 @@
 
   <!-- ── Entry Screen (no wallet loaded) ── -->
   <div id="entryScreen">
+
+    <!-- ── Coin Story Hero ── -->
+    <div class="coin-story-hero">
+      <div class="coin-story-coins">
+        <div class="coin-story-coin">
+          <img src="/gyds-coin.jpg" alt="GYDS — The Native Coin of Guyana" />
+          <div class="coin-story-tag gyds-tag">GYDS</div>
+        </div>
+        <div class="coin-story-coin">
+          <img src="/gyd-coin.png" alt="GYD — The Native Stablecoin" />
+          <div class="coin-story-tag gyd-tag">GYD</div>
+        </div>
+      </div>
+
+      <div class="coin-story-text">
+        <h1 class="coin-story-title">Guyana's Digital Financial Revolution</h1>
+        <p class="coin-story-sub">Two coins. One mission. A sovereign financial future for every Guyanese.</p>
+
+        <div class="coin-story-cards">
+          <div class="coin-card gyds-card">
+            <div class="coin-card-header">
+              <span class="coin-symbol">GYDS</span>
+              <span class="coin-label">Native Utility Coin</span>
+            </div>
+            <p>Born from Guyana's golden promise, <strong>GYDS</strong> is the heartbeat of the GYDS Chain — the fuel that powers every transaction, rewards every validator, and secures the network through Proof-of-Stake consensus.</p>
+            <p>Named for the <em>Guyana Dollar</em> reimagined for the blockchain era, GYDS carries the spirit of a nation rich in natural resources and ambition. Its circuit-board design symbolises Guyana stepping boldly into the digital age — where the rainforest meets the blockchain.</p>
+            <ul class="coin-uses">
+              <li>⛏ Validator staking &amp; block rewards</li>
+              <li>⛽ Gas fees for on-chain transactions</li>
+              <li>🗳 Governance voting rights</li>
+              <li>🌐 Cross-chain bridge collateral</li>
+            </ul>
+          </div>
+
+          <div class="coin-card gyd-card">
+            <div class="coin-card-header">
+              <span class="coin-symbol">GYD</span>
+              <span class="coin-label">Native Stablecoin</span>
+            </div>
+            <p><strong>GYD</strong> is Guyana's answer to financial stability on-chain — a stablecoin pegged 1:1 to the Guyana Dollar (GYD), giving everyday citizens a safe, borderless way to hold value without the volatility of typical crypto assets.</p>
+            <p>Where GYDS moves markets, GYD anchors commerce. Merchants, remittance senders, and savers across the Caribbean can transact in a familiar unit of account, backed by the transparency of the GYDS blockchain and auditable reserves.</p>
+            <ul class="coin-uses">
+              <li>💸 Everyday payments &amp; commerce</li>
+              <li>📤 Low-cost remittances across borders</li>
+              <li>🏦 Savings without price volatility</li>
+              <li>🔄 DeFi liquidity &amp; lending pools</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="coin-story-stats">
+          <div class="cs-stat"><span class="cs-val">13370</span><span class="cs-lbl">Chain ID</span></div>
+          <div class="cs-stat"><span class="cs-val">120s</span><span class="cs-lbl">Block Time</span></div>
+          <div class="cs-stat"><span class="cs-val">PoS</span><span class="cs-lbl">Consensus</span></div>
+          <div class="cs-stat"><span class="cs-val">EVM</span><span class="cs-lbl">Compatible</span></div>
+        </div>
+
+        <p class="coin-story-footer">
+          🇬🇾 Built in Guyana, for Guyana — and the world.
+          The GYDS Chain is fully open, permissionless, and community-governed.
+        </p>
+      </div>
+    </div>
 
     <!-- One-click Add GYDS Chain to External Wallet -->
     <div class="add-wallet-card">

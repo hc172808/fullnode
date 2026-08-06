@@ -177,15 +177,63 @@ check_cmd() {
   log "✓ $1"
 }
 
-check_cmd go  "Install from https://go.dev/dl/"
+# ── Auto-install Go if missing ─────────────────────────────────────────────
+install_go() {
+  local GO_VERSION="1.22.4"
+  local ARCH
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64)  ARCH="amd64" ;;
+    aarch64) ARCH="arm64" ;;
+    armv6l)  ARCH="armv6l" ;;
+    *)       error "Unsupported architecture: $ARCH"; exit 1 ;;
+  esac
+  local TARBALL="go${GO_VERSION}.linux-${ARCH}.tar.gz"
+  local URL="https://go.dev/dl/${TARBALL}"
+
+  info "Go not found — auto-installing Go ${GO_VERSION} for linux/${ARCH}..."
+  if [[ $EUID -ne 0 ]]; then
+    error "Root required to install Go. Run: sudo bash deploy.sh"
+    error "Or install Go manually from https://go.dev/dl/ then re-run this script."
+    exit 1
+  fi
+
+  curl -fsSL "$URL" -o "/tmp/${TARBALL}" \
+    || { error "Failed to download Go from ${URL}"; exit 1; }
+
+  rm -rf /usr/local/go
+  tar -C /usr/local -xzf "/tmp/${TARBALL}"
+  rm -f "/tmp/${TARBALL}"
+
+  # Make go available in this shell session
+  export PATH="/usr/local/go/bin:$PATH"
+
+  # Persist for future logins
+  if [[ -f /etc/profile.d/go.sh ]]; then
+    : # already there
+  else
+    echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/go.sh
+    chmod 644 /etc/profile.d/go.sh
+  fi
+
+  log "✓ Go ${GO_VERSION} installed to /usr/local/go"
+}
+
+if ! command -v go &>/dev/null; then
+  install_go
+else
+  log "✓ go (found at $(command -v go))"
+fi
+
 check_cmd git "sudo apt install git"
 
 GO_VER=$(go version | awk '{print $3}' | sed 's/go//')
 GO_MAJOR=$(echo "$GO_VER" | cut -d. -f1)
 GO_MINOR=$(echo "$GO_VER" | cut -d. -f2)
 if [[ "$GO_MAJOR" -lt 1 || ("$GO_MAJOR" -eq 1 && "$GO_MINOR" -lt 21) ]]; then
-  error "Go 1.21+ required (found $GO_VER). Install from https://go.dev/dl/"
-  exit 1
+  warn "Go $GO_VER is older than 1.21 — upgrading..."
+  install_go
+  GO_VER=$(go version | awk '{print $3}' | sed 's/go//')
 fi
 log "✓ Go $GO_VER"
 

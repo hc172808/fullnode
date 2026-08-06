@@ -116,9 +116,16 @@ func (s *Server) setupDashboardRoutes() {
         // JSON-RPC at /rpc on the dashboard port — used by the built-in browser wallet
         r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
 
-        // Static assets
+        // Static assets (JS, CSS, images)
         r.HandleFunc("/{file:.*\\.js}", s.handleStaticAsset).Methods("GET")
         r.HandleFunc("/{file:.*\\.css}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.jpg}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.jpeg}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.png}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.gif}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.ico}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.webp}", s.handleStaticAsset).Methods("GET")
+        r.HandleFunc("/{file:.*\\.svg}", s.handleStaticAsset).Methods("GET")
 
         // Connection info download
         r.HandleFunc("/gyds-connection-info.json", s.handleConnectionInfo).Methods("GET")
