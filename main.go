@@ -629,20 +629,22 @@ func runTestNode(cfg *config.Config) error {
 
 	testCfg := *cfg
 	testCfg.DataDir = testDir
-	testCfg.BlockTime = 5 * time.Second // Fast blocks for testing
-	testCfg.P2PBootstrap = nil           // No peers
+	testCfg.BlockTime = 5 * time.Second    // Fast blocks for testing
+	testCfg.P2PBootstrap = nil              // No peers
 	testCfg.PeerAuth = false
+	testCfg.ChainID = core.GydsTestGenesis.ChainID // 31337 (0x7a69) — distinct from mainnet
 
 	log.Info().
 		Str("dataDir", testDir).
+		Int64("chainId", testCfg.ChainID).
 		Dur("blockTime", testCfg.BlockTime).
 		Str("bindHost", "127.0.0.1").
 		Msg("Test node: fresh chain, 5s blocks, no P2P, loopback-only listeners")
 
-	chain := core.NewChain(core.GydsGenesis, testCfg.DataDir)
+	chain := core.NewChain(core.GydsTestGenesis, testCfg.DataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Test chain initialised from genesis")
 
-	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
+	vs := consensus.NewValidatorSet(core.GydsTestGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, testCfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, testCfg.DashboardPort, testCfg.RPCPort, int(testCfg.BlockTime.Seconds()), testCfg.DataDir, testCfg.ExternalURL, version)

@@ -89,6 +89,45 @@ var GydsGenesis = &GenesisConfig{
 	},
 }
 
+// GydsTestGenesis is the genesis configuration for the isolated test node.
+// It uses chain ID 31337 (0x7a69) — the industry-standard development chain ID
+// recognised by MetaMask, Hardhat, Anvil, and most EVM tooling — so it is
+// immediately distinguishable from the live GYDS network (198282 / 0x3068a).
+// Data is wiped on every testnode start, so this genesis is always re-applied.
+var GydsTestGenesis = &GenesisConfig{
+	ChainID:     31337,
+	NetworkName: "GYDS Test Network",
+	Timestamp:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Unix(),
+	GasLimit:    30_000_000,
+	Difficulty:  big.NewInt(1),
+	ExtraData:   "0x4759445320546573744e6574776f726b",
+	Validators: []string{
+		"0x0000000000000000000000000000000000000001",
+		"0x0000000000000000000000000000000000000002",
+		"0x0000000000000000000000000000000000000003",
+	},
+	// Pre-fund test addresses with generous balances so tests never run dry.
+	Alloc: []GenesisAlloc{
+		{Address: "0x0000000000000000000000000000000000000001", Balance: e18B(1)},
+		{Address: "0x0000000000000000000000000000000000000002", Balance: e18M(600)},
+		{Address: "0x0000000000000000000000000000000000000003", Balance: e18M(400)},
+	},
+	Tokens: []TokenDefinition{
+		{
+			Symbol:       "GYD",
+			Name:         "GYD Stablecoin",
+			Decimals:     18,
+			IsStablecoin: true,
+			TotalSupply:  e18B(10),
+			Alloc: []GenesisTokenAlloc{
+				{Address: "0x0000000000000000000000000000000000000001", Amount: e18B(5)},
+				{Address: "0x0000000000000000000000000000000000000002", Amount: e18B(3)},
+				{Address: "0x0000000000000000000000000000000000000003", Amount: e18B(2)},
+			},
+		},
+	},
+}
+
 func GenesisBlock(cfg *GenesisConfig) *Block {
 	if cfg == nil {
 		cfg = GydsGenesis

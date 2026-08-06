@@ -736,14 +736,14 @@ sudo sysctl -p</span></div>
       <div class="code-block">
         <button class="copy-btn" onclick="copyCode(this)">copy</button>
 <span class="comment"># Using the pre-built binary</span>
-<span class="cmd">GYDS_NODE_MODE=testnode GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_DATA_DIR=./data \
+<span class="cmd">GYDS_NODE_MODE=testnode GYDS_CHAIN_ID=31337 GYDS_DASHBOARD_PORT=15000 GYDS_RPC_PORT=18545 GYDS_DATA_DIR=./data \
   ./bin/gyds-fullnode start</span>
 
 <span class="comment"># Or directly with go run (from source)</span>
-<span class="cmd">GYDS_NODE_MODE=testnode GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_DATA_DIR=./data \
+<span class="cmd">GYDS_NODE_MODE=testnode GYDS_CHAIN_ID=31337 GYDS_DASHBOARD_PORT=15000 GYDS_RPC_PORT=18545 GYDS_DATA_DIR=./data \
   go run . start</span>
 
-<span class="comment"># Or using the .env.testnode preset</span>
+<span class="comment"># Or using the .env.testnode preset (recommended)</span>
 <span class="cmd">set -a &amp;&amp; source .env.testnode &amp;&amp; set +a &amp;&amp; go run . start</span></div>
     </div>
 
@@ -788,12 +788,12 @@ go run . start</span></div>
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
 <span class="comment">// ethers.js v6</span>
-<span class="cmd">const provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
+<span class="cmd">const provider = new ethers.JsonRpcProvider('http://127.0.0.1:18545');
 const blockNumber = await provider.getBlockNumber(); // Should increase every 5s</span></div>
           <ul style="margin-top:14px">
-            <li><strong>Network Name:</strong> GYDS Test Node</li>
-            <li><strong>RPC URL:</strong> <code>http://127.0.0.1:8545</code></li>
-            <li><strong>Chain ID:</strong> 198282</li>
+            <li><strong>Network Name:</strong> GYDS Test Network</li>
+            <li><strong>RPC URL:</strong> <code>http://127.0.0.1:18545</code></li>
+            <li><strong>Chain ID:</strong> 31337 (0x7a69)</li>
             <li><strong>Currency Symbol:</strong> GYDS</li>
           </ul>
         </div>
@@ -806,12 +806,12 @@ const blockNumber = await provider.getBlockNumber(); // Should increase every 5s
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
 <span class="comment"># Check block number</span>
-<span class="cmd">curl -s http://127.0.0.1:8545 \
+<span class="cmd">curl -s http://127.0.0.1:18545 \
   -X POST -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'</span>
 
 <span class="comment"># Check node health</span>
-<span class="cmd">curl -s http://127.0.0.1:8545/health | jq .</span></div>
+<span class="cmd">curl -s http://127.0.0.1:18545/health | jq .</span></div>
         </div>
       </div>
 
@@ -827,7 +827,7 @@ const blockNumber = await provider.getBlockNumber(); // Should increase every 5s
 NODE_PID=$!
 
 # Wait until the RPC responds
-until curl -sf http://127.0.0.1:8545/health &gt;/dev/null; do sleep 1; done
+until curl -sf http://127.0.0.1:18545/health &gt;/dev/null; do sleep 1; done
 
 # Run your test suite
 npm test   # or: go test ./... or: forge test
