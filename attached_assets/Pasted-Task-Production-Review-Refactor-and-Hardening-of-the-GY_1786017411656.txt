@@ -1,0 +1,320 @@
+Task: Production Review, Refactor, and Hardening of the GYDS Chain Deployment Script
+
+Review the attached Bash deployment script and improve it while preserving its existing functionality, structure, command-line interface, and deployment flow.
+
+This is a production deployment script for the GYDS Chain Full Node.
+
+Do NOT rewrite the script from scratch.
+
+Instead, perform a full production-grade refactor that fixes bugs, improves reliability, strengthens security, enhances error handling, cleans up the English, and ensures the script is safe to run multiple times.
+
+The final result should be a production-ready deployment script.
+
+==========================================================
+1. Preserve Existing Functionality
+==========================================================
+
+- Keep every existing feature.
+- Keep all command-line options working.
+- Preserve backward compatibility.
+- Preserve the installation flow.
+- Do not remove any functionality unless it is clearly broken.
+- Keep the script idempotent.
+
+==========================================================
+2. Improve Bash Code
+==========================================================
+
+Review the entire script and correct every Bash issue.
+
+This includes, but is not limited to:
+
+- Proper error handling
+- Proper exit codes
+- ShellCheck best practices
+- Strict variable quoting
+- Safe command substitution
+- Prevent accidental word splitting
+- Remove duplicated code
+- Improve reusable functions
+- Validate user input
+- Validate command-line arguments
+- Reject unknown options instead of silently ignoring them
+- Validate required files before using them
+- Improve update logic
+- Improve uninstall logic
+- Improve restart logic
+- Improve dependency handling
+- Improve storage detection
+- Improve disk space validation
+- Improve service validation
+- Improve health checks
+- Improve logging
+- Improve portability
+- Improve readability
+
+==========================================================
+3. Dependency Management
+==========================================================
+
+Before using any command, verify it exists.
+
+Automatically install missing dependencies when possible.
+
+Verify dependencies including:
+
+- curl
+- git
+- jq
+- tar
+- awk
+- sed
+- grep
+- hostname
+- python3
+- ufw
+- fail2ban
+- systemctl
+- go
+
+Display useful installation messages.
+
+==========================================================
+4. Improve Go Installation
+==========================================================
+
+Refactor the Go installation process.
+
+Requirements:
+
+- Install the latest stable Go release automatically.
+- Detect architecture correctly.
+- Verify download integrity using SHA256 checksums whenever possible.
+- Do not remove an existing Go installation until the new installation has been successfully extracted and verified.
+- Automatically upgrade unsupported Go versions.
+- Ensure Go is immediately available in the current shell.
+- Ensure Go remains available after reboot.
+
+==========================================================
+5. Improve Build Process
+==========================================================
+
+Before building:
+
+- Validate go.mod
+- Validate go.sum
+- Run go mod download
+- Run go mod tidy when appropriate
+- Display Go version
+- Display application version
+- Display build information
+- Preserve ldflags
+- Handle build failures gracefully
+- Display binary size
+
+==========================================================
+6. Improve Health Checks
+==========================================================
+
+Improve deployment validation.
+
+Verify:
+
+- systemd service
+- Dashboard
+- JSON-RPC
+- WebSocket
+- Block height
+- Health endpoint
+
+Retry intelligently.
+
+Display professional status messages.
+
+==========================================================
+7. Improve Logging
+==========================================================
+
+Console output should be:
+
+- Professional
+- Consistent
+- Color coded
+- Easy to read
+- Easy to troubleshoot
+
+Every major step should clearly display:
+
+- Starting...
+- Success
+- Warning
+- Failure
+
+==========================================================
+8. Improve Security
+==========================================================
+
+Strengthen security throughout the deployment.
+
+Implement improvements including:
+
+- Verify downloads using SHA256 checksums
+- Validate downloaded archives
+- Improve permissions
+- Verify ownership before changing permissions
+- Reduce unnecessary root execution
+- Improve firewall validation
+- Improve systemd security hardening
+
+Include systemd hardening such as:
+
+- NoNewPrivileges
+- PrivateTmp
+- PrivateDevices
+- ProtectSystem
+- ProtectHome
+- ProtectKernelModules
+- ProtectKernelLogs
+- ProtectControlGroups
+- LockPersonality
+- MemoryDenyWriteExecute (when compatible)
+- RestrictNamespaces
+- RestrictRealtime
+- SystemCallArchitectures=native
+
+Only enable settings compatible with Ubuntu 22.04, Ubuntu 24.04, and Debian 12.
+
+==========================================================
+9. Improve Configuration Handling
+==========================================================
+
+Never overwrite an existing .env unless updating.
+
+Validate:
+
+- Required variables
+- Missing variables
+- Invalid values
+
+Display meaningful guidance.
+
+==========================================================
+10. Improve English
+==========================================================
+
+Correct all:
+
+- Grammar
+- Spelling
+- Capitalization
+- Punctuation
+- Comments
+- Help text
+- Usage messages
+- Error messages
+- Success messages
+
+Rewrite them to sound professional and consistent.
+
+==========================================================
+11. Improve Portability
+==========================================================
+
+Ensure compatibility with:
+
+- Ubuntu 22.04
+- Ubuntu 24.04
+- Debian 12
+
+Avoid commands that are unavailable by default unless the script installs them automatically.
+
+==========================================================
+12. Improve Code Quality
+==========================================================
+
+Refactor repetitive code into reusable functions where appropriate.
+
+Maintain consistent formatting.
+
+Follow ShellCheck best practices.
+
+Remove warnings where practical.
+
+==========================================================
+13. Fix the Fail2Ban Configuration
+==========================================================
+
+The current deployment sometimes fails with:
+
+ERROR Failed to access socket path:
+/var/run/fail2ban/fail2ban.sock
+Is fail2ban running?
+
+Completely refactor the Fail2Ban installation and configuration process.
+
+The script must never assume Fail2Ban is already running.
+
+Requirements:
+
+- Install Fail2Ban if missing.
+- Verify installation succeeded.
+- Enable the service on boot.
+- Start the service before configuring it.
+- Wait until the Fail2Ban socket exists before using fail2ban-client.
+- Verify the service is active using systemctl is-active.
+- If the service fails to start, automatically collect diagnostics using:
+  - systemctl status fail2ban --no-pager
+  - journalctl -u fail2ban -n 100 --no-pager
+- Detect and automatically recover from common startup issues, including:
+  - Invalid jail configuration
+  - Missing log files
+  - Invalid backend
+  - Incorrect permissions
+  - Missing socket
+- Validate all Fail2Ban configuration files before restarting the service.
+- Only execute fail2ban-client commands after confirming the socket exists.
+- Ensure this section is completely idempotent.
+- Provide professional, actionable error messages.
+- Do not continue silently if Fail2Ban fails to start.
+- Attempt automatic recovery before exiting.
+
+==========================================================
+14. Validate the Firewall Configuration
+==========================================================
+
+Ensure the firewall setup is production-ready.
+
+Requirements:
+
+- Verify UFW is installed before configuring it.
+- Validate firewall rules after applying them.
+- Prevent duplicate rules.
+- Confirm SSH access will remain available before enabling the firewall.
+- Verify Dashboard, RPC, WebSocket, and P2P ports are correctly opened.
+- Display the final firewall status.
+
+==========================================================
+15. Final Validation
+==========================================================
+
+Before returning the updated deployment script:
+
+- Perform a full code review.
+- Verify there are no syntax errors.
+- Verify every function is valid.
+- Verify every variable is initialized.
+- Verify every dependency is checked before use.
+- Verify every service starts correctly.
+- Verify every service is validated after startup.
+- Verify the deployment is safe to run multiple times.
+- Verify the script is production-ready.
+- Verify the script follows ShellCheck best practices.
+- Verify there are no known logic errors.
+
+Return the COMPLETE corrected Bash deployment script.
+
+Do NOT return only modified sections.
+
+Do NOT summarize the changes.
+
+Return the full production-ready script with every improvement already applied.
