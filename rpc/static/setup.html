@@ -189,17 +189,17 @@
   <!-- Progress -->
   <div class="progress-wrap">
     <div class="progress-label">
-      <span id="stepLabel">Step 1 of 7</span>
+      <span id="stepLabel">Step 1 of 8</span>
       <span id="stepName">Node Identity</span>
     </div>
-    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:14%"></div></div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:12%"></div></div>
     <div class="steps-row" id="stepsRow"></div>
   </div>
 
   <!-- ═══════════════  STEP 1 — Node Identity  ════════════════════ -->
   <div class="step-card" id="step1">
     <div class="step-header">
-      <div class="step-num">Step 1 of 7</div>
+      <div class="step-num">Step 1 of 8</div>
       <div class="step-title">Node Identity</div>
       <div class="step-desc">Configure your chain ID, network name, and node operating mode.</div>
     </div>
@@ -258,13 +258,32 @@
           <label class="radio-card" id="modeValidator" onclick="selectMode('validator',this)">
             <input type="radio" name="nodeMode" value="validator" />
             <div class="radio-card-title">🔐 Validator Node</div>
-            <div class="radio-card-desc">PoS block producer with a dedicated signing key. Set GYDS_VALIDATOR_KEY to identify your validator address.</div>
+            <div class="radio-card-desc">PoS block producer with a dedicated signing key. Provide your validator private key below.</div>
+          </label>
+          <label class="radio-card" id="modeTestnode" onclick="selectMode('testnode',this)">
+            <input type="radio" name="nodeMode" value="testnode" />
+            <div class="radio-card-title">🧪 Test Node</div>
+            <div class="radio-card-desc">Ephemeral local node. Data cleared on restart. No P2P — isolated from the network. 5 s blocks.</div>
           </label>
         </div>
         <div class="field-hint" id="modeHint" style="margin-top:10px;padding:10px 12px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:8px">
           ⛓ <strong>Full Node</strong> — stores the complete chain, participates in block production via PoS, and serves the full JSON-RPC API. Requires ~5–10 GB initially, growing ~1–3 GB/month. Recommended for most node operators.
         </div>
       </div>
+
+      <!-- Validator key — shown only when validator mode is selected -->
+      <div id="validatorKeyField" class="field" style="margin-top:18px;display:none">
+        <label>Validator Signing Key <span style="color:var(--muted);font-weight:400;text-transform:none">(hex private key)</span></label>
+        <div class="input-wrap">
+          <input type="password" id="validatorKey" placeholder="0x… 64-character hex private key" autocomplete="off" />
+          <button class="eye-btn" onclick="toggleVis('validatorKey',this)">👁</button>
+        </div>
+        <div class="field-hint">
+          This is the private key used by the PoS engine to sign blocks. It will be saved as <code>GYDS_VALIDATOR_KEY</code> in your <code>.env</code>.
+          Never share this key. Leave blank to participate in PoS rotation without a dedicated key.
+        </div>
+      </div>
+
     </div>
     <div class="step-footer">
       <span></span>
@@ -277,7 +296,7 @@
   <!-- ═══════════════  STEP 2 — Wallet  ════════════════════════════ -->
   <div class="step-card hidden" id="step2">
     <div class="step-header">
-      <div class="step-num">Step 2 of 7</div>
+      <div class="step-num">Step 2 of 8</div>
       <div class="step-title">Wallet</div>
       <div class="step-desc">Create a new wallet or import an existing one. Your private key is stored only in the .env file on your server.</div>
     </div>
@@ -359,7 +378,7 @@
   <!-- ═══════════════  STEP 3 — Ports  ════════════════════════════ -->
   <div class="step-card hidden" id="step3">
     <div class="step-header">
-      <div class="step-num">Step 3 of 7</div>
+      <div class="step-num">Step 3 of 8</div>
       <div class="step-title">Ports &amp; Networking</div>
       <div class="step-desc">Choose which ports your node listens on. Make sure these are open in your server's firewall and not already in use.</div>
     </div>
@@ -433,7 +452,7 @@
   <!-- ═══════════════  STEP 4 — Storage  ══════════════════════════ -->
   <div class="step-card hidden" id="step4">
     <div class="step-header">
-      <div class="step-num">Step 4 of 7</div>
+      <div class="step-num">Step 4 of 8</div>
       <div class="step-title">Storage</div>
       <div class="step-desc">Choose where chain data is stored and how much disk space to allocate.</div>
     </div>
@@ -467,7 +486,7 @@
   <!-- ═══════════════  STEP 5 — Firewall  ═════════════════════════ -->
   <div class="step-card hidden" id="step5">
     <div class="step-header">
-      <div class="step-num">Step 5 of 7</div>
+      <div class="step-num">Step 5 of 8</div>
       <div class="step-title">Firewall &amp; Security</div>
       <div class="step-desc">Configure UFW rules and fail2ban protection. <code>deploy.sh</code> applies these settings automatically when run as root.</div>
     </div>
@@ -517,15 +536,63 @@
     <div class="step-footer">
       <button class="btn btn-outline" onclick="goStep(4)">← Back</button>
       <div class="step-footer-right">
-        <button class="btn btn-primary" onclick="goStep(6)">Next: Logging →</button>
+        <button class="btn btn-primary" onclick="goStep(6)">Next: Dashboard PIN →</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════  STEP 6 — Logging  ══════════════════════════ -->
+  <!-- ═══════════════  STEP 6 — Dashboard PIN  ════════════════════ -->
   <div class="step-card hidden" id="step6">
     <div class="step-header">
-      <div class="step-num">Step 6 of 7</div>
+      <div class="step-num">Step 6 of 8</div>
+      <div class="step-title">Dashboard PIN</div>
+      <div class="step-desc">Set a PIN to lock your dashboard and private keys from unauthorised viewers. You'll be asked for it each time the dashboard opens or after 5 minutes of inactivity.</div>
+    </div>
+    <div class="step-body">
+      <div class="alert alert-info" style="margin-bottom:18px">
+        🔒 The PIN is hashed (SHA-256) and stored only on your server. It cannot be recovered — choose something you won't forget, or skip and set it later.
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>New PIN (4–16 characters)</label>
+          <div class="input-wrap">
+            <input type="password" id="setupPin" placeholder="Enter PIN" autocomplete="new-password" oninput="validatePinMatch()" />
+            <button class="eye-btn" onclick="toggleVis('setupPin',this)">👁</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Confirm PIN</label>
+          <div class="input-wrap">
+            <input type="password" id="setupPinConfirm" placeholder="Repeat PIN" autocomplete="new-password" oninput="validatePinMatch()" />
+            <button class="eye-btn" onclick="toggleVis('setupPinConfirm',this)">👁</button>
+          </div>
+        </div>
+      </div>
+      <div id="pinMatchHint" style="font-size:12px;margin-top:6px;min-height:18px"></div>
+
+      <div class="toggle-row" style="margin-top:16px">
+        <div class="toggle-info">
+          <strong>Skip PIN setup</strong>
+          <span>Set the PIN later from the dashboard (not recommended for production)</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="skipPin" onchange="toggleSkipPin()" />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="step-footer">
+      <button class="btn btn-outline" onclick="goStep(5)">← Back</button>
+      <div class="step-footer-right">
+        <button class="btn btn-primary" id="pinNextBtn" onclick="commitPin()">Next: Logging →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════  STEP 7 — Logging  ══════════════════════════ -->
+  <div class="step-card hidden" id="step7">
+    <div class="step-header">
+      <div class="step-num">Step 7 of 8</div>
       <div class="step-title">Logging</div>
       <div class="step-desc">Choose how much detail the node logs and the output format.</div>
     </div>
@@ -553,17 +620,17 @@
       </div>
     </div>
     <div class="step-footer">
-      <button class="btn btn-outline" onclick="goStep(5)">← Back</button>
+      <button class="btn btn-outline" onclick="goStep(6)">← Back</button>
       <div class="step-footer-right">
         <button class="btn btn-primary" onclick="buildReview()">Next: Review →</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════  STEP 7 — Review & Save  ════════════════════ -->
-  <div class="step-card hidden" id="step7">
+  <!-- ═══════════════  STEP 8 — Review & Save  ════════════════════ -->
+  <div class="step-card hidden" id="step8">
     <div class="step-header">
-      <div class="step-num">Step 7 of 7</div>
+      <div class="step-num">Step 8 of 8</div>
       <div class="step-title">Review &amp; Save</div>
       <div class="step-desc">Your <code>.env</code> configuration is ready. Save it to the server or download it.</div>
     </div>
@@ -578,7 +645,7 @@
       <div class="field-row mt-4" style="margin-top:20px">
         <button class="btn btn-outline btn-sm" onclick="downloadEnv()" style="flex:1;justify-content:center">⬇ Download .env</button>
         <button class="btn btn-accent2" onclick="saveToServer()" id="saveBtn" style="flex:2;justify-content:center">
-          💾 Save .env to Server
+          💾 Save &amp; Apply to Server
         </button>
       </div>
 
@@ -590,9 +657,9 @@
 
     </div>
     <div class="step-footer">
-      <button class="btn btn-outline" onclick="goStep(6)">← Back</button>
+      <button class="btn btn-outline" onclick="goStep(7)">← Back</button>
       <div class="step-footer-right">
-        <a href="/" class="btn btn-primary">→ Open Wallet</a>
+        <a href="/" class="btn btn-primary">→ Open Dashboard</a>
       </div>
     </div>
   </div>
@@ -603,7 +670,7 @@
 
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 let currentStep = 1;
 let walletTab = 'generate';
 let nodeMode = 'full';
@@ -611,9 +678,10 @@ let nodeMode = 'full';
 // Wallet state
 let walletAddr = '';
 let walletKey  = '';
+let dashboardPin = '';
 
 const STEP_NAMES = [
-  '', 'Node Identity', 'Wallet', 'Ports', 'Storage', 'Firewall', 'Logging', 'Review'
+  '', 'Node Identity', 'Wallet', 'Ports', 'Storage', 'Firewall', 'Dashboard PIN', 'Logging', 'Review'
 ];
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -673,9 +741,10 @@ const MODE_HINTS = {
   lite:      '⚡ <strong>Lite Node</strong> — downloads only block headers (~95% less storage). Cannot validate full tx history. Ideal for wallets, light clients, and low-resource VPS instances.',
   rpc:       '🔌 <strong>RPC Node</strong> — API-only endpoint. No block production, no P2P gossip. Reads existing chain state from disk and exposes JSON-RPC + dashboard. Use for dedicated query/read endpoints.',
   boost:     '🚀 <strong>Boost Node</strong> — high-performance validator with extended peer limits and aggressive bootstrap connections. Best for validators and infra providers on high-bandwidth servers.',
-  genesis:   '🌱 <strong>Genesis Node</strong> — network bootstrapper and initial validator. Starts the chain from block 0 and seeds the network. Other nodes use your IP:P2PPort as their first bootstrap peer.',
+  genesis:   '🌱 <strong>Genesis Node</strong> — network bootstrapper and initial validator. Starts the chain from block 0 and seeds the network. Other nodes use your IP:P2PPort as their first bootstrap peer. <strong>Note:</strong> all nodes on the network must be built from the same genesis config to share a common chain.',
   sync:      '🔄 <strong>Sync Full Node</strong> — actively pulls the complete chain history from configured bootstrap peers. Once fully synced, behaves like a full node. Requires at least one BOOTSTRAP_NODES entry.',
-  validator: '🔐 <strong>Validator Node</strong> — PoS block producer with an explicit signing key set via <code>GYDS_VALIDATOR_KEY</code>. Same full-node capabilities plus clear validator identity. Recommended for staking operators and infrastructure providers who want dedicated signing.',
+  validator: '🔐 <strong>Validator Node</strong> — PoS block producer with an explicit signing key. Enter your validator private key below. Same full-node capabilities plus dedicated validator identity. Recommended for staking operators.',
+  testnode:  '🧪 <strong>Test Node</strong> — fully isolated local node for development and testing. Data is wiped on each restart. No P2P — completely disconnected from the main network. Produces blocks every 5 seconds for fast feedback.',
 };
 
 function togglePeerAuth(enabled) {
@@ -698,13 +767,16 @@ function togglePeerAuth(enabled) {
 
 function selectMode(mode, el) {
   nodeMode = mode;
-  ['modeFull','modeLite','modeRpc','modeBoost','modeGenesis','modeSync','modeValidator'].forEach(id => {
+  ['modeFull','modeLite','modeRpc','modeBoost','modeGenesis','modeSync','modeValidator','modeTestnode'].forEach(id => {
     const card = document.getElementById(id);
     if (card) card.classList.remove('selected');
   });
   el.classList.add('selected');
   const hint = document.getElementById('modeHint');
   if (hint && MODE_HINTS[mode]) hint.innerHTML = MODE_HINTS[mode];
+  // Show validator key field only for validator mode
+  const vkField = document.getElementById('validatorKeyField');
+  if (vkField) vkField.style.display = (mode === 'validator') ? '' : 'none';
 }
 
 // ── Step 2: Wallet ────────────────────────────────────────────────────────────
@@ -799,7 +871,64 @@ function toggleFirewallFields() {
   document.getElementById('firewallFields').style.pointerEvents = enabled ? '' : 'none';
 }
 
-// ── Step 7: Build review ──────────────────────────────────────────────────────
+// ── Step 6: Dashboard PIN ─────────────────────────────────────────────────────
+function validatePinMatch() {
+  const pin = document.getElementById('setupPin').value;
+  const confirm = document.getElementById('setupPinConfirm').value;
+  const hint = document.getElementById('pinMatchHint');
+  const btn = document.getElementById('pinNextBtn');
+  const skip = document.getElementById('skipPin').checked;
+  if (skip) { hint.textContent = ''; btn.disabled = false; return; }
+  if (!pin) { hint.textContent = ''; btn.disabled = false; return; }
+  if (pin.length < 4 || pin.length > 16) {
+    hint.textContent = 'PIN must be 4–16 characters';
+    hint.style.color = 'var(--danger)';
+    btn.disabled = true;
+    return;
+  }
+  if (confirm && pin !== confirm) {
+    hint.textContent = '✗ PINs do not match';
+    hint.style.color = 'var(--danger)';
+    btn.disabled = true;
+    return;
+  }
+  if (confirm && pin === confirm) {
+    hint.textContent = '✓ PINs match';
+    hint.style.color = 'var(--accent)';
+    btn.disabled = false;
+    return;
+  }
+  hint.textContent = '';
+  btn.disabled = false;
+}
+
+function toggleSkipPin() {
+  const skip = document.getElementById('skipPin').checked;
+  const pinInput = document.getElementById('setupPin');
+  const confirmInput = document.getElementById('setupPinConfirm');
+  pinInput.disabled = skip;
+  confirmInput.disabled = skip;
+  document.getElementById('pinMatchHint').textContent = skip ? 'PIN setup skipped — set it later from the dashboard' : '';
+  document.getElementById('pinNextBtn').disabled = false;
+}
+
+function commitPin() {
+  const skip = document.getElementById('skipPin').checked;
+  if (skip) {
+    dashboardPin = '';
+    goStep(7);
+    return;
+  }
+  const pin = document.getElementById('setupPin').value;
+  const confirm = document.getElementById('setupPinConfirm').value;
+  if (!pin) { showToast('Enter a PIN or enable Skip'); return; }
+  if (pin.length < 4 || pin.length > 16) { showToast('PIN must be 4–16 characters'); return; }
+  if (pin !== confirm) { showToast('PINs do not match'); return; }
+  dashboardPin = pin;
+  goStep(7);
+}
+
+// ── Step 8: Build review ──────────────────────────────────────────────────────
 function collectConfig() {
   const bootstrapRaw = document.getElementById('bootstrapNodes').value.trim();
   const bootstrap = bootstrapRaw
@@ -823,6 +952,7 @@ function collectConfig() {
     blockTime:      document.getElementById('blockTime').value,
     walletAddress:  walletAddr,
     walletKey:      walletKey,
+    validatorKey:   (document.getElementById('validatorKey') || {}).value || '',
     rpcPort:        document.getElementById('rpcPort').value,
     wsPort:         document.getElementById('wsPort').value,
     p2pPort:        document.getElementById('p2pPort').value,
@@ -833,10 +963,12 @@ function collectConfig() {
     dataDir:        document.getElementById('dataDir').value,
     storageLimitGb: document.getElementById('storageLimitGb').value,
     enableFirewall: document.getElementById('enableFirewall').checked ? 'true' : 'false',
+    enableFail2ban: document.getElementById('enableFail2ban') ? (document.getElementById('enableFail2ban').checked ? 'true' : 'false') : 'true',
     sshPort:        document.getElementById('sshPort').value,
     allowedIps:     allowed,
     logLevel:       document.getElementById('logLevel').value,
     logFormat:      document.getElementById('logFormat').value,
+    dashboardPin:   dashboardPin,
   };
 }
 
@@ -849,13 +981,15 @@ function buildReview() {
     ['Chain ID',       cfg.chainId],
     ['Network',        cfg.networkName],
     ['Node Mode',      cfg.nodeMode],
-    ['Block Time',     cfg.blockTime + 's'],
+    ['Block Time',     cfg.nodeMode === 'testnode' ? '5s (auto)' : cfg.blockTime + 's'],
     ['Wallet',         cfg.walletAddress ? cfg.walletAddress.slice(0,12)+'…' : '(none)'],
     ['RPC Port',       cfg.rpcPort],
     ['P2P Port',       cfg.p2pPort],
     ['Data Dir',       cfg.dataDir],
     ['Storage Limit',  cfg.storageLimitGb + ' GB'],
     ['Firewall',       cfg.enableFirewall === 'true' ? '✓ Enabled' : '✗ Disabled'],
+    ['fail2ban',       cfg.enableFail2ban === 'true' ? '✓ Enabled' : '✗ Disabled'],
+    ['Dashboard PIN',  cfg.dashboardPin ? '✓ Set' : '— Not set (set later)'],
     ['Log Level',      cfg.logLevel],
   ];
   summaryGrid.innerHTML = items.map(([k,v]) =>
@@ -870,9 +1004,8 @@ function buildReview() {
       const eq = line.indexOf('=');
       const k  = line.slice(0, eq);
       const v  = line.slice(eq + 1);
-      const vDisplay = k === 'GYDS_WALLET_PRIVATE_KEY' && v
-        ? v.slice(0,6)+'…'+v.slice(-4)
-        : v;
+      const isSecret = k === 'GYDS_WALLET_PRIVATE_KEY' || k === 'GYDS_VALIDATOR_KEY';
+      const vDisplay = isSecret && v ? v.slice(0,6)+'…'+v.slice(-4) : v;
       return `<span class="key">${esc(k)}</span>=<span class="val">${esc(vDisplay)}</span>`;
     }
     return esc(line);
@@ -882,21 +1015,22 @@ function buildReview() {
   // Next steps checklist
   const nl = document.getElementById('nextStepsList');
   nl.innerHTML = `
-    <li><span class="check-icon ok">1</span><span>Copy <code>.env</code> to your server (or click <em>Save .env to Server</em> if this is your server)</span></li>
-    <li><span class="check-icon ok">2</span><span>Run <code>bash deploy.sh</code> to build, install, and start the node</span></li>
+    <li><span class="check-icon ok">1</span><span>Click <em>Save &amp; Apply to Server</em> to write <code>.env</code> and set your PIN in one step</span></li>
+    <li><span class="check-icon ok">2</span><span>Run <code>bash deploy.sh</code> to build, install, start the node, and apply firewall rules</span></li>
     <li><span class="check-icon ${cfg.enableFirewall==='true'?'ok':'warn'}">${cfg.enableFirewall==='true'?'✓':'!'}</span>
       <span>${cfg.enableFirewall==='true'
-        ? 'Firewall will be configured automatically by deploy.sh (requires root)'
+        ? 'Firewall (UFW) + fail2ban will be configured by deploy.sh (requires root)'
         : 'Firewall is disabled — consider enabling it for production'}</span></li>
     <li><span class="check-icon ok">4</span><span>Verify the node is running: <code>curl http://localhost:${cfg.rpcPort}/health</code></span></li>
     <li><span class="check-icon ok">5</span><span>View logs: <code>sudo journalctl -u gyds-fullnode -f</code></span></li>
     <li><span class="check-icon ${cfg.bootstrapNodes?'ok':'warn'}">${cfg.bootstrapNodes?'✓':'!'}</span>
       <span>${cfg.bootstrapNodes
         ? 'Bootstrap peers configured — node will connect to the network'
-        : 'No bootstrap peers configured — node will run in isolated mode'}</span></li>
+        : 'No bootstrap peers — node runs isolated (add GYDS_BOOTSTRAP_NODES to join a network)'}</span></li>
+    <li><span class="check-icon ok">7</span><span>Auto-update checks run every 24 h — view status at <code>GET /api/updates</code></span></li>
   `;
 
-  goStep(7);
+  goStep(8);
 }
 
 function buildEnvText(cfg) {
@@ -916,6 +1050,9 @@ function buildEnvText(cfg) {
     `# ── Wallet ─────────────────────────────────────────────────────`,
     `GYDS_WALLET_ADDRESS=${cfg.walletAddress}`,
     `GYDS_WALLET_PRIVATE_KEY=${cfg.walletKey}`,
+    cfg.validatorKey
+      ? `GYDS_VALIDATOR_KEY=${cfg.validatorKey}`
+      : `# GYDS_VALIDATOR_KEY=`,
     ``,
     `# ── RPC / API Ports ────────────────────────────────────────────`,
     `GYDS_RPC_PORT=${cfg.rpcPort}`,
@@ -941,6 +1078,7 @@ function buildEnvText(cfg) {
     ``,
     `# ── Firewall & Security ────────────────────────────────────────`,
     `GYDS_ENABLE_FIREWALL=${cfg.enableFirewall}`,
+    `GYDS_ENABLE_FAIL2BAN=${cfg.enableFail2ban || 'true'}`,
     `GYDS_SSH_PORT=${cfg.sshPort}`,
     cfg.allowedIps
       ? `GYDS_ALLOWED_IPS=${cfg.allowedIps}`

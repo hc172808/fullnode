@@ -84,7 +84,8 @@ func main() {
   boost      High-performance validator node with extended peer limits
   genesis    Network bootstrapper — exports genesis and seeds the network
   sync       Sync-only node — pulls chain state from bootstrap peers
-  validator  PoS validator node — explicitly keyed block producer`
+  validator  PoS validator node — explicitly keyed block producer
+  testnode   Isolated local test node — ephemeral data, local-only ports`
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -155,6 +156,8 @@ func runNode() error {
 		return runSyncNode(cfg)
 	case "validator":
 		return runValidatorNode(cfg)
+	case "testnode":
+		return runTestNode(cfg)
 	default: // "full"
 		return runFullNode(cfg)
 	}
@@ -172,7 +175,7 @@ func runFullNode(cfg *config.Config) error {
 	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
-	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL)
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -216,7 +219,7 @@ func runLiteNode(cfg *config.Config) error {
 	log.Info().Uint64("height", chain.Height()).Msg("Lite chain initialised")
 
 	// Lite nodes serve RPC and dashboard but do NOT produce blocks.
-	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), liteDataDir, cfg.ExternalURL)
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), liteDataDir, cfg.ExternalURL, version)
 
 	// Connect to bootstrap peers for header sync only.
 	if len(cfg.P2PBootstrap) > 0 {
@@ -254,7 +257,7 @@ func runRPCNode(cfg *config.Config) error {
 	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Chain loaded for RPC serving")
 
-	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL)
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 
 	log.Info().
 		Int("rpcPort", cfg.RPCPort).
@@ -281,7 +284,7 @@ func runBoostNode(cfg *config.Config) error {
 	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
-	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL)
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -344,7 +347,7 @@ func runGenesisNode(cfg *config.Config) error {
 	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
-	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL)
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -528,7 +531,7 @@ func runSyncNode(cfg *config.Config) error {
 	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
-	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL)
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetP2P(p2pSrv)
 
 	engine.OnNewBlock(func(b *core.Block) {
@@ -574,7 +577,7 @@ func runValidatorNode(cfg *config.Config) error {
 	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
-	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL)
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -604,6 +607,62 @@ func runValidatorNode(cfg *config.Config) error {
 		Int("p2pPort", cfg.P2PPort).
 		Int("rpcPort", cfg.RPCPort).
 		Msg("🔐 Validator node online")
+
+	return serveAndWait(rpcSrv, chain, engine)
+}
+
+// ── Test Node ─────────────────────────────────────────────────────────────────
+// Ephemeral, fully-isolated local node for development and testing.
+//   - Uses a temporary data directory (cleared on each start)
+//   - Dashboard and RPC servers bind to 127.0.0.1 only (loopback) — never
+//     reachable from outside the machine, even if a firewall is misconfigured
+//   - Runs with a 5-second block time for fast feedback
+//   - No P2P: completely disconnected from the main network
+//
+// Usage: GYDS_NODE_MODE=testnode go run . start
+func runTestNode(cfg *config.Config) error {
+	log.Info().Msg("Mode: Test Node — ephemeral local node, loopback-only, isolated from network")
+
+	// Use a sub-directory of the configured data dir; wipe it for a fresh chain.
+	testDir := cfg.DataDir + "/test"
+	_ = os.RemoveAll(testDir)
+
+	testCfg := *cfg
+	testCfg.DataDir = testDir
+	testCfg.BlockTime = 5 * time.Second // Fast blocks for testing
+	testCfg.P2PBootstrap = nil           // No peers
+	testCfg.PeerAuth = false
+
+	log.Info().
+		Str("dataDir", testDir).
+		Dur("blockTime", testCfg.BlockTime).
+		Str("bindHost", "127.0.0.1").
+		Msg("Test node: fresh chain, 5s blocks, no P2P, loopback-only listeners")
+
+	chain := core.NewChain(core.GydsGenesis, testCfg.DataDir)
+	log.Info().Uint64("height", chain.Height()).Msg("Test chain initialised from genesis")
+
+	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
+	engine := consensus.NewPoSEngine(chain, vs, testCfg.BlockTime)
+
+	rpcSrv := rpc.NewServer(chain, testCfg.DashboardPort, testCfg.RPCPort, int(testCfg.BlockTime.Seconds()), testCfg.DataDir, testCfg.ExternalURL, version)
+	// Enforce loopback-only binding so the test node is never reachable externally.
+	rpcSrv.SetLoopbackOnly()
+
+	engine.OnNewBlock(func(b *core.Block) {
+		log.Info().
+			Uint64("number", b.Header.Number).
+			Str("hash", b.Hash[:16]+"...").
+			Int("txs", len(b.Transactions)).
+			Msg("🧪 Test block produced")
+		rpcSrv.NotifyNewBlock(b)
+	})
+
+	engine.Start()
+	log.Info().
+		Str("dashboard", fmt.Sprintf("http://127.0.0.1:%d", testCfg.DashboardPort)).
+		Str("rpc", fmt.Sprintf("http://127.0.0.1:%d", testCfg.RPCPort)).
+		Msg("🧪 Test node running — loopback only, no P2P")
 
 	return serveAndWait(rpcSrv, chain, engine)
 }

@@ -45,13 +45,15 @@ type Server struct {
         rpcServer *http.Server
 
         externalURL string
+        bindHost    string // host to bind listeners on ("" / "0.0.0.0" = all interfaces, "127.0.0.1" = loopback only)
 
         pendingTx   map[string]*core.Transaction
         pendingTxMu sync.RWMutex
 
-        auth    *AuthStore
-        adminDB *AdminDB
-        p2p     P2PConnector
+        auth      *AuthStore
+        adminDB   *AdminDB
+        p2p       P2PConnector
+        updates   *UpdateChecker
 }
 
 type subscriber struct {
@@ -59,9 +61,11 @@ type subscriber struct {
         ch   chan interface{}
 }
 
-func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir, externalURL string) *Server {
+func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir, externalURL, nodeVersion string) *Server {
         auth := NewAuthStore(dataDir)
         adminDB, _ := NewAdminDB(dataDir)
+        updater := NewUpdateChecker(nodeVersion)
+        updater.Start(24 * time.Hour)
         s := &Server{
                 chain:    chain,
                 dashPort: dashPort,
@@ -74,6 +78,7 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
                 pendingTx: make(map[string]*core.Transaction),
                 auth:      auth,
                 adminDB:   adminDB,
+                updates:   updater,
         }
         s.setupDashboardRoutes()
         s.setupRPCRoutes()
@@ -82,6 +87,11 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
 
 // SetP2P wires the P2P server so the RPC layer can connect to imported nodes.
 func (s *Server) SetP2P(p P2PConnector) { s.p2p = p }
+
+// SetLoopbackOnly restricts all HTTP listeners to 127.0.0.1.
+// Must be called before StartDashboard / StartRPC.
+// Use this for testnode mode to guarantee no external exposure.
+func (s *Server) SetLoopbackOnly() { s.bindHost = "127.0.0.1" }
 
 func cors(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +157,7 @@ func (s *Server) setupDashboardRoutes() {
         api.HandleFunc("/lock/status", s.handleLockStatus).Methods("GET")
         api.HandleFunc("/lock/set", s.handleLockSet).Methods("POST", "OPTIONS")
         api.HandleFunc("/lock/verify", s.handleLockVerify).Methods("POST", "OPTIONS")
+        api.HandleFunc("/updates", s.handleUpdates).Methods("GET")
 
         admin := r.PathPrefix("/admin").Subrouter()
         admin.HandleFunc("/login", s.handleAdminLoginPage).Methods("GET")
@@ -195,6 +206,15 @@ func (s *Server) handleStaticAsset(w http.ResponseWriter, r *http.Request) {
 // handleNodeInfo returns JSON with all connection endpoints for this node.
 func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
         jsonOK(w, s.buildConnectionInfo())
+}
+
+// handleUpdates returns the latest auto-update status from the UpdateChecker.
+func (s *Server) handleUpdates(w http.ResponseWriter, r *http.Request) {
+        if s.updates == nil {
+                jsonOK(w, map[string]interface{}{"updateAvailable": false, "error": "update checker not initialised"})
+                return
+        }
+        jsonOK(w, s.updates.Status())
 }
 
 // handleConnectionInfo serves gyds-connection-info.json as a downloadable file.
@@ -254,27 +274,39 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
         }
 }
 
+// listenAddr returns host:port for HTTP listeners.
+// When bindHost is set (e.g. "127.0.0.1" for testnode), only that interface is used.
+// Otherwise falls back to all interfaces (":port").
+func (s *Server) listenAddr(port int) string {
+        if s.bindHost != "" {
+                return fmt.Sprintf("%s:%d", s.bindHost, port)
+        }
+        return fmt.Sprintf(":%d", port)
+}
+
 // StartDashboard starts the web dashboard on dashPort.
 func (s *Server) StartDashboard() error {
+        addr := s.listenAddr(s.dashPort)
         s.dashServer = &http.Server{
-                Addr:         fmt.Sprintf(":%d", s.dashPort),
+                Addr:         addr,
                 Handler:      s.dashRouter,
                 ReadTimeout:  15 * time.Second,
                 WriteTimeout: 15 * time.Second,
         }
-        log.Info().Int("port", s.dashPort).Msg("Dashboard server listening")
+        log.Info().Str("addr", addr).Msg("Dashboard server listening")
         return s.dashServer.ListenAndServe()
 }
 
 // StartRPC starts the dedicated JSON-RPC server on rpcPort.
 func (s *Server) StartRPC() error {
+        addr := s.listenAddr(s.rpcPort)
         s.rpcServer = &http.Server{
-                Addr:         fmt.Sprintf(":%d", s.rpcPort),
+                Addr:         addr,
                 Handler:      s.rpcRouter,
                 ReadTimeout:  15 * time.Second,
                 WriteTimeout: 15 * time.Second,
         }
-        log.Info().Int("port", s.rpcPort).Msg("RPC server listening")
+        log.Info().Str("addr", addr).Msg("RPC server listening")
         return s.rpcServer.ListenAndServe()
 }
 
