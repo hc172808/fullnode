@@ -13,30 +13,11 @@ func (s *Server) handleLockStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── POST /api/lock/set ─────────────────────────────────────────────────────
-// First-time PIN setup. Accepts {"pin":"...","confirm":"..."}.
-// Fails if a PIN is already stored.
+// PINs are created by the setup wizard only. This endpoint is retained so
+// older clients receive an explicit error instead of silently changing policy.
 
 func (s *Server) handleLockSet(w http.ResponseWriter, r *http.Request) {
-	if s.auth.PinIsSet() {
-		jsonErr(w, http.StatusForbidden, "PIN is already set")
-		return
-	}
-	fields := extractFields(r, "pin", "confirm")
-	pin, confirm := fields["pin"], fields["confirm"]
-	if pin == "" {
-		jsonErr(w, http.StatusBadRequest, "PIN is required")
-		return
-	}
-	if pin != confirm {
-		jsonErr(w, http.StatusBadRequest, "PINs do not match")
-		return
-	}
-	if err := s.auth.SetPin(pin); err != nil {
-		jsonErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.auth.writeAudit(realIP(r), "LOCK-PIN-SET")
-	jsonOK(w, map[string]string{"status": "ok"})
+	jsonErr(w, http.StatusForbidden, "PIN can only be set during the setup wizard")
 }
 
 // ── POST /api/lock/verify ──────────────────────────────────────────────────

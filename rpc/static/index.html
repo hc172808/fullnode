@@ -354,28 +354,6 @@
 <!-- ── Dashboard PIN Lock Overlay ─────────────────────────────────────────── -->
 <div id="lockOverlay">
 
-  <!-- Set PIN (first time) -->
-  <div id="lockSetPin" class="lock-card">
-    <div class="lock-icon">🔒</div>
-    <h2>Protect Your Dashboard</h2>
-    <p>Set a PIN to lock your private keys from unauthorised viewers. You'll be asked for it every time the dashboard opens or after 5 minutes of inactivity.</p>
-    <div class="field">
-      <label>New PIN (4 – 16 characters)</label>
-      <input type="password" id="setPinA" placeholder="Enter PIN" autocomplete="new-password"
-             onkeydown="if(event.key==='Enter')document.getElementById('setPinB').focus()" />
-    </div>
-    <div class="field">
-      <label>Confirm PIN</label>
-      <input type="password" id="setPinB" placeholder="Repeat PIN" autocomplete="new-password"
-             onkeydown="if(event.key==='Enter')doSetPin()" />
-    </div>
-    <div id="setPinErr" style="font-size:12px;color:var(--danger);min-height:18px;margin-bottom:12px"></div>
-    <button class="btn btn-primary btn-full" onclick="doSetPin()">Set PIN &amp; Unlock →</button>
-    <p style="font-size:11px;color:var(--muted);margin-top:14px;margin-bottom:0">
-      PIN is hashed and stored only in your browser. It cannot be recovered — use something you won't forget.
-    </p>
-  </div>
-
   <!-- Enter PIN (locked) -->
   <div id="lockEnterPin" class="lock-card hidden">
     <div class="lock-icon">🔐</div>
@@ -1762,7 +1740,6 @@ function isUnlocked() {
 async function showLockOverlay() {
   stopLockTimer();
   const overlay    = document.getElementById('lockOverlay');
-  const setPanel   = document.getElementById('lockSetPin');
   const enterPanel = document.getElementById('lockEnterPin');
   overlay.style.display = 'flex';
 
@@ -1770,16 +1747,15 @@ async function showLockOverlay() {
     const r      = await fetch('/api/lock/status');
     const status = await r.json();
     if (status.pinSet) {
-      setPanel.classList.add('hidden');
       enterPanel.classList.remove('hidden');
       document.getElementById('enterPin').value = '';
       document.getElementById('lockAttemptMsg').textContent = '';
       startLockBar();
       setTimeout(() => document.getElementById('enterPin').focus(), 80);
     } else {
-      enterPanel.classList.add('hidden');
-      setPanel.classList.remove('hidden');
-      setTimeout(() => document.getElementById('setPinA').focus(), 80);
+      // PINs are created only in the setup wizard. If setup skipped the PIN,
+      // leave the dashboard open rather than prompting on the dashboard.
+      hideLockOverlay();
     }
   } catch {
     // Node not reachable — hide overlay so the page remains usable
@@ -1791,22 +1767,6 @@ function hideLockOverlay() {
   document.getElementById('lockOverlay').style.display = 'none';
   markUnlocked();
   resetInactivityTimer();
-}
-
-// ── Set PIN (first-time setup) ─────────────────────────────────────────────
-async function doSetPin() {
-  const a   = document.getElementById('setPinA').value;
-  const b   = document.getElementById('setPinB').value;
-  const err = document.getElementById('setPinErr');
-  err.textContent = '';
-  if (a.length < 4 || a.length > 16) { err.textContent = 'PIN must be 4–16 characters.'; return; }
-  if (a !== b)                        { err.textContent = 'PINs do not match.'; return; }
-  const { ok, data } = await lockPost('/api/lock/set', { pin: a, confirm: b });
-  if (ok) {
-    hideLockOverlay();
-  } else {
-    err.textContent = (data && data.error) || 'Could not set PIN.';
-  }
 }
 
 // ── Unlock ─────────────────────────────────────────────────────────────────
@@ -1878,7 +1838,7 @@ function startLockBar() {
 
 // ── Initialise lock on page load ───────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  showLockOverlay();     // show set-pin or enter-pin depending on state
+  showLockOverlay();     // show enter-pin only when setup created a PIN
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

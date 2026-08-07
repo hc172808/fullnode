@@ -2,3 +2,4 @@
 - [Deploy & setup wizard](deploy-setup.md) — deploy.sh + /setup 7-step web wizard + /api/setup/* endpoints built; .env written server-side
 - [Peer authorization system](peer-auth-system.md) — ed25519 node keypairs, challenge-response handshake, whitelist; GYDS_PEER_AUTH + GYDS_ALLOWED_NODES env vars
 - [Dashboard deployment ports](dashboard-ports.md) — dashboard defaults to 5000; installers must publish/open it and support explicit 8080 configuration
+- [PIN setup policy](pin-setup-policy.md) — dashboard PIN creation is only available in setup; an unset PIN leaves the dashboard unlocked

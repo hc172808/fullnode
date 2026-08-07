@@ -550,7 +550,7 @@
     </div>
     <div class="step-body">
       <div class="alert alert-info" style="margin-bottom:18px">
-        🔒 The PIN is hashed (SHA-256) and stored only on your server. It cannot be recovered — choose something you won't forget, or skip and set it later.
+        🔒 The PIN is hashed (SHA-256) and stored only on your server. It cannot be recovered — choose something you won't forget. If you skip it, you can create one only by running setup again.
       </div>
       <div class="field-row">
         <div class="field">
@@ -573,7 +573,7 @@
       <div class="toggle-row" style="margin-top:16px">
         <div class="toggle-info">
           <strong>Skip PIN setup</strong>
-          <span>Set the PIN later from the dashboard (not recommended for production)</span>
+          <span>Leave the dashboard unlocked. A PIN can only be created from this setup wizard.</span>
         </div>
         <label class="toggle">
           <input type="checkbox" id="skipPin" onchange="toggleSkipPin()" />
@@ -908,7 +908,7 @@ function toggleSkipPin() {
   const confirmInput = document.getElementById('setupPinConfirm');
   pinInput.disabled = skip;
   confirmInput.disabled = skip;
-  document.getElementById('pinMatchHint').textContent = skip ? 'PIN setup skipped — set it later from the dashboard' : '';
+    document.getElementById('pinMatchHint').textContent = skip ? 'PIN setup skipped — the dashboard will remain unlocked' : '';
   document.getElementById('pinNextBtn').disabled = false;
 }
 
@@ -989,7 +989,7 @@ function buildReview() {
     ['Storage Limit',  cfg.storageLimitGb + ' GB'],
     ['Firewall',       cfg.enableFirewall === 'true' ? '✓ Enabled' : '✗ Disabled'],
     ['fail2ban',       cfg.enableFail2ban === 'true' ? '✓ Enabled' : '✗ Disabled'],
-    ['Dashboard PIN',  cfg.dashboardPin ? '✓ Set' : '— Not set (set later)'],
+    ['Dashboard PIN',  cfg.dashboardPin ? '✓ Set' : '— Not set (dashboard unlocked)'],
     ['Log Level',      cfg.logLevel],
   ];
   summaryGrid.innerHTML = items.map(([k,v]) =>

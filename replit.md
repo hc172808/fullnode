@@ -50,12 +50,12 @@ Visit `/setup` for the 8-step guided configuration wizard:
 3. Ports & Networking (RPC, WS, P2P, bootstrap peers, peer auth)
 4. Storage (data directory, limit)
 5. Firewall & Security (UFW + fail2ban)
-6. Dashboard PIN (set during setup — required before opening the dashboard)
+6. Dashboard PIN (set during setup; optional, and never prompted on the dashboard)
 7. Logging (level, format)
 8. Review & Save (writes `.env`, applies PIN)
 
 ## Security
-- Dashboard PIN: SHA-256 hashed, stored at `<dataDir>/admin/.pin_hash`. Set during setup wizard (step 6).
+- Dashboard PIN: optional; SHA-256 hashed, stored at `<dataDir>/admin/.pin_hash`. It can only be created during setup wizard step 6. If unset, the dashboard remains unlocked.
 - Admin session: 8-hour cookie, IP-based rate-limit (5 attempts / 15 min lockout).
 - Firewall: UFW + fail2ban rules configured by `deploy.sh` + `setup-firewall.sh`.
 - fail2ban jails: SSH, RPC flood, bad RPC, scanners, recidive.
