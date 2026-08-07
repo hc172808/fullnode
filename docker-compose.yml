@@ -6,8 +6,9 @@ services:
     env_file:
       - .env
     ports:
-      - "8545:8545"   # JSON-RPC
-      - "8546:8546"   # WebSocket
+      - "${GYDS_DASHBOARD_PORT:-5000}:${GYDS_DASHBOARD_PORT:-5000}" # Dashboard
+      - "${GYDS_RPC_PORT:-8545}:${GYDS_RPC_PORT:-8545}"             # JSON-RPC
+      - "${GYDS_WS_PORT:-8546}:${GYDS_WS_PORT:-8546}"               # WebSocket
       - "30303:30303" # P2P TCP
       - "30303:30303/udp"
     volumes:

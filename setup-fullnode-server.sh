@@ -8,6 +8,7 @@
 # Usage: sudo bash setup-fullnode-server.sh [OPTIONS]
 #
 # Options:
+#   --dashboard-port PORT Dashboard web UI port (default: 5000)
 #   --datadir  DIR     Chain data directory (default: /var/lib/gyds-fullnode)
 #   --rpc-port PORT    RPC port (default: 8545)
 #   --ws-port  PORT    WebSocket port (default: 8546)
@@ -32,6 +33,7 @@ GO_VERSION="1.25.5"
 
 GYDS_DATADIR="${GYDS_DATADIR:-/var/lib/gyds-fullnode}"
 GYDS_CHAIN_ID="${GYDS_CHAIN_ID:-198282}"
+GYDS_DASHBOARD_PORT="${GYDS_DASHBOARD_PORT:-5000}"
 GYDS_RPC_PORT="${GYDS_RPC_PORT:-8545}"
 GYDS_WS_PORT="${GYDS_WS_PORT:-8546}"
 GYDS_P2P_PORT="${GYDS_P2P_PORT:-30303}"
@@ -57,6 +59,7 @@ Usage:
   sudo bash setup-fullnode-server.sh [OPTIONS]
 
 OPTIONS
+  --dashboard-port PORT Dashboard web UI port      (default: 5000)
   --rpc-port  PORT   JSON-RPC HTTP port          (default: 8545)
   --ws-port   PORT   WebSocket port              (default: 8546)
   --p2p-port  PORT   P2P peer networking port    (default: 30303)
@@ -83,6 +86,7 @@ PORT REFERENCE
   ┌─────────┬──────────┬─────────────────────────────────────────────────────┐
   │ Port    │ Protocol │ Purpose                                             │
   ├─────────┼──────────┼─────────────────────────────────────────────────────┤
+  │  5000   │ TCP      │ Dashboard web UI (use --dashboard-port to change)   │
   │  8545   │ TCP      │ JSON-RPC HTTP — used by wallets, dApps, MetaMask   │
   │  8546   │ TCP      │ WebSocket — real-time subscriptions (eth_subscribe) │
   │ 30303   │ TCP+UDP  │ P2P network — peer discovery and block propagation  │
@@ -93,10 +97,10 @@ PORT REFERENCE
 
 CHANGING PORTS
   To use non-default ports, pass flags at install time:
-    sudo bash setup-fullnode-server.sh --rpc-port 9545 --ws-port 9546 --p2p-port 30304
+    sudo bash setup-fullnode-server.sh --dashboard-port 8080 --rpc-port 9545 --ws-port 9546 --p2p-port 30304
 
   To change ports on an existing install (update mode):
-    sudo bash setup-fullnode-server.sh --update --rpc-port 9545
+    sudo bash setup-fullnode-server.sh --update --dashboard-port 8080 --rpc-port 9545
 
 FIREWALL (UFW — Ubuntu/Debian)
   Allow a port:   ufw allow <PORT>/tcp
@@ -118,7 +122,7 @@ EXAMPLES
     sudo bash setup-fullnode-server.sh
 
   Fresh install (native service, custom ports):
-    sudo bash setup-fullnode-server.sh --no-docker --rpc-port 9545 --p2p-port 30304
+    sudo bash setup-fullnode-server.sh --no-docker --dashboard-port 8080 --rpc-port 9545 --p2p-port 30304
 
   With domain + TLS:
     sudo bash setup-fullnode-server.sh --domain rpc.example.com
@@ -135,6 +139,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --datadir)    GYDS_DATADIR="$2";  shift 2 ;;
+    --dashboard-port) GYDS_DASHBOARD_PORT="$2"; shift 2 ;;
     --rpc-port)   GYDS_RPC_PORT="$2"; shift 2 ;;
     --ws-port)    GYDS_WS_PORT="$2";  shift 2 ;;
     --p2p-port)   GYDS_P2P_PORT="$2"; shift 2 ;;
@@ -152,6 +157,22 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown flag: $1"; exit 1 ;;
   esac
 done
+
+validate_port() {
+  local name="$1" value="$2"
+  [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 1 && value <= 65535 )) \
+    || die "${name}=${value} is not a valid TCP port (must be 1-65535)."
+}
+
+validate_port "GYDS_DASHBOARD_PORT" "$GYDS_DASHBOARD_PORT"
+validate_port "GYDS_RPC_PORT" "$GYDS_RPC_PORT"
+validate_port "GYDS_WS_PORT" "$GYDS_WS_PORT"
+validate_port "GYDS_P2P_PORT" "$GYDS_P2P_PORT"
+if [[ "$GYDS_DASHBOARD_PORT" == "$GYDS_RPC_PORT" ||
+      "$GYDS_DASHBOARD_PORT" == "$GYDS_WS_PORT" ||
+      "$GYDS_RPC_PORT" == "$GYDS_WS_PORT" ]]; then
+  die "Dashboard, RPC, and WebSocket ports must be different."
+fi
 
 # ── Logging helpers ────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -407,6 +428,7 @@ if is_debian_based && command -v ufw &>/dev/null; then
   ufw allow "$SSH_PORT"/tcp
   ufw allow 80/tcp
   ufw allow 443/tcp
+  ufw allow "$GYDS_DASHBOARD_PORT"/tcp
   ufw allow "$GYDS_RPC_PORT"/tcp
   ufw allow "$GYDS_WS_PORT"/tcp
   ufw allow "$GYDS_P2P_PORT"/tcp
@@ -419,6 +441,7 @@ elif is_rhel_based && command -v firewall-cmd &>/dev/null; then
   firewall-cmd --permanent --add-port="$SSH_PORT"/tcp
   firewall-cmd --permanent --add-port=80/tcp
   firewall-cmd --permanent --add-port=443/tcp
+  firewall-cmd --permanent --add-port="$GYDS_DASHBOARD_PORT"/tcp
   firewall-cmd --permanent --add-port="$GYDS_RPC_PORT"/tcp
   firewall-cmd --permanent --add-port="$GYDS_WS_PORT"/tcp
   firewall-cmd --permanent --add-port="$GYDS_P2P_PORT"/tcp
@@ -569,6 +592,7 @@ if [ ! -f "$APP_DIR/.env" ] || $IS_UPDATE; then
     cat > "$APP_DIR/.env" <<EOF
 GYDS_CHAIN_ID=$GYDS_CHAIN_ID
 GYDS_NODE_MODE=full
+GYDS_DASHBOARD_PORT=$GYDS_DASHBOARD_PORT
 GYDS_RPC_PORT=$GYDS_RPC_PORT
 GYDS_RPC_HOST=0.0.0.0
 GYDS_WS_PORT=$GYDS_WS_PORT
@@ -576,6 +600,11 @@ GYDS_P2P_PORT=$GYDS_P2P_PORT
 GYDS_DATA_DIR=$GYDS_DATADIR
 GYDS_LOG_LEVEL=$LOG_LEVEL
 EOF
+  fi
+  if grep -q '^GYDS_DASHBOARD_PORT=' "$APP_DIR/.env"; then
+    sed -i "s|^GYDS_DASHBOARD_PORT=.*|GYDS_DASHBOARD_PORT=$GYDS_DASHBOARD_PORT|" "$APP_DIR/.env"
+  else
+    printf 'GYDS_DASHBOARD_PORT=%s\n' "$GYDS_DASHBOARD_PORT" >> "$APP_DIR/.env"
   fi
   sed -i "s|^GYDS_RPC_PORT=.*|GYDS_RPC_PORT=$GYDS_RPC_PORT|"   "$APP_DIR/.env"
   sed -i "s|^GYDS_P2P_PORT=.*|GYDS_P2P_PORT=$GYDS_P2P_PORT|"   "$APP_DIR/.env"
@@ -690,8 +719,9 @@ server {
 
 ${NGINX_IP_RULES}
 
+    # Browser dashboard and its REST/WebSocket API.
     location / {
-        proxy_pass         http://127.0.0.1:${GYDS_RPC_PORT};
+        proxy_pass         http://127.0.0.1:${GYDS_DASHBOARD_PORT};
         proxy_http_version 1.1;
         proxy_set_header   Upgrade    \$http_upgrade;
         proxy_set_header   Connection "upgrade";
@@ -699,6 +729,15 @@ ${NGINX_IP_RULES}
         proxy_set_header   X-Real-IP  \$remote_addr;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
+    }
+
+    # Dedicated JSON-RPC remains available without exposing the dashboard
+    # listener through the proxy.
+    location /json-rpc {
+        proxy_pass         http://127.0.0.1:${GYDS_RPC_PORT}/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
     }
 }
 EOF
@@ -715,8 +754,9 @@ server {
 
 ${NGINX_IP_RULES}
 
+    # Browser dashboard and its REST/WebSocket API.
     location / {
-        proxy_pass         http://127.0.0.1:${GYDS_RPC_PORT};
+        proxy_pass         http://127.0.0.1:${GYDS_DASHBOARD_PORT};
         proxy_http_version 1.1;
         proxy_set_header   Upgrade    \$http_upgrade;
         proxy_set_header   Connection "upgrade";
@@ -724,6 +764,15 @@ ${NGINX_IP_RULES}
         proxy_set_header   X-Real-IP  \$remote_addr;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
+    }
+
+    # Dedicated JSON-RPC remains available without exposing the dashboard
+    # listener through the proxy.
+    location /json-rpc {
+        proxy_pass         http://127.0.0.1:${GYDS_RPC_PORT}/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
     }
 }
 EOF
@@ -896,6 +945,16 @@ if ! $NODE_OK; then
   fi
 fi
 
+# Dashboard check — the dashboard is a separate HTTP listener from JSON-RPC.
+DASHBOARD_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  --max-time 5 "http://localhost:${GYDS_DASHBOARD_PORT}/" 2>/dev/null || true)
+if [[ "$DASHBOARD_CODE" =~ ^(200|301|302)$ ]]; then
+  log "Dashboard is live on port ${GYDS_DASHBOARD_PORT}"
+else
+  warn "Dashboard is not responding on port ${GYDS_DASHBOARD_PORT} (HTTP ${DASHBOARD_CODE:-000})."
+  warn "Open: http://${SERVER_IP:-YOUR_SERVER_IP}:${GYDS_DASHBOARD_PORT}/"
+fi
+
 # ── Detect public IP ──────────────────────────────────────────────────────────
 SERVER_IP=$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null \
   || curl -sf --max-time 5 https://ifconfig.me 2>/dev/null \
@@ -920,11 +979,13 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 if [ -n "$DOMAIN" ]; then
   echo "  JSON-RPC  (HTTPS) : https://${DOMAIN}"
   echo "  WebSocket  (WSS)  : wss://${DOMAIN}/ws"
+  echo "  Dashboard (direct): http://${SERVER_IP}:${GYDS_DASHBOARD_PORT}"
   echo "  JSON-RPC (direct) : http://${SERVER_IP}:${GYDS_RPC_PORT}  (bypass nginx)"
 else
+  echo "  Dashboard (HTTP)  : http://${SERVER_IP}:${GYDS_DASHBOARD_PORT}"
   echo "  JSON-RPC  (HTTP)  : http://${SERVER_IP}:${GYDS_RPC_PORT}"
   echo "  WebSocket  (WS)   : ws://${SERVER_IP}:${GYDS_WS_PORT}"
-  echo "  Via Nginx  (HTTP) : http://${SERVER_IP}  (port 80 → ${GYDS_RPC_PORT})"
+  echo "  Via Nginx  (HTTP) : http://${SERVER_IP}  (port 80 → dashboard ${GYDS_DASHBOARD_PORT})"
 fi
 echo "  P2P Network (TCP) : tcp://${SERVER_IP}:${GYDS_P2P_PORT}"
 echo "  P2P Network (UDP) : udp://${SERVER_IP}:${GYDS_P2P_PORT}"
@@ -934,10 +995,11 @@ echo "  PORT REFERENCE"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Port   Proto    Purpose"
 echo "  ─────  ───────  ────────────────────────────────────────────────"
+echo "  ${GYDS_DASHBOARD_PORT}   TCP      Dashboard web UI"
 echo "  ${GYDS_RPC_PORT}   TCP      JSON-RPC HTTP (wallets, MetaMask, dApps)"
 echo "  ${GYDS_WS_PORT}   TCP      WebSocket (real-time block/tx subscriptions)"
 echo "  ${GYDS_P2P_PORT}  TCP+UDP  P2P networking (peer discovery, block sync)"
-echo "  80     TCP      Nginx reverse proxy → port ${GYDS_RPC_PORT}"
+echo "  80     TCP      Nginx reverse proxy → dashboard port ${GYDS_DASHBOARD_PORT}"
 if [ -n "$DOMAIN" ]; then
   echo "  443    TCP      Nginx HTTPS (TLS cert: ${DOMAIN})"
 fi
@@ -956,7 +1018,7 @@ echo "  HOW TO CHANGE PORTS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Re-run with --update and the new port flags:"
 echo "  sudo bash ${APP_DIR}/setup-fullnode-server.sh \\"
-echo "    --update --rpc-port 9545 --ws-port 9546 --p2p-port 30304"
+echo "    --update --dashboard-port 8080 --rpc-port 9545 --ws-port 9546 --p2p-port 30304"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  MANAGEMENT"
@@ -977,6 +1039,7 @@ else
 fi
 echo ""
 echo "  Data dir   : ${GYDS_DATADIR}"
+echo "  Dashboard  : HTTP port ${GYDS_DASHBOARD_PORT}"
 echo "  LevelDB    : ${GYDS_DATADIR}/state.db/   (chain blocks + account state)"
 echo "  Keystore   : ${GYDS_DATADIR}/keystore/"
 echo "  Logs dir   : ${GYDS_DATADIR}/logs/"

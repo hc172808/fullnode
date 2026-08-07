@@ -7,6 +7,7 @@
 #
 #  Options:
 #    --env FILE        Path to .env file (default: .env)
+#    --dashboard-port PORT  Dashboard web UI port (default: 5000)
 #    --no-firewall     Skip firewall configuration
 #    --no-service      Run in the foreground instead of installing a systemd service
 #    --update          Rebuild the binary and restart the service (preserves chain data)
@@ -60,6 +61,7 @@ IS_UPDATE=false
 IS_REBUILD=false
 UNINSTALL=false
 SHOW_STATUS=false
+DASHBOARD_PORT_OVERRIDE=""
 
 APP_NAME="gyds-fullnode"
 APP_USER="gyds"
@@ -74,6 +76,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 while [[ $# -gt 0 ]]; do
   case $1 in
     --env)          ENV_FILE="$2"; shift 2 ;;
+    --dashboard-port) DASHBOARD_PORT_OVERRIDE="$2"; shift 2 ;;
     --no-firewall)  SKIP_FIREWALL=true; shift ;;
     --no-service)   SKIP_SERVICE=true; shift ;;
     --update)       IS_UPDATE=true; shift ;;
@@ -170,6 +173,10 @@ GYDS_LOG_FORMAT="${GYDS_LOG_FORMAT:-json}"
 GYDS_SSH_PORT="${GYDS_SSH_PORT:-22}"
 GYDS_STORAGE_LIMIT_GB="${GYDS_STORAGE_LIMIT_GB:-50}"
 GYDS_ENABLE_FIREWALL="${GYDS_ENABLE_FIREWALL:-true}"
+
+if [[ -n "$DASHBOARD_PORT_OVERRIDE" ]]; then
+  GYDS_DASHBOARD_PORT="$DASHBOARD_PORT_OVERRIDE"
+fi
 
 # Validate port numbers
 validate_port() {
@@ -542,6 +549,12 @@ User=${APP_USER}
 Group=${APP_GROUP}
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${INSTALL_DIR}/.env
+# Explicit values keep command-line port overrides effective even when an
+# existing installed .env is intentionally preserved.
+Environment=GYDS_DASHBOARD_PORT=${GYDS_DASHBOARD_PORT}
+Environment=GYDS_RPC_PORT=${GYDS_RPC_PORT}
+Environment=GYDS_WS_PORT=${GYDS_WS_PORT}
+Environment=GYDS_P2P_PORT=${GYDS_P2P_PORT}
 ExecStart=${BINARY_PATH} start
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure

@@ -24,10 +24,11 @@ ENV GYDS_CHAIN_ID=13370 \
     GYDS_NODE_MODE=full \
     GYDS_LOG_LEVEL=info \
     GYDS_DATA_DIR=/app/data \
+    GYDS_DASHBOARD_PORT=5000 \
     GYDS_RPC_PORT=8545 \
     GYDS_RPC_HOST=0.0.0.0 \
     GYDS_P2P_PORT=30303
-EXPOSE 8545 8546 30303
+EXPOSE 5000 8545 8546 30303
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:${GYDS_RPC_PORT}/health || exit 1
 ENTRYPOINT ["/app/gyds-fullnode"]

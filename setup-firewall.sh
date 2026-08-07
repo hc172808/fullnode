@@ -7,7 +7,7 @@
 #
 #  Options:
 #    --ssh-port PORT        SSH port to keep open (default: 22)
-#    --dashboard-port PORT  Dashboard web UI port (default: 5000)
+#    --dashboard-port PORT  Dashboard web UI port (default: 5000; use 8080 if desired)
 #    --rpc-port PORT        JSON-RPC port (default: 8545)
 #    --ws-port PORT         WebSocket port (default: 8546)
 #    --p2p-port PORT        P2P gossip port (default: 30303)
