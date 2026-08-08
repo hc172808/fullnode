@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "GOTOOLCHAIN=local GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_NODE_MODE=full GYDS_DATA_DIR=./data go run . start"
+args = "if [ -f .env ]; then set -a; . ./.env; set +a; fi; GOTOOLCHAIN=local GYDS_DASHBOARD_PORT=${GYDS_DASHBOARD_PORT:-5000} GYDS_RPC_PORT=${GYDS_RPC_PORT:-8545} GYDS_DATA_DIR=./data go run . start"
 waitForPort = 5000
 
 [[ports]]
@@ -76,5 +76,5 @@ externalPort = 3000
 
 [deployment]
 deploymentTarget = "vm"
-run = ["bash", "-c", "GYDS_RPC_PORT=5000 GYDS_NODE_MODE=full GYDS_DATA_DIR=/var/lib/gyds-fullnode ./bin/gyds-fullnode start"]
+run = ["bash", "-c", "if [ -f /var/lib/gyds-fullnode/.env ]; then set -a; . /var/lib/gyds-fullnode/.env; set +a; fi; GYDS_RPC_PORT=${GYDS_RPC_PORT:-5000} GYDS_DATA_DIR=${GYDS_DATA_DIR:-/var/lib/gyds-fullnode} ./bin/gyds-fullnode start"]
 build = ["bash", "-c", "GOTOOLCHAIN=local go build -o bin/gyds-fullnode ."]

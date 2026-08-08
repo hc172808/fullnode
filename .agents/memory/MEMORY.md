@@ -3,3 +3,4 @@
 - [Peer authorization system](peer-auth-system.md) — ed25519 node keypairs, challenge-response handshake, whitelist; GYDS_PEER_AUTH + GYDS_ALLOWED_NODES env vars
 - [Dashboard deployment ports](dashboard-ports.md) — dashboard defaults to 5000; installers must publish/open it and support explicit 8080 configuration
 - [PIN setup policy](pin-setup-policy.md) — dashboard PIN creation is only available in setup; an unset PIN leaves the dashboard unlocked
+- [Setup data directory alignment](setup-data-directory.md) — PIN and node identity must persist under the same data directory used after restart

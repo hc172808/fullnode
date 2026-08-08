@@ -459,8 +459,8 @@
     <div class="step-body">
       <div class="field">
         <label>Data Directory</label>
-        <input type="text" id="dataDir" value="/var/lib/gyds-fullnode" />
-        <div class="field-hint">Absolute path on your server where LevelDB chain data is persisted. The directory will be created automatically if it does not exist.</div>
+        <input type="text" id="dataDir" value="./data" />
+        <div class="field-hint">Path where LevelDB chain data is persisted. Use an absolute path such as <code>/var/lib/gyds-fullnode</code> on a production server.</div>
       </div>
       <div class="field" style="margin-top:8px">
         <label>Storage Limit (GB)</label>
@@ -1121,7 +1121,10 @@ async function saveToServer() {
     });
     const data = await r.json();
     if (data.ok) {
-      res.innerHTML = `<div class="alert alert-success">✓ .env saved to server. Run <code>bash deploy.sh</code> to deploy.</div>`;
+       const pinNotice = data.pinStatus
+         ? `<br><strong>${esc(data.pinStatus)}</strong>`
+         : '';
+       res.innerHTML = `<div class="alert alert-success">✓ .env saved to server.${pinNotice}<br>Restart the node to apply the selected configuration.</div>`;
       showToast('.env saved to server');
     } else {
       res.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Unknown error'}</div>`;

@@ -43,6 +43,10 @@ GYDS_LOG_FORMAT=json
 ```
 Sensitive values (wallet key, validator key) are stored in `.env` (mode 0600).
 
+The launcher loads `.env` before starting, so the selected `GYDS_NODE_MODE` is
+used after restart. For a genesis node, set `GYDS_NODE_MODE=genesis` and leave
+`GYDS_BOOTSTRAP_NODES` empty.
+
 ## Setup wizard
 Visit `/setup` for the 8-step guided configuration wizard:
 1. Node Identity (chain ID, network name, block time, node mode)

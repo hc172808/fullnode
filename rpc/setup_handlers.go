@@ -33,6 +33,14 @@ type setupConfig struct {
 	DashboardPin   string `json:"dashboardPin"`
 }
 
+// envSetting writes a shell-compatible .env assignment. Setup values such as
+// network names and data paths may contain spaces; leaving them unquoted makes
+// `source .env` execute the trailing words as commands.
+func envSetting(key, value string) string {
+	value = strings.ReplaceAll(value, "'", "'\\''")
+	return fmt.Sprintf("%s='%s'", key, value)
+}
+
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 	f, err := staticFiles.Open("static/setup.html")
 	if err != nil {
@@ -97,21 +105,21 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 		return strings.TrimSpace(v)
 	}
 
-	cfg.ChainID        = def(cfg.ChainID, "198282")
-	cfg.NetworkName    = def(cfg.NetworkName, "GYDS Chain")
-	cfg.NodeMode       = def(cfg.NodeMode, "full")
-	cfg.BlockTime      = def(cfg.BlockTime, "120")
-	cfg.RPCPort        = def(cfg.RPCPort, "8545")
-	cfg.WSPort         = def(cfg.WSPort, "8546")
-	cfg.P2PPort        = def(cfg.P2PPort, "30303")
-	cfg.MaxPeers       = def(cfg.MaxPeers, "25")
-	cfg.DataDir        = def(cfg.DataDir, "./data")
+	cfg.ChainID = def(cfg.ChainID, "198282")
+	cfg.NetworkName = def(cfg.NetworkName, "GYDS Chain")
+	cfg.NodeMode = def(cfg.NodeMode, "full")
+	cfg.BlockTime = def(cfg.BlockTime, "120")
+	cfg.RPCPort = def(cfg.RPCPort, "8545")
+	cfg.WSPort = def(cfg.WSPort, "8546")
+	cfg.P2PPort = def(cfg.P2PPort, "30303")
+	cfg.MaxPeers = def(cfg.MaxPeers, "25")
+	cfg.DataDir = def(cfg.DataDir, "./data")
 	cfg.StorageLimitGB = def(cfg.StorageLimitGB, "50")
 	cfg.EnableFirewall = def(cfg.EnableFirewall, "true")
 	cfg.EnableFail2ban = def(cfg.EnableFail2ban, "true")
-	cfg.SSHPort        = def(cfg.SSHPort, "22")
-	cfg.LogLevel       = def(cfg.LogLevel, "info")
-	cfg.LogFormat      = def(cfg.LogFormat, "json")
+	cfg.SSHPort = def(cfg.SSHPort, "22")
+	cfg.LogLevel = def(cfg.LogLevel, "info")
+	cfg.LogFormat = def(cfg.LogFormat, "json")
 
 	ts := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
@@ -124,51 +132,51 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	w1("# ══════════════════════════════════════════════════════════════════")
 	w1("")
 	w1("# ── Chain Identity ─────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_CHAIN_ID=%s", cfg.ChainID))
-	w1(fmt.Sprintf("GYDS_NETWORK_NAME=%s", cfg.NetworkName))
-	w1(fmt.Sprintf("GYDS_NODE_MODE=%s", cfg.NodeMode))
-	w1(fmt.Sprintf("GYDS_BLOCK_TIME=%s", cfg.BlockTime))
+	w1(envSetting("GYDS_CHAIN_ID", cfg.ChainID))
+	w1(envSetting("GYDS_NETWORK_NAME", cfg.NetworkName))
+	w1(envSetting("GYDS_NODE_MODE", cfg.NodeMode))
+	w1(envSetting("GYDS_BLOCK_TIME", cfg.BlockTime))
 	w1("")
 	w1("# ── Wallet ─────────────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_WALLET_ADDRESS=%s", cfg.WalletAddress))
-	w1(fmt.Sprintf("GYDS_WALLET_PRIVATE_KEY=%s", cfg.WalletKey))
+	w1(envSetting("GYDS_WALLET_ADDRESS", cfg.WalletAddress))
+	w1(envSetting("GYDS_WALLET_PRIVATE_KEY", cfg.WalletKey))
 	if strings.TrimSpace(cfg.ValidatorKey) != "" {
-		w1(fmt.Sprintf("GYDS_VALIDATOR_KEY=%s", cfg.ValidatorKey))
+		w1(envSetting("GYDS_VALIDATOR_KEY", cfg.ValidatorKey))
 	} else {
 		w1("# GYDS_VALIDATOR_KEY=")
 	}
 	w1("")
 	w1("# ── RPC / API Ports ────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_RPC_PORT=%s", cfg.RPCPort))
+	w1(envSetting("GYDS_RPC_PORT", cfg.RPCPort))
 	w1("GYDS_RPC_HOST=0.0.0.0")
-	w1(fmt.Sprintf("GYDS_WS_PORT=%s", cfg.WSPort))
+	w1(envSetting("GYDS_WS_PORT", cfg.WSPort))
 	w1("")
 	w1("# ── P2P Networking ─────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_P2P_PORT=%s", cfg.P2PPort))
-	w1(fmt.Sprintf("GYDS_MAX_PEERS=%s", cfg.MaxPeers))
+	w1(envSetting("GYDS_P2P_PORT", cfg.P2PPort))
+	w1(envSetting("GYDS_MAX_PEERS", cfg.MaxPeers))
 	if strings.TrimSpace(cfg.BootstrapNodes) != "" {
-		w1(fmt.Sprintf("GYDS_BOOTSTRAP_NODES=%s", cfg.BootstrapNodes))
+		w1(envSetting("GYDS_BOOTSTRAP_NODES", cfg.BootstrapNodes))
 	} else {
 		w1("# GYDS_BOOTSTRAP_NODES=")
 	}
 	w1("")
 	w1("# ── Storage ────────────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_DATA_DIR=%s", cfg.DataDir))
-	w1(fmt.Sprintf("GYDS_STORAGE_LIMIT_GB=%s", cfg.StorageLimitGB))
+	w1(envSetting("GYDS_DATA_DIR", cfg.DataDir))
+	w1(envSetting("GYDS_STORAGE_LIMIT_GB", cfg.StorageLimitGB))
 	w1("")
 	w1("# ── Firewall & Security ────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_ENABLE_FIREWALL=%s", cfg.EnableFirewall))
-	w1(fmt.Sprintf("GYDS_ENABLE_FAIL2BAN=%s", cfg.EnableFail2ban))
-	w1(fmt.Sprintf("GYDS_SSH_PORT=%s", cfg.SSHPort))
+	w1(envSetting("GYDS_ENABLE_FIREWALL", cfg.EnableFirewall))
+	w1(envSetting("GYDS_ENABLE_FAIL2BAN", cfg.EnableFail2ban))
+	w1(envSetting("GYDS_SSH_PORT", cfg.SSHPort))
 	if strings.TrimSpace(cfg.AllowedIPs) != "" {
-		w1(fmt.Sprintf("GYDS_ALLOWED_IPS=%s", cfg.AllowedIPs))
+		w1(envSetting("GYDS_ALLOWED_IPS", cfg.AllowedIPs))
 	} else {
 		w1("# GYDS_ALLOWED_IPS=")
 	}
 	w1("")
 	w1("# ── Logging ────────────────────────────────────────────────────")
-	w1(fmt.Sprintf("GYDS_LOG_LEVEL=%s", cfg.LogLevel))
-	w1(fmt.Sprintf("GYDS_LOG_FORMAT=%s", cfg.LogFormat))
+	w1(envSetting("GYDS_LOG_LEVEL", cfg.LogLevel))
+	w1(envSetting("GYDS_LOG_FORMAT", cfg.LogFormat))
 
 	content := sb.String()
 
@@ -177,14 +185,21 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If a dashboard PIN was provided during setup, set it now (only if not already set).
+	// If a dashboard PIN was provided during setup, set it in the directory
+	// that the wizard is configuring. The running server may still be using a
+	// previous data directory, so using s.auth here would make the PIN
+	// disappear after the configured node restarts.
 	pinMsg := ""
 	if pin := strings.TrimSpace(cfg.DashboardPin); pin != "" {
-		if !s.auth.PinIsSet() {
-			if err := s.auth.SetPin(pin); err != nil {
+		setupAuth := NewAuthStore(cfg.DataDir)
+		if !setupAuth.PinIsSet() {
+			if err := setupAuth.SetPin(pin); err != nil {
 				// Non-fatal: .env was saved; report PIN error in response.
 				pinMsg = "Warning: PIN not set — " + err.Error()
 			} else {
+				// Keep the running process aligned with the configuration so
+				// the new PIN works before the operator restarts the node.
+				s.auth = setupAuth
 				pinMsg = "Dashboard PIN set successfully"
 			}
 		} else {
