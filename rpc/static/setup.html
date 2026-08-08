@@ -688,6 +688,8 @@ const STEP_NAMES = [
 window.addEventListener('load', () => {
   buildStepsRow();
   doGenerateWallet();
+  const requestedStep = parseInt(new URLSearchParams(window.location.search).get('step') || '', 10);
+  if (requestedStep >= 1 && requestedStep <= TOTAL_STEPS) goStep(requestedStep);
 });
 
 // ── Steps row ─────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import (
 
 func (s *Server) handleAdminLoginPage(w http.ResponseWriter, r *http.Request) {
 	if !s.auth.PinIsSet() {
-		http.Redirect(w, r, "/admin/set-pin", http.StatusFound)
+		http.Redirect(w, r, "/setup?step=6", http.StatusFound)
 		return
 	}
 	serveStaticPage(w, "static/admin-login.html")
@@ -64,7 +64,7 @@ func (s *Server) handleAdminLoginSubmit(w http.ResponseWriter, r *http.Request) 
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
-	jsonOK(w, map[string]string{"status": "ok", "redirect": "/"})
+	jsonOK(w, map[string]string{"status": "ok", "redirect": "/admin/db"})
 }
 
 // ── GET /admin/logout ─────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 // ── GET /admin/set-pin ────────────────────────────────────────────────────────
 
 func (s *Server) handleAdminSetPinPage(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/setup", http.StatusFound)
+	http.Redirect(w, r, "/setup?step=6", http.StatusFound)
 }
 
 // ── POST /admin/set-pin ───────────────────────────────────────────────────────
