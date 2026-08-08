@@ -163,6 +163,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# systemd's ReadWritePaths= directive only accepts absolute paths. Keep the
+# runtime data directory unambiguous when an operator passes a relative path
+# such as ./data, and make the resolved value flow into .env, Docker, and the
+# native service alike.
+if [[ "$GYDS_DATADIR" != /* ]]; then
+  _original_datadir="$GYDS_DATADIR"
+  if command -v realpath >/dev/null 2>&1; then
+    GYDS_DATADIR="$(realpath -m -- "${APP_DIR}/${GYDS_DATADIR}")"
+  else
+    GYDS_DATADIR="${APP_DIR%/}/${GYDS_DATADIR#./}"
+  fi
+  echo "[INFO] Resolved relative data directory '${_original_datadir}' to '${GYDS_DATADIR}'"
+fi
+
+[[ "$GYDS_DATADIR" != *$'\n'* && "$GYDS_DATADIR" != *$'\r'* ]] \
+  || { echo "[ERROR] Data directory contains a newline, which is invalid." >&2; exit 1; }
+
 validate_port() {
   local name="$1" value="$2"
   [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 1 && value <= 65535 )) \
@@ -844,6 +861,7 @@ User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
+Environment=GYDS_DATA_DIR=${GYDS_DATADIR}
 ExecStart=${APP_DIR}/bin/gyds-fullnode start
 Restart=on-failure
 RestartSec=10s
@@ -880,6 +898,10 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
+  if command -v systemd-analyze &>/dev/null; then
+    systemd-analyze verify /etc/systemd/system/gyds-fullnode.service \
+      || die "Generated systemd service is invalid. Review /etc/systemd/system/gyds-fullnode.service."
+  fi
   # Smart start: restart if running, start if stopped, enable+start if new
   if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
     systemctl restart gyds-fullnode

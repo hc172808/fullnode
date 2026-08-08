@@ -177,6 +177,23 @@ if [[ -n "$DASHBOARD_PORT_OVERRIDE" ]]; then
   GYDS_DASHBOARD_PORT="$DASHBOARD_PORT_OVERRIDE"
 fi
 
+# systemd requires every path in ReadWritePaths= to be absolute. Resolve a
+# relative path against the checkout before creating the service, and persist
+# the resolved value in the installed environment so the service and binary
+# use the same directory after reboot.
+if [[ "$GYDS_DATA_DIR" != /* ]]; then
+  _original_data_dir="$GYDS_DATA_DIR"
+  if command -v realpath >/dev/null 2>&1; then
+    GYDS_DATA_DIR="$(realpath -m -- "${SCRIPT_DIR}/${GYDS_DATA_DIR}")"
+  else
+    GYDS_DATA_DIR="${SCRIPT_DIR%/}/${GYDS_DATA_DIR#./}"
+  fi
+  info "Resolved relative data directory '${_original_data_dir}' to '${GYDS_DATA_DIR}'"
+fi
+
+[[ "$GYDS_DATA_DIR" != *$'\n'* && "$GYDS_DATA_DIR" != *$'\r'* ]] \
+  || die "GYDS_DATA_DIR contains a newline, which is not valid for a systemd service."
+
 # Validate port numbers
 validate_port() {
   local name="$1" value="$2"
@@ -492,6 +509,14 @@ if [[ $EUID -eq 0 ]]; then
     log "Existing configuration preserved at: ${INSTALL_DIR}/.env  (use --update to overwrite)"
   fi
 
+  # Keep the service-owned configuration aligned with the absolute path used
+  # in the generated unit, even when an existing .env is intentionally kept.
+  if grep -q '^GYDS_DATA_DIR=' "${INSTALL_DIR}/.env"; then
+    sed -i "s|^GYDS_DATA_DIR=.*|GYDS_DATA_DIR=${GYDS_DATA_DIR}|" "${INSTALL_DIR}/.env"
+  else
+    printf 'GYDS_DATA_DIR=%s\n' "$GYDS_DATA_DIR" >> "${INSTALL_DIR}/.env"
+  fi
+
   mkdir -p "$LOG_DIR"
   chown "${APP_USER}:${APP_USER}" "$LOG_DIR"       2>/dev/null || true
   chown "${APP_USER}:${APP_USER}" "$GYDS_DATA_DIR" 2>/dev/null || true
@@ -567,6 +592,7 @@ Environment=GYDS_DASHBOARD_PORT=${GYDS_DASHBOARD_PORT}
 Environment=GYDS_RPC_PORT=${GYDS_RPC_PORT}
 Environment=GYDS_WS_PORT=${GYDS_WS_PORT}
 Environment=GYDS_P2P_PORT=${GYDS_P2P_PORT}
+Environment=GYDS_DATA_DIR=${GYDS_DATA_DIR}
 ExecStart=${BINARY_PATH} start
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
@@ -602,6 +628,10 @@ SYSTEMD
 
   chmod 644 "$SERVICE_FILE"
   systemctl daemon-reload
+  if command -v systemd-analyze >/dev/null 2>&1; then
+    systemd-analyze verify "$SERVICE_FILE" \
+      || die "Generated systemd service is invalid. Review ${SERVICE_FILE}."
+  fi
 
   if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
     systemctl restart gyds-fullnode && log "Service restarted"
