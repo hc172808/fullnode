@@ -14,6 +14,7 @@
 #   --ws-port  PORT    WebSocket port (default: 8546)
 #   --p2p-port PORT    P2P port (default: 30303)
 #   --ssh-port PORT    SSH port for firewall (default: 22)
+#   --no-fail2ban      Skip optional Fail2ban installation/configuration
 #   --domain   DOMAIN  Domain name for TLS/HTTPS via Certbot (optional)
 #   --log-level LEVEL  Log level: trace|debug|info|warn|error (default: info)
 #   --no-docker        Skip Docker installation (run as native systemd service)
@@ -44,6 +45,7 @@ BOOTSTRAP_NODES=""
 ALLOW_IPS=""
 DISK_ALERT_GB=10
 USE_DOCKER=true
+USE_FAIL2BAN=true
 IS_UPDATE=false
 FORCE_REBUILD=false
 UNINSTALL=false
@@ -64,6 +66,7 @@ OPTIONS
   --ws-port   PORT   WebSocket port              (default: 8546)
   --p2p-port  PORT   P2P peer networking port    (default: 30303)
   --ssh-port  PORT   SSH port (firewall allow)   (default: 22)
+  --no-fail2ban      Skip optional Fail2ban installation/configuration
   --datadir   DIR    Chain data directory        (default: /var/lib/gyds-fullnode)
   --domain    FQDN   Domain for auto-TLS (Certbot, requires DNS → this IP)
   --log-level LEVEL  trace | debug | info | warn | error  (default: info)
@@ -151,6 +154,7 @@ while [[ $# -gt 0 ]]; do
     --disk-alert)      DISK_ALERT_GB="$2";  shift 2 ;;
     --rebuild)         FORCE_REBUILD=true;  shift   ;;
     --no-docker)       USE_DOCKER=false;    shift   ;;
+    --no-fail2ban)     USE_FAIL2BAN=false;  shift   ;;
     --update)          IS_UPDATE=true;      shift   ;;
     --uninstall)       UNINSTALL=true;      shift   ;;
     --help|-h)         show_help; exit 0   ;;
@@ -335,13 +339,28 @@ pkg_update
 log "Installing base dependencies..."
 if is_debian_based; then
   pkg_install curl wget git build-essential ca-certificates \
-    nginx jq lsof ufw fail2ban net-tools gnupg software-properties-common certbot python3-certbot-nginx
+    nginx jq lsof ufw net-tools gnupg software-properties-common certbot python3-certbot-nginx
 elif is_rhel_based; then
   if ! rpm -q epel-release &>/dev/null; then
     pkg_install epel-release || warn "EPEL not available — some packages may be missing"
   fi
   pkg_install curl wget git gcc make ca-certificates \
-    nginx jq lsof firewalld fail2ban net-tools gnupg2 certbot python3-certbot-nginx
+    nginx jq lsof firewalld net-tools gnupg2 certbot python3-certbot-nginx
+fi
+
+# Fail2ban is optional defense-in-depth. Do not let a package repository
+# or service failure prevent the node and firewall from being installed.
+if $USE_FAIL2BAN; then
+  if command -v fail2ban-server &>/dev/null; then
+    log "Fail2ban already installed"
+  elif pkg_install fail2ban; then
+    log "Fail2ban installed"
+  else
+    warn "Fail2ban could not be installed — continuing with firewall protection only."
+    USE_FAIL2BAN=false
+  fi
+else
+  warn "Fail2ban installation skipped by --no-fail2ban."
 fi
 
 # ── Go installation ───────────────────────────────────────────────────────────
@@ -453,7 +472,7 @@ else
 fi
 
 # ── Fail2Ban ──────────────────────────────────────────────────────────────────
-if command -v fail2ban-server &>/dev/null; then
+if $USE_FAIL2BAN && command -v fail2ban-server &>/dev/null; then
   mkdir -p /etc/fail2ban/jail.d /etc/fail2ban/filter.d
 
   # SSH jail — write to jail.d so we never overwrite user's jail.local
@@ -476,19 +495,22 @@ EOF
   cat > /etc/fail2ban/jail.d/gyds-admin.local <<EOF
 [gyds-admin]
 enabled  = true
-port     = http,https
+port     = http,https,$GYDS_DASHBOARD_PORT
 filter   = gyds-admin
-logpath  = /var/log/nginx/access.log
+logpath  = $GYDS_DATADIR/access.log
 bantime  = 1h
 findtime = 5m
 maxretry = 5
 EOF
 
-  systemctl enable --now fail2ban
-  fail2ban-client reload 2>/dev/null || true
-  log "Fail2Ban configured (SSH + admin-login jails)"
+  if systemctl enable --now fail2ban && fail2ban-client reload 2>/dev/null; then
+    log "Fail2Ban configured (SSH + admin-login jails)"
+  else
+    warn "Fail2ban could not start — continuing with firewall protection only."
+    USE_FAIL2BAN=false
+  fi
 else
-  warn "fail2ban not found — skipping"
+  warn "Fail2ban unavailable/skipped — firewall protection remains active."
 fi
 
 # ── Kernel / network tuning ───────────────────────────────────────────────────

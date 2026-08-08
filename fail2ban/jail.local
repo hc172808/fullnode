@@ -2,10 +2,8 @@
 #  GYDS Chain — Full Node  /  fail2ban jail.local
 #  Copy to: /etc/fail2ban/jail.local
 #
-#  Log paths assume the systemd service layout from deploy.sh:
-#    Dashboard + RPC access log : /var/log/gyds-fullnode/access.log
-#  If you run the node manually without deploy.sh, set logpath
-#  to the access.log inside your GYDS_DATA_DIR (e.g. ./data/access.log).
+#  The installer rewrites the GYDS jail ports and access-log path for the
+#  configured node. The default below is only a portable fallback.
 # ══════════════════════════════════════════════════════════
 
 [DEFAULT]
@@ -33,7 +31,7 @@ findtime       = 600
 enabled        = true
 filter         = gyds-rpc-flood
 port           = http,https,8545,8546,5000
-logpath        = /var/log/gyds-fullnode/access.log
+logpath        = /var/lib/gyds-fullnode/access.log
 maxretry       = 5
 findtime       = 60
 bantime        = 3600
@@ -42,7 +40,7 @@ bantime        = 3600
 enabled        = true
 filter         = gyds-rpc-badrpc
 port           = http,https,8545,8546,5000
-logpath        = /var/log/gyds-fullnode/access.log
+logpath        = /var/lib/gyds-fullnode/access.log
 maxretry       = 20
 findtime       = 120
 bantime        = 1800
@@ -51,7 +49,7 @@ bantime        = 1800
 enabled        = true
 filter         = gyds-scan
 port           = http,https,8545,8546,5000
-logpath        = /var/log/gyds-fullnode/access.log
+logpath        = /var/lib/gyds-fullnode/access.log
 maxretry       = 5
 findtime       = 300
 bantime        = 7200

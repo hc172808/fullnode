@@ -11,6 +11,8 @@
 #    --rpc-port PORT        JSON-RPC port (default: 8545)
 #    --ws-port PORT         WebSocket port (default: 8546)
 #    --p2p-port PORT        P2P gossip port (default: 30303)
+#    --data-dir DIR         Node data directory for access logs
+#    --no-fail2ban          Configure UFW only; do not install/start fail2ban
 #    --status               Show active firewall rules and fail2ban bans, then exit
 #    --unban IP             Unban an IP address from all fail2ban jails, then exit
 #    --help                 Show this help message
@@ -23,6 +25,8 @@ DASHBOARD_PORT="${DASHBOARD_PORT:-5000}"
 RPC_PORT="${RPC_PORT:-8545}"
 WS_PORT="${WS_PORT:-8546}"
 P2P_PORT="${P2P_PORT:-30303}"
+DATA_DIR="${DATA_DIR:-/var/lib/gyds-fullnode}"
+FAIL2BAN_ENABLED=true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 F2B_JAILS=(gyds-rpc-flood gyds-rpc-badrpc gyds-scan sshd recidive)
@@ -42,6 +46,8 @@ while [[ $# -gt 0 ]]; do
     --rpc-port)       RPC_PORT="$2";       shift 2 ;;
     --ws-port)        WS_PORT="$2";        shift 2 ;;
     --p2p-port)       P2P_PORT="$2";       shift 2 ;;
+    --data-dir)       DATA_DIR="$2";       shift 2 ;;
+    --no-fail2ban)    FAIL2BAN_ENABLED=false; shift ;;
     --status)
       log "UFW firewall rules:"
       ufw status numbered
@@ -139,45 +145,60 @@ SYSCTL
 sysctl -p /etc/sysctl.d/99-gyds-fullnode-hardening.conf >/dev/null 2>&1 || true
 log "Sysctl hardening applied"
 
-# ── fail2ban ──────────────────────────────────────────────────
-log "Installing and configuring fail2ban..."
+if $FAIL2BAN_ENABLED; then
+  # ── fail2ban ──────────────────────────────────────────────────
+  # Fail2ban is an optional layer. UFW above remains the required
+  # network boundary, so a package/repository/service problem must
+  # never prevent the node from being deployed.
+  log "Installing and configuring fail2ban (optional)..."
 
-# Install fail2ban if missing
-if ! command -v fail2ban-server &>/dev/null; then
-  info "fail2ban not found — installing..."
-  if command -v apt-get &>/dev/null; then
-    DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban >/dev/null 2>&1 \
-      || die "Failed to install fail2ban via apt-get."
-  elif command -v dnf &>/dev/null; then
-    dnf install -y fail2ban >/dev/null 2>&1 \
-      || die "Failed to install fail2ban via dnf."
-  elif command -v yum &>/dev/null; then
-    yum install -y fail2ban >/dev/null 2>&1 \
-      || die "Failed to install fail2ban via yum."
-  else
-    die "fail2ban is not installed and could not be installed automatically. Install it manually."
+  if ! command -v fail2ban-server &>/dev/null; then
+    info "fail2ban not found — attempting installation..."
+    if command -v apt-get &>/dev/null; then
+      DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban >/dev/null 2>&1 || true
+    elif command -v dnf &>/dev/null; then
+      dnf install -y fail2ban >/dev/null 2>&1 || true
+    elif command -v yum &>/dev/null; then
+      yum install -y fail2ban >/dev/null 2>&1 || true
+    fi
   fi
-  log "fail2ban installed"
+
+  if ! command -v fail2ban-server &>/dev/null; then
+    warn "fail2ban is unavailable; continuing with UFW protection only."
+    FAIL2BAN_ENABLED=false
+  fi
 fi
 
-# Deploy jail and filter configuration
-[[ -f "${SCRIPT_DIR}/fail2ban/jail.local" ]] \
-  || die "Required file not found: ${SCRIPT_DIR}/fail2ban/jail.local"
+if $FAIL2BAN_ENABLED; then
+  # Deploy jail and filter configuration
+  if [[ ! -f "${SCRIPT_DIR}/fail2ban/jail.local" ]]; then
+    warn "fail2ban/jail.local is missing; continuing with UFW protection only."
+    FAIL2BAN_ENABLED=false
+  else
+    cp "${SCRIPT_DIR}/fail2ban/jail.local" /etc/fail2ban/jail.local
+    chmod 644 /etc/fail2ban/jail.local
 
-cp "${SCRIPT_DIR}/fail2ban/jail.local" /etc/fail2ban/jail.local
-chmod 644 /etc/fail2ban/jail.local
+    # Keep the shipped GYDS jails portable across configured ports and data
+    # dirs. Restrict the rewrite to GYDS sections so the SSH jail is untouched.
+    _gyds_ports="port           = http,https,${RPC_PORT},${WS_PORT},${DASHBOARD_PORT}"
+    _gyds_logpath="logpath        = ${DATA_DIR}/access.log"
+    sed -i \
+      -e "/^\[gyds-rpc-flood\]/,/^\[/{s|^port[[:space:]]*=.*$|${_gyds_ports}|; s|^logpath[[:space:]]*=.*$|${_gyds_logpath}|}" \
+      -e "/^\[gyds-rpc-badrpc\]/,/^\[/{s|^port[[:space:]]*=.*$|${_gyds_ports}|; s|^logpath[[:space:]]*=.*$|${_gyds_logpath}|}" \
+      -e "/^\[gyds-scan\]/,/^\[/{s|^port[[:space:]]*=.*$|${_gyds_ports}|; s|^logpath[[:space:]]*=.*$|${_gyds_logpath}|}" \
+      /etc/fail2ban/jail.local
 
-mkdir -p /etc/fail2ban/filter.d
-for _filter in "${SCRIPT_DIR}/fail2ban/filter.d/"*.conf; do
-  [[ -f "$_filter" ]] || continue
-  cp "$_filter" /etc/fail2ban/filter.d/
-  chmod 644 "/etc/fail2ban/filter.d/$(basename "$_filter")"
-done
+    mkdir -p /etc/fail2ban/filter.d
+    for _filter in "${SCRIPT_DIR}/fail2ban/filter.d/"*.conf; do
+      [[ -f "$_filter" ]] || continue
+      cp "$_filter" /etc/fail2ban/filter.d/
+      chmod 644 "/etc/fail2ban/filter.d/$(basename "$_filter")"
+    done
 
-# Install the UFW action definition if not already present
-if ! grep -q "\[Definition\]" /etc/fail2ban/action.d/ufw.conf 2>/dev/null; then
-  mkdir -p /etc/fail2ban/action.d
-  cat > /etc/fail2ban/action.d/ufw.conf <<'EOF'
+    # Install the UFW action definition if not already present.
+    if ! grep -q "\[Definition\]" /etc/fail2ban/action.d/ufw.conf 2>/dev/null; then
+      mkdir -p /etc/fail2ban/action.d
+      cat > /etc/fail2ban/action.d/ufw.conf <<'EOF'
 [Definition]
 actionstart =
 actionstop  =
@@ -185,80 +206,57 @@ actioncheck =
 actionban   = ufw insert 1 deny from <ip> to any
 actionunban = ufw delete deny from <ip> to any
 EOF
-  chmod 644 /etc/fail2ban/action.d/ufw.conf
-  log "UFW action definition installed"
+      chmod 644 /etc/fail2ban/action.d/ufw.conf
+      log "UFW action definition installed"
+    fi
+
+    # Validate configuration before (re)starting the service.
+    log "Validating fail2ban configuration..."
+    if ! fail2ban-client --test 2>/dev/null; then
+      warn "fail2ban configuration is invalid; continuing with UFW protection only."
+      fail2ban-client --test 2>&1 | head -20 >&2 || true
+      FAIL2BAN_ENABLED=false
+    else
+      log "fail2ban configuration is valid"
+    fi
+  fi
 fi
 
-# Validate configuration before (re)starting the service
-log "Validating fail2ban configuration..."
-if ! fail2ban-client --test 2>/dev/null; then
-  warn "fail2ban configuration validation failed:"
-  fail2ban-client --test 2>&1 | head -20 >&2 || true
-  die "Invalid fail2ban configuration. Fix the errors above and retry."
-fi
-log "fail2ban configuration is valid"
-
-# Enable on boot
-systemctl enable fail2ban >/dev/null 2>&1
-
-# Stop any existing instance before restarting with new config
-systemctl stop fail2ban 2>/dev/null || true
-sleep 1
-
-# Start and attempt automatic recovery on failure
-if ! systemctl start fail2ban; then
-  error "fail2ban failed to start. Collecting diagnostics..."
-  systemctl status fail2ban --no-pager >&2 || true
-  journalctl -u fail2ban -n 100 --no-pager >&2 || true
-
-  warn "Attempting automatic recovery with a minimal configuration..."
-  cp /etc/fail2ban/jail.local /etc/fail2ban/jail.local.bak 2>/dev/null || true
-  cat > /etc/fail2ban/jail.local <<'MINIMAL'
-[DEFAULT]
-bantime  = 3600
-findtime = 300
-maxretry = 10
-backend  = systemd
-
-[sshd]
-enabled = true
-MINIMAL
+if $FAIL2BAN_ENABLED; then
+  systemctl enable fail2ban >/dev/null 2>&1 || true
+  systemctl stop fail2ban 2>/dev/null || true
+  sleep 1
 
   if ! systemctl start fail2ban; then
+    warn "fail2ban failed to start; continuing with UFW protection only."
     systemctl status fail2ban --no-pager >&2 || true
     journalctl -u fail2ban -n 50 --no-pager >&2 || true
-    die "fail2ban could not start even with a minimal configuration. Resolve the errors above."
+    FAIL2BAN_ENABLED=false
   fi
-
-  warn "fail2ban started with a minimal configuration (SSH jail only)."
-  warn "Restore full config from: ${SCRIPT_DIR}/fail2ban/jail.local"
-  warn "Backup of the attempted config saved to: /etc/fail2ban/jail.local.bak"
 fi
 
-# Wait until the fail2ban socket appears before issuing any client commands
-log "Waiting for fail2ban socket at ${F2B_SOCKET}..."
-_waited=0
-until [[ -S "$F2B_SOCKET" ]]; do
-  if [[ $_waited -ge $F2B_WAIT_TIMEOUT ]]; then
-    error "Timed out after ${F2B_WAIT_TIMEOUT}s waiting for fail2ban socket."
-    systemctl status fail2ban --no-pager >&2 || true
-    journalctl -u fail2ban -n 50 --no-pager >&2 || true
-    die "fail2ban did not become ready within ${F2B_WAIT_TIMEOUT} seconds."
-  fi
-  sleep 1
-  (( _waited++ )) || true
-done
-log "fail2ban socket ready (${_waited}s)"
-
-# Confirm the service is active and the client can communicate
-if ! systemctl is-active --quiet fail2ban; then
-  die "fail2ban service is unexpectedly inactive after startup."
+if $FAIL2BAN_ENABLED; then
+  log "Waiting for fail2ban socket at ${F2B_SOCKET}..."
+  _waited=0
+  until [[ -S "$F2B_SOCKET" ]]; do
+    if [[ $_waited -ge $F2B_WAIT_TIMEOUT ]]; then
+      warn "fail2ban socket did not appear; continuing with UFW protection only."
+      FAIL2BAN_ENABLED=false
+      break
+    fi
+    sleep 1
+    ((_waited++)) || true
+  done
 fi
 
-fail2ban-client status >/dev/null 2>&1 \
-  || die "fail2ban-client cannot communicate with the server. Check the socket at ${F2B_SOCKET}."
-
-log "fail2ban is running"
+if $FAIL2BAN_ENABLED; then
+  if ! fail2ban-client status >/dev/null 2>&1; then
+    warn "fail2ban-client cannot communicate with the service; continuing with UFW protection only."
+    FAIL2BAN_ENABLED=false
+  else
+    log "fail2ban is running"
+  fi
+fi
 
 # ── Summary ───────────────────────────────────────────────────
 echo ""
@@ -266,7 +264,11 @@ echo "╔═══════════════════════�
 echo "║        GYDS Full Node — Firewall Hardened            ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo "  Ports open:  SSH:${SSH_PORT}  Dashboard:${DASHBOARD_PORT}  RPC:${RPC_PORT}  WS:${WS_PORT}  P2P:${P2P_PORT}"
-echo "  fail2ban jails: sshd, gyds-rpc-flood, gyds-rpc-badrpc, gyds-scan, recidive"
+if $FAIL2BAN_ENABLED; then
+  echo "  fail2ban: active (sshd, RPC flood/bad-RPC, scanner, recidive jails)"
+else
+  echo "  fail2ban: unavailable/skipped (UFW protection remains active)"
+fi
 echo ""
 echo "  Useful commands:"
 echo "    Status  : sudo bash setup-firewall.sh --status"

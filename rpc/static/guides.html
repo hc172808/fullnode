@@ -156,6 +156,7 @@
 
   <!-- Mode selector -->
   <div class="mode-tabs">
+    <button class="mode-tab" onclick="showGuide('buy-trade',this)">💱 Buy / Trade</button>
     <button class="mode-tab active" onclick="showGuide('full',this)">⛓ Full Node</button>
     <button class="mode-tab" onclick="showGuide('lite',this)">⚡ Lite Node</button>
     <button class="mode-tab" onclick="showGuide('rpc',this)">🔌 RPC Node</button>
@@ -164,6 +165,62 @@
     <button class="mode-tab" onclick="showGuide('sync',this)">🔄 Sync Full Node</button>
     <button class="mode-tab" onclick="showGuide('testnode',this)">🧪 Test Node</button>
   </div>
+
+  <!-- ══════════════════  BUY / TRADE  ═══════════════════════════════ -->
+  <div class="guide" id="guide-buy-trade">
+    <div class="guide-hero">
+      <div class="guide-icon">💱</div>
+      <div>
+        <h2>Buy, Hold, Send &amp; Trade GYDS</h2>
+        <p>A node gives people access to the network; it is not automatically an exchange. This software currently supports wallets, balances, native GYDS transfers, token transfers, and EVM-compatible RPC. It does not yet include fiat checkout, exchange listings, swaps, liquidity pools, or an order book.</p>
+        <div class="guide-tags">
+          <span class="tag tag-green">Wallet Transfers</span>
+          <span class="tag tag-blue">EVM Compatible</span>
+          <span class="tag tag-yellow">Exchange Required to Buy</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert alert-warn">
+      ⚠️ There is no built-in “Buy GYDS” button or trustless trading venue in the current node. Do not send money to an unverified seller. A real launch needs a named exchange/on-ramp, published fees, custody rules, and a support process.
+    </div>
+
+    <div class="steps">
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">1</div><div class="step-title">How people can use GYDS today</div></div>
+        <div class="step-body">
+          <ul>
+            <li>Create or import a wallet in the dashboard.</li>
+            <li>Add GYDS Chain to MetaMask or another EVM wallet using chain ID <code>198282</code>.</li>
+            <li>Receive GYDS from a network participant, or receive tokens from an issuer, by sharing the wallet address—not the private key.</li>
+            <li>Send GYDS through the wallet or standard Ethereum-compatible RPC once the sender has funds and gas.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">2</div><div class="step-title">How buying would work after a listing</div></div>
+        <div class="step-body">
+          <p>Once GYDS is legally and operationally listed by a real exchange or approved on-ramp, a buyer would:</p>
+          <ol>
+            <li>Create and verify an account with that provider.</li>
+            <li>Buy GYDS using the payment methods the provider supports.</li>
+            <li>Withdraw to a wallet configured for GYDS Chain (chain ID <code>198282</code>).</li>
+            <li>Confirm the withdrawal network and address before sending; a wrong network can permanently lose funds.</li>
+          </ol>
+          <div class="alert alert-info">ℹ️ The exchange must support GYDS Chain withdrawals specifically. An exchange listing on another network is not enough.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">3</div><div class="step-title">What is required for decentralized trading</div></div>
+        <div class="step-body">
+          <p>To let users trade without a centralized exchange, the project still needs a reviewed DEX design: a swap or order-book contract, liquidity pools and initial liquidity, price/oracle protections, token and pair metadata, slippage and fee handling, indexing, and a trading UI connected to the wallet.</p>
+          <p>Before real funds are accepted, those contracts should be independently audited and the project should publish the token supply, mint authority, treasury, liquidity ownership/lock terms, risks, and applicable legal/compliance information.</p>
+        </div>
+      </div>
+    </div>
+  </div><!-- /guide-buy-trade -->
 
   <!-- ══════════════════  FULL NODE  ══════════════════════════════════ -->
   <div class="guide active" id="guide-full">
@@ -966,7 +1023,7 @@ function showToast(msg) {
 
 // Open guide from URL hash
 const hash = location.hash.replace('#', '');
-if (['full','lite','rpc','boost','genesis','sync','testnode'].includes(hash)) {
+if (['buy-trade','full','lite','rpc','boost','genesis','sync','testnode'].includes(hash)) {
   const btn = document.querySelector(`.mode-tab[onclick*="'${hash}'"]`);
   showGuide(hash, btn);
 }

@@ -37,7 +37,7 @@ GYDS_BLOCK_TIME=120         # seconds
 GYDS_BOOTSTRAP_NODES=       # comma-separated tcp://host:port
 GYDS_VALIDATOR_KEY=         # hex private key for validator signing
 GYDS_ENABLE_FIREWALL=true
-GYDS_ENABLE_FAIL2BAN=true
+GYDS_ENABLE_FAIL2BAN=true  # optional; deploy continues with UFW if unavailable
 GYDS_LOG_LEVEL=info
 GYDS_LOG_FORMAT=json
 ```
@@ -57,7 +57,7 @@ Visit `/setup` for the 8-step guided configuration wizard:
 ## Security
 - Dashboard PIN: optional; SHA-256 hashed, stored at `<dataDir>/admin/.pin_hash`. It can only be created during setup wizard step 6. If unset, the dashboard remains unlocked.
 - Admin session: 8-hour cookie, IP-based rate-limit (5 attempts / 15 min lockout).
-- Firewall: UFW + fail2ban rules configured by `deploy.sh` + `setup-firewall.sh`.
+- Firewall: UFW is the required boundary; optional fail2ban rules are configured by `deploy.sh` + `setup-firewall.sh` when available.
 - fail2ban jails: SSH, RPC flood, bad RPC, scanners, recidive.
 - Peer auth: optional ed25519 challenge-response whitelist (GYDS_PEER_AUTH + GYDS_ALLOWED_NODES).
 
@@ -71,7 +71,7 @@ The genesis config is baked into `core/genesis.go`. If you change it (validators
 ```bash
 bash deploy.sh
 ```
-`deploy.sh` builds the binary, installs it as a systemd service, and applies firewall/fail2ban rules (requires root).
+`deploy.sh` builds the binary, installs it as a systemd service, and applies UFW rules (requires root). Fail2ban is optional; if it cannot be installed or started, deployment continues with UFW protection and prints a warning.
 
 ## Project structure
 ```
