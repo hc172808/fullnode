@@ -19,7 +19,7 @@
 #  Prerequisites:
 #    - Go 1.21 or later (installed automatically if missing or outdated)
 #    - systemd (required for service management)
-#    - ufw (required for firewall hardening); fail2ban is optional
+#    - ufw (required for firewall hardening)
 #    - A configured .env file (copy .env.example to .env and edit it),
 #      or first run the web setup wizard at http://<host>:<dashboard_port>/setup
 #
@@ -172,8 +172,6 @@ GYDS_LOG_LEVEL="${GYDS_LOG_LEVEL:-info}"
 GYDS_LOG_FORMAT="${GYDS_LOG_FORMAT:-json}"
 GYDS_SSH_PORT="${GYDS_SSH_PORT:-22}"
 GYDS_STORAGE_LIMIT_GB="${GYDS_STORAGE_LIMIT_GB:-50}"
-GYDS_ENABLE_FIREWALL="${GYDS_ENABLE_FIREWALL:-true}"
-GYDS_ENABLE_FAIL2BAN="${GYDS_ENABLE_FAIL2BAN:-true}"
 
 if [[ -n "$DASHBOARD_PORT_OVERRIDE" ]]; then
   GYDS_DASHBOARD_PORT="$DASHBOARD_PORT_OVERRIDE"
@@ -529,10 +527,7 @@ elif ! command -v ufw &>/dev/null; then
   warn "ufw is not installed. Install it with: sudo apt install ufw"
   warn "Then run: sudo bash setup-firewall.sh"
 else
-  FIREWALL_FAIL2BAN_ARGS=()
-  if [[ "${GYDS_ENABLE_FAIL2BAN,,}" != "true" ]]; then
-    FIREWALL_FAIL2BAN_ARGS+=(--no-fail2ban)
-  fi
+  # Keep deployment limited to the UFW network boundary.
   bash "${SCRIPT_DIR}/setup-firewall.sh" \
     --ssh-port       "${GYDS_SSH_PORT}" \
     --dashboard-port "${GYDS_DASHBOARD_PORT}" \
@@ -540,7 +535,7 @@ else
     --ws-port        "${GYDS_WS_PORT}" \
     --p2p-port       "${GYDS_P2P_PORT}" \
     --data-dir       "${GYDS_DATA_DIR}" \
-    "${FIREWALL_FAIL2BAN_ARGS[@]}" \
+    --ufw-only \
     || die "setup-firewall.sh failed — see output above for details."
   log "Firewall rules applied"
 fi

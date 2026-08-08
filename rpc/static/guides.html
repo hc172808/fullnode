@@ -299,7 +299,7 @@
       <div class="step-card">
         <div class="step-card-header"><div class="step-num">3</div><div class="step-title">Deploy the node</div></div>
         <div class="step-body">
-          <p>Run <code>deploy.sh</code> as root. It builds the Go binary, installs it as a systemd service, configures the firewall (UFW + fail2ban), and sets up log rotation.</p>
+          <p>Run <code>deploy.sh</code> as root. It builds the Go binary, installs it as a systemd service, configures the UFW firewall, and sets up log rotation. Deployment does not install fail2ban.</p>
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
 <span class="cmd">sudo bash deploy.sh</span></div>

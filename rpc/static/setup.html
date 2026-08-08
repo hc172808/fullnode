@@ -488,7 +488,7 @@
     <div class="step-header">
       <div class="step-num">Step 5 of 8</div>
       <div class="step-title">Firewall &amp; Security</div>
-      <div class="step-desc">Configure UFW rules and fail2ban protection. <code>deploy.sh</code> applies these settings automatically when run as root.</div>
+      <div class="step-desc">Configure UFW rules for the node. <code>deploy.sh</code> applies these settings in UFW-only mode when run as root.</div>
     </div>
     <div class="step-body">
 
@@ -506,8 +506,8 @@
       <div id="firewallFields">
         <div class="toggle-row">
           <div class="toggle-info">
-            <strong>Enable fail2ban</strong>
-            <span>Automatically bans IPs that repeatedly fail RPC or SSH auth</span>
+            <strong>Additional protection</strong>
+            <span>Optional fail2ban setup is separate from <code>deploy.sh</code> and is not installed automatically</span>
           </div>
           <label class="toggle">
             <input type="checkbox" id="enableFail2ban" checked />
@@ -1021,7 +1021,7 @@ function buildReview() {
     <li><span class="check-icon ok">2</span><span>Run <code>bash deploy.sh</code> to build, install, start the node, and apply firewall rules</span></li>
     <li><span class="check-icon ${cfg.enableFirewall==='true'?'ok':'warn'}">${cfg.enableFirewall==='true'?'✓':'!'}</span>
       <span>${cfg.enableFirewall==='true'
-        ? 'Firewall (UFW) + fail2ban will be configured by deploy.sh (requires root)'
+        ? 'UFW firewall rules will be configured by deploy.sh (requires root)'
         : 'Firewall is disabled — consider enabling it for production'}</span></li>
     <li><span class="check-icon ok">4</span><span>Verify the node is running: <code>curl http://localhost:${cfg.rpcPort}/health</code></span></li>
     <li><span class="check-icon ok">5</span><span>View logs: <code>sudo journalctl -u gyds-fullnode -f</code></span></li>

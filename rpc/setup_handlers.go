@@ -121,6 +121,13 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	cfg.LogLevel = def(cfg.LogLevel, "info")
 	cfg.LogFormat = def(cfg.LogFormat, "json")
 
+	pin := strings.TrimSpace(cfg.DashboardPin)
+	if pin != "" && (len(pin) < pinMinLen || len(pin) > pinMaxLen) {
+		jsonErr(w, http.StatusBadRequest,
+			fmt.Sprintf("dashboard PIN must be %d–%d characters", pinMinLen, pinMaxLen))
+		return
+	}
+
 	ts := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
 	var sb strings.Builder
@@ -190,7 +197,7 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	// previous data directory, so using s.auth here would make the PIN
 	// disappear after the configured node restarts.
 	pinMsg := ""
-	if pin := strings.TrimSpace(cfg.DashboardPin); pin != "" {
+	if pin != "" {
 		setupAuth := NewAuthStore(cfg.DataDir)
 		if !setupAuth.PinIsSet() {
 			if err := setupAuth.SetPin(pin); err != nil {

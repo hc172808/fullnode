@@ -12,7 +12,7 @@
 #    --ws-port PORT         WebSocket port (default: 8546)
 #    --p2p-port PORT        P2P gossip port (default: 30303)
 #    --data-dir DIR         Node data directory for access logs
-#    --no-fail2ban          Configure UFW only; do not install/start fail2ban
+#    --ufw-only             Configure UFW only; do not install/start optional services
 #    --status               Show active firewall rules and fail2ban bans, then exit
 #    --unban IP             Unban an IP address from all fail2ban jails, then exit
 #    --help                 Show this help message
@@ -48,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     --p2p-port)       P2P_PORT="$2";       shift 2 ;;
     --data-dir)       DATA_DIR="$2";       shift 2 ;;
     --no-fail2ban)    FAIL2BAN_ENABLED=false; shift ;;
+    --ufw-only)       FAIL2BAN_ENABLED=false; shift ;;
     --status)
       log "UFW firewall rules:"
       ufw status numbered

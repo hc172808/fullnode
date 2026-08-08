@@ -37,7 +37,6 @@ GYDS_BLOCK_TIME=120         # seconds
 GYDS_BOOTSTRAP_NODES=       # comma-separated tcp://host:port
 GYDS_VALIDATOR_KEY=         # hex private key for validator signing
 GYDS_ENABLE_FIREWALL=true
-GYDS_ENABLE_FAIL2BAN=true  # optional; deploy continues with UFW if unavailable
 GYDS_LOG_LEVEL=info
 GYDS_LOG_FORMAT=json
 ```
@@ -53,7 +52,7 @@ Visit `/setup` for the 8-step guided configuration wizard:
 2. Wallet (generate or import)
 3. Ports & Networking (RPC, WS, P2P, bootstrap peers, peer auth)
 4. Storage (data directory, limit)
-5. Firewall & Security (UFW + fail2ban)
+5. Firewall & Security (UFW)
 6. Dashboard PIN (set during setup; optional, and never prompted on the dashboard)
 7. Logging (level, format)
 8. Review & Save (writes `.env`, applies PIN)
@@ -61,8 +60,8 @@ Visit `/setup` for the 8-step guided configuration wizard:
 ## Security
 - Dashboard PIN: optional; SHA-256 hashed, stored at `<dataDir>/admin/.pin_hash`. It can only be created during setup wizard step 6. If unset, the dashboard remains unlocked.
 - Admin session: 8-hour cookie, IP-based rate-limit (5 attempts / 15 min lockout).
-- Firewall: UFW is the required boundary; optional fail2ban rules are configured by `deploy.sh` + `setup-firewall.sh` when available.
-- fail2ban jails: SSH, RPC flood, bad RPC, scanners, recidive.
+- Firewall: UFW is the required boundary and is the only firewall layer configured by `deploy.sh`.
+- Optional fail2ban configuration remains available only through a separate, explicit `setup-firewall.sh` invocation.
 - Peer auth: optional ed25519 challenge-response whitelist (GYDS_PEER_AUTH + GYDS_ALLOWED_NODES).
 
 ## Auto-update checker
@@ -73,7 +72,7 @@ The production installer enables the required boot services:
 - Docker (when using the default Docker deployment)
 - `gyds-fullnode-compose.service` for the Docker node, or `gyds-fullnode.service` for native mode
 - Nginx reverse proxy
-- fail2ban when available and enabled
+- UFW firewall rules when enabled
 
 After installation, pull and apply the latest Git version with:
 ```bash
@@ -88,7 +87,7 @@ The genesis config is baked into `core/genesis.go`. If you change it (validators
 ```bash
 bash deploy.sh
 ```
-`deploy.sh` builds the binary, installs it as a systemd service, and applies UFW rules (requires root). Fail2ban is optional; if it cannot be installed or started, deployment continues with UFW protection and prints a warning.
+`deploy.sh` builds the binary, installs it as a systemd service, and applies UFW-only rules (requires root). It does not install or configure fail2ban.
 
 ## Project structure
 ```
