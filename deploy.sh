@@ -497,6 +497,16 @@ if [[ $EUID -eq 0 ]]; then
   mkdir -p "$LOG_DIR"
   chown "${APP_USER}:${APP_USER}" "$LOG_DIR"       2>/dev/null || true
   chown "${APP_USER}:${APP_USER}" "$GYDS_DATA_DIR" 2>/dev/null || true
+
+  if [[ -f "${SCRIPT_DIR}/scripts/update-from-git.sh" ]]; then
+    cat > /usr/local/bin/gyds-fullnode-update <<UPDATE_WRAPPER
+#!/usr/bin/env bash
+export GYDS_APP_DIR="${SCRIPT_DIR}"
+exec "${SCRIPT_DIR}/scripts/update-from-git.sh" "\$@"
+UPDATE_WRAPPER
+    chmod 755 /usr/local/bin/gyds-fullnode-update
+    log "Git update helper installed: /usr/local/bin/gyds-fullnode-update"
+  fi
 else
   warn "Not running as root — binary remains in: ./bin/${APP_NAME}"
   BINARY_PATH="${SCRIPT_DIR}/bin/${APP_NAME}"

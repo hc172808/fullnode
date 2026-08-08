@@ -4,3 +4,4 @@
 - [Dashboard deployment ports](dashboard-ports.md) — dashboard defaults to 5000; installers must publish/open it and support explicit 8080 configuration
 - [PIN setup policy](pin-setup-policy.md) — dashboard PIN creation is only available in setup; an unset PIN leaves the dashboard unlocked
 - [Setup data directory alignment](setup-data-directory.md) — PIN and node identity must persist under the same data directory used after restart
+- [Production boot and updates](production-boot-updates.md) — exactly one node runtime starts at boot; Git updates must build, back up, health-check, and roll back safely

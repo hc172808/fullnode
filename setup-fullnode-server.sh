@@ -671,30 +671,10 @@ fi
 if $USE_DOCKER; then
   log "Starting Docker container..."
   cd "$APP_DIR"
+  DOCKER_BIN="$(command -v docker)"
 
-  # Inject resource limits into docker-compose.yml so the container
-  # cannot starve the host of memory or CPU
-  if command -v python3 &>/dev/null; then
-    python3 - <<PYEOF
-import yaml, sys, os
-path = '${APP_DIR}/docker-compose.yml'
-try:
-    with open(path) as f:
-        doc = yaml.safe_load(f)
-    svc = list(doc.get('services', {}).values())[0]
-    svc.setdefault('deploy', {}).setdefault('resources', {}).update({
-        'limits':    {'memory': '2g', 'cpus': '2.0'},
-        'reservations': {'memory': '512m'}
-    })
-    with open(path, 'w') as f:
-        yaml.dump(doc, f, default_flow_style=False)
-    print('[GYDS] Docker resource limits set: 2 GB RAM / 2 CPUs')
-except Exception as e:
-    print(f'[WARN] Could not set Docker resource limits: {e}', file=sys.stderr)
-PYEOF
-  else
-    warn "python3 not available — Docker resource limits not set; container may use unlimited RAM"
-  fi
+  # Do not allow an old native service to compete for the same ports.
+  systemctl disable --now gyds-fullnode 2>/dev/null || true
 
   docker compose down --remove-orphans 2>/dev/null || true
   if $IS_UPDATE || $ALREADY_INSTALLED; then
@@ -706,6 +686,33 @@ PYEOF
   fi
   docker compose up -d
   log "Docker container started"
+
+  # Manage Compose itself with systemd so Docker and the node return after
+  # reboot, and so the update helper can stop/start one stable unit.
+  cat > /etc/systemd/system/gyds-fullnode-compose.service <<EOF
+[Unit]
+Description=GYDS Chain Full Node (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=${APP_DIR}
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=${DOCKER_BIN} compose down
+RemainAfterExit=yes
+TimeoutStartSec=0
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  sed -i "s|^ExecStart=.*|ExecStart=${DOCKER_BIN} compose up -d|" /etc/systemd/system/gyds-fullnode-compose.service
+  systemctl daemon-reload
+  systemctl enable --now gyds-fullnode-compose.service
+  log "Docker Compose service enabled for boot: gyds-fullnode-compose.service"
 fi
 
 # ── Nginx reverse proxy ───────────────────────────────────────────────────────
@@ -821,6 +828,8 @@ fi
 
 # ── Systemd service (native binary only) ──────────────────────────────────────
 if ! $USE_DOCKER; then
+  # Do not allow an old Docker Compose unit to compete for the same ports.
+  systemctl disable --now gyds-fullnode-compose.service 2>/dev/null || true
   log "Creating hardened systemd service..."
   cat > /etc/systemd/system/gyds-fullnode.service <<EOF
 [Unit]
@@ -884,6 +893,10 @@ EOF
     log "Systemd service enabled and started"
   fi
 fi
+
+# Install the Git update helper for both Docker and native deployments.
+install -m 0755 "${APP_DIR}/scripts/update-from-git.sh" /usr/local/bin/gyds-fullnode-update
+log "Update helper installed: /usr/local/bin/gyds-fullnode-update"
 
 # ── Health check script ────────────────────────────────────────────────────────
 log "Installing health check..."

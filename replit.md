@@ -68,6 +68,19 @@ Visit `/setup` for the 8-step guided configuration wizard:
 ## Auto-update checker
 Background goroutine checks GitHub releases every 24 hours. Status available at `GET /api/updates`.
 
+## Production startup and updates
+The production installer enables the required boot services:
+- Docker (when using the default Docker deployment)
+- `gyds-fullnode-compose.service` for the Docker node, or `gyds-fullnode.service` for native mode
+- Nginx reverse proxy
+- fail2ban when available and enabled
+
+After installation, pull and apply the latest Git version with:
+```bash
+sudo gyds-fullnode-update
+```
+The updater uses a lock, refuses dirty or non-fast-forward checkouts, runs tests/builds before stopping the node, backs up chain state and `.env`, verifies both RPC and dashboard health, and rolls back the code/image if health checks fail. It does not wipe chain data.
+
 ## Genesis node
 The genesis config is baked into `core/genesis.go`. If you change it (validators, chain ID, initial balances), **all nodes must be rebuilt from the same binary** to share a common genesis hash. Existing data directories must be wiped if the genesis changes.
 

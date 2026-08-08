@@ -5,6 +5,18 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # The host data directory is represented by this named volume in Docker.
+    # Override any host-specific GYDS_DATA_DIR from .env so state and the
+    # dashboard PIN remain under the mounted /app/data path.
+    environment:
+      GYDS_DATA_DIR: /app/data
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+        reservations:
+          memory: 512m
     ports:
       - "${GYDS_DASHBOARD_PORT:-5000}:${GYDS_DASHBOARD_PORT:-5000}" # Dashboard
       - "${GYDS_RPC_PORT:-8545}:${GYDS_RPC_PORT:-8545}"             # JSON-RPC
