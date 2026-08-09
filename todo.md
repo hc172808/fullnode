@@ -3,6 +3,29 @@
 This checklist records the work still needed for production wallet support and
 the deployment failure shown in the uploaded screenshot.
 
+## Plan 6 — Make the public RPC wallet-ready
+
+Your public JSON-RPC endpoint is:
+
+```text
+https://rpc.netlifegy.com
+```
+
+Validation completed on **2026-08-09**:
+
+- [x] Confirm the HTTPS RPC endpoint responds to `eth_chainId`.
+- [x] Confirm the endpoint reports chain ID `198282` (`0x3068a`).
+- [ ] Publish `https://rpc.netlifegy.com/gyds-network.json` (it currently
+  returns `404 Not Found`).
+- [ ] Set the production `GYDS_EXTERNAL_URL` to the public HTTPS origin and
+  restart the node.
+- [ ] Publish the WebSocket endpoint and block explorer URL.
+- [ ] Add the network to MetaMask and the other target wallets using the
+  verified RPC URL.
+- [ ] Test a read-only request and a small test transaction from an external
+  wallet.
+- [ ] Add RPC health, latency, rate-limit, and restart monitoring.
+
 ## Completed in the codebase
 
 - [x] Set the native GYDS genesis supply to exactly **1,000,000,000 GYDS**.
@@ -36,7 +59,8 @@ the deployment failure shown in the uploaded screenshot.
 
 ## External wallet support for native GYDS
 
-- [ ] Publish a stable HTTPS RPC URL, WebSocket URL, and block explorer URL.
+- [x] Publish a stable HTTPS RPC URL: `https://rpc.netlifegy.com`.
+- [ ] Publish a stable HTTPS WebSocket URL and block explorer URL.
 - [x] Add a canonical `/gyds-network.json` document with chain ID, RPC,
   WebSocket, explorer, and logo URLs.
 - [ ] Add the network to each wallet using:
@@ -44,7 +68,7 @@ the deployment failure shown in the uploaded screenshot.
   - Chain ID: `198282`
   - Native symbol: `GYDS`
   - Decimals: `18`
-  - RPC URL: the final HTTPS RPC endpoint
+  - RPC URL: `https://rpc.netlifegy.com`
 - [ ] Use HTTPS for `iconUrls`; many wallets ignore HTTP or localhost image URLs.
 - [x] Add PNG and JPEG logo URLs to the wallet-add request and metadata document.
 - [ ] Submit the network logo to the wallet's supported chain registry where
