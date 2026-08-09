@@ -37,6 +37,8 @@ the deployment failure shown in the uploaded screenshot.
 ## External wallet support for native GYDS
 
 - [ ] Publish a stable HTTPS RPC URL, WebSocket URL, and block explorer URL.
+- [x] Add a canonical `/gyds-network.json` document with chain ID, RPC,
+  WebSocket, explorer, and logo URLs.
 - [ ] Add the network to each wallet using:
   - Chain name: `GYDS Chain`
   - Chain ID: `198282`
@@ -44,11 +46,14 @@ the deployment failure shown in the uploaded screenshot.
   - Decimals: `18`
   - RPC URL: the final HTTPS RPC endpoint
 - [ ] Use HTTPS for `iconUrls`; many wallets ignore HTTP or localhost image URLs.
+- [x] Add PNG and JPEG logo URLs to the wallet-add request and metadata document.
 - [ ] Submit the network logo to the wallet's supported chain registry where
   required. `wallet_addEthereumChain` does not guarantee that a wallet will
   display the icon.
-- [ ] Prepare a square PNG logo with a stable public URL, CORS enabled, no
-  authentication, and a long cache lifetime.
+- [x] Prepare a square PNG logo with a public URL, CORS enabled, no
+  authentication, and a one-day cache lifetime.
+- [ ] Configure `GYDS_EXTERNAL_URL` to the final HTTPS origin so the public
+  metadata URLs and wallet icon URLs are HTTPS in production.
 - [ ] Test adding the chain in MetaMask mobile, MetaMask extension, Trust
   Wallet, Coinbase Wallet, and any other target wallet.
 - [ ] Remove and re-add the network during testing because wallets cache chain
@@ -70,8 +75,10 @@ custom `/api/tokens/{address}` endpoint.
   stablecoin reserve/redemption policy.
 - [ ] Add ERC-20 JSON-RPC support and test `balanceOf`, `decimals`, `symbol`,
   `name`, `totalSupply`, `transfer`, `approve`, and `transferFrom`.
-- [ ] Host a public GYD token metadata JSON with name, symbol, decimals, logo
-  URL, description, and contract address.
+- [x] Host `/gyd-token.json` with GYD name, symbol, decimals, supply, logo URL,
+  and an explicit no-contract status.
+- [ ] After a real ERC-20 contract exists, publish contract-backed GYD metadata
+  with its permanent contract address.
 - [ ] Register the GYD logo and metadata with target wallet token lists.
 - [ ] Test importing GYD by contract address in every target wallet.
 - [ ] Publish the stablecoin reserve, issuer, redemption, audit, legal, and

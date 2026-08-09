@@ -242,6 +242,8 @@ func (s *Server) setupDashboardRoutes() {
 
 	// Connection info download
 	r.HandleFunc("/gyds-connection-info.json", s.handleConnectionInfo).Methods("GET")
+	r.HandleFunc("/gyds-network.json", s.handleNetworkMetadata).Methods("GET")
+	r.HandleFunc("/gyd-token.json", s.handleGYDMetadata).Methods("GET")
 
 	api := r.PathPrefix("/api").Subrouter()
 	api.HandleFunc("/status", s.handleStatus).Methods("GET")
@@ -300,6 +302,14 @@ func (s *Server) setupRPCRoutes() {
 }
 
 func (s *Server) handleStaticAsset(w http.ResponseWriter, r *http.Request) {
+	// Wallets commonly fetch chain icons cross-origin and cache them
+	// aggressively. These headers make the public logo assets usable from
+	// wallet registries without exposing any application state.
+	switch strings.ToLower(filepath.Ext(r.URL.Path)) {
+	case ".png", ".jpg", ".jpeg", ".webp", ".ico":
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+	}
 	sub, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		http.NotFound(w, r)
@@ -331,6 +341,76 @@ func (s *Server) handleConnectionInfo(w http.ResponseWriter, r *http.Request) {
 	enc.Encode(s.buildConnectionInfo())
 }
 
+// publicBaseURL returns the configured public origin when available. When
+// GYDS_EXTERNAL_URL is not set, use the incoming request so metadata remains
+// useful for local/private deployments without inventing a public hostname.
+func (s *Server) publicBaseURL(r *http.Request) string {
+	if s.externalURL != "" {
+		return strings.TrimRight(s.externalURL, "/")
+	}
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+func websocketURL(base string) string {
+	switch {
+	case strings.HasPrefix(base, "https://"):
+		return "wss://" + strings.TrimPrefix(base, "https://")
+	case strings.HasPrefix(base, "http://"):
+		return "ws://" + strings.TrimPrefix(base, "http://")
+	default:
+		return base
+	}
+}
+
+// handleNetworkMetadata serves wallet-readable GYDS network metadata. Wallets
+// may ignore iconUrls in wallet_addEthereumChain, but this stable document is
+// also useful for registries and operators that need one canonical definition.
+func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
+	base := s.publicBaseURL(r)
+	jsonOK(w, map[string]interface{}{
+		"name":       "GYDS Chain",
+		"chainId":    "0x3068a",
+		"chainIdHex": "0x3068a",
+		"chainIdDec": 198282,
+		"nativeCurrency": map[string]interface{}{
+			"name":     "GYDS",
+			"symbol":   "GYDS",
+			"decimals": 18,
+		},
+		"rpcUrls":           []string{base + "/rpc"},
+		"wsUrls":            []string{websocketURL(base) + "/api/ws"},
+		"explorerUrls":      []string{base},
+		"iconUrls":          []string{base + "/gyds-coin.png", base + "/gyds-coin.jpg"},
+		"connectionInfoUrl": base + "/gyds-connection-info.json",
+	})
+}
+
+// handleGYDMetadata documents the current node-managed GYD stablecoin. It
+// intentionally omits a contract address: GYD is not an ERC-20 contract yet,
+// and publishing a fabricated address would cause wallets to display unsafe
+// or misleading token information.
+func (s *Server) handleGYDMetadata(w http.ResponseWriter, r *http.Request) {
+	base := s.publicBaseURL(r)
+	jsonOK(w, map[string]interface{}{
+		"name":             "GYD Stablecoin",
+		"symbol":           "GYD",
+		"decimals":         18,
+		"totalSupply":      "10000000000",
+		"isStablecoin":     true,
+		"tokenType":        "node-managed-genesis-token",
+		"contractAddress":  nil,
+		"logoUrl":          base + "/gyd-coin.png",
+		"description":      "GYD is a node-managed genesis token on GYDS Chain. It is not currently an ERC-20 contract.",
+		"networkMetadata":  base + "/gyds-network.json",
+		"balanceApi":       base + "/api/tokens/{address}",
+		"walletImportable": false,
+	})
+}
+
 func (s *Server) buildConnectionInfo() map[string]interface{} {
 	stats := s.chain.Stats()
 	chainID := int64(198282)
@@ -343,13 +423,15 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 		}
 	}
 
-	extBase := s.externalURL
+	extBase := strings.TrimRight(s.externalURL, "/")
 	rpcURL := fmt.Sprintf("http://0.0.0.0:%d", s.rpcPort)
 	wsURL := fmt.Sprintf("ws://0.0.0.0:%d/api/ws", s.rpcPort)
 	dashURL := fmt.Sprintf("http://0.0.0.0:%d", s.dashPort)
 	if extBase != "" {
-		rpcURL = fmt.Sprintf("%s:%d", extBase, s.rpcPort)
-		wsURL = fmt.Sprintf("%s:%d/api/ws", strings.Replace(extBase, "https://", "wss://", 1), s.rpcPort)
+		// Public deployments normally terminate TLS at Nginx. Use the
+		// reverse-proxy paths instead of exposing the internal listener ports.
+		rpcURL = extBase + "/rpc"
+		wsURL = websocketURL(extBase) + "/api/ws"
 		dashURL = extBase
 	}
 
@@ -374,6 +456,10 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 			"chainIdHex":     fmt.Sprintf("0x%x", chainID),
 			"currencySymbol": "GYDS",
 			"blockExplorer":  dashURL,
+		},
+		"metadata": map[string]string{
+			"network": strings.TrimRight(dashURL, "/") + "/gyds-network.json",
+			"gyd":     strings.TrimRight(dashURL, "/") + "/gyd-token.json",
 		},
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 	}
