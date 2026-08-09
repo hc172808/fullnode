@@ -454,6 +454,18 @@ if ! mkdir -p "$GYDS_DATA_DIR" 2>/dev/null; then
 fi
 log "Data directory: ${GYDS_DATA_DIR}"
 
+# ReadWritePaths= accepts absolute, whitespace-free paths only. Validate the
+# final value after the non-root fallback as well as the initial environment
+# normalization above, so a malformed unit cannot be installed.
+validate_systemd_path() {
+  local name="$1" value="$2"
+  [[ "$value" == /* ]] || die "${name}=${value} must be an absolute path for systemd."
+  [[ "$value" != *[[:space:]]* ]] ||
+    die "${name} contains whitespace and cannot be used in ReadWritePaths=: ${value}"
+}
+validate_systemd_path "GYDS_DATA_DIR" "$GYDS_DATA_DIR"
+validate_systemd_path "LOG_DIR" "$LOG_DIR"
+
 _avail_gb=$(df -BG "$GYDS_DATA_DIR" 2>/dev/null | awk 'NR==2{print $4}' | tr -d 'G' || echo 0)
 _avail_gb="${_avail_gb:-0}"
 info "Available disk space: ${_avail_gb} GB  (configured limit: ${GYDS_STORAGE_LIMIT_GB} GB)"
@@ -628,6 +640,11 @@ SYSTEMD
 
   chmod 644 "$SERVICE_FILE"
   systemctl daemon-reload
+  _rw_paths="$(awk -F= '/^ReadWritePaths=/{print $2}' "$SERVICE_FILE")"
+  for _rw_path in $_rw_paths; do
+    [[ "$_rw_path" == /* ]] ||
+      die "Generated systemd service contains a non-absolute ReadWritePaths entry: ${_rw_path}"
+  done
   if command -v systemd-analyze >/dev/null 2>&1; then
     systemd-analyze verify "$SERVICE_FILE" \
       || die "Generated systemd service is invalid. Review ${SERVICE_FILE}."

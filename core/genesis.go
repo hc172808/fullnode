@@ -20,12 +20,12 @@ type GenesisTokenAlloc struct {
 
 // TokenDefinition describes a token that exists in the genesis state.
 type TokenDefinition struct {
-	Symbol      string              `json:"symbol"`
-	Name        string              `json:"name"`
-	Decimals    uint8               `json:"decimals"`
-	IsStablecoin bool              `json:"isStablecoin"`
-	TotalSupply *big.Int            `json:"totalSupply"`
-	Alloc       []GenesisTokenAlloc `json:"alloc"`
+	Symbol       string              `json:"symbol"`
+	Name         string              `json:"name"`
+	Decimals     uint8               `json:"decimals"`
+	IsStablecoin bool                `json:"isStablecoin"`
+	TotalSupply  *big.Int            `json:"totalSupply"`
+	Alloc        []GenesisTokenAlloc `json:"alloc"`
 }
 
 type GenesisConfig struct {
@@ -66,11 +66,11 @@ var GydsGenesis = &GenesisConfig{
 		"0x0000000000000000000000000000000000000002",
 		"0x0000000000000000000000000000000000000003",
 	},
-	// GYDS native token — 2,000,000,000 total supply
+	// GYDS native token — 1,000,000,000 total supply
 	Alloc: []GenesisAlloc{
-		{Address: "0x0000000000000000000000000000000000000001", Balance: e18B(1)},   // 1 B GYDS
-		{Address: "0x0000000000000000000000000000000000000002", Balance: e18M(600)}, // 600 M GYDS
-		{Address: "0x0000000000000000000000000000000000000003", Balance: e18M(400)}, // 400 M GYDS
+		{Address: "0x0000000000000000000000000000000000000001", Balance: e18M(500)}, // 500 M GYDS
+		{Address: "0x0000000000000000000000000000000000000002", Balance: e18M(300)}, // 300 M GYDS
+		{Address: "0x0000000000000000000000000000000000000003", Balance: e18M(200)}, // 200 M GYDS
 	},
 	// Non-native genesis tokens
 	Tokens: []TokenDefinition{
@@ -81,9 +81,9 @@ var GydsGenesis = &GenesisConfig{
 			IsStablecoin: true,
 			TotalSupply:  e18B(10), // 10,000,000,000 GYD
 			Alloc: []GenesisTokenAlloc{
-				{Address: "0x0000000000000000000000000000000000000001", Amount: e18B(5)},    // 5 B GYD
-				{Address: "0x0000000000000000000000000000000000000002", Amount: e18B(3)},    // 3 B GYD
-				{Address: "0x0000000000000000000000000000000000000003", Amount: e18B(2)},    // 2 B GYD
+				{Address: "0x0000000000000000000000000000000000000001", Amount: e18B(5)}, // 5 B GYD
+				{Address: "0x0000000000000000000000000000000000000002", Amount: e18B(3)}, // 3 B GYD
+				{Address: "0x0000000000000000000000000000000000000003", Amount: e18B(2)}, // 2 B GYD
 			},
 		},
 	},
@@ -108,9 +108,9 @@ var GydsTestGenesis = &GenesisConfig{
 	},
 	// Pre-fund test addresses with generous balances so tests never run dry.
 	Alloc: []GenesisAlloc{
-		{Address: "0x0000000000000000000000000000000000000001", Balance: e18B(1)},
-		{Address: "0x0000000000000000000000000000000000000002", Balance: e18M(600)},
-		{Address: "0x0000000000000000000000000000000000000003", Balance: e18M(400)},
+		{Address: "0x0000000000000000000000000000000000000001", Balance: e18M(500)},
+		{Address: "0x0000000000000000000000000000000000000002", Balance: e18M(300)},
+		{Address: "0x0000000000000000000000000000000000000003", Balance: e18M(200)},
 	},
 	Tokens: []TokenDefinition{
 		{

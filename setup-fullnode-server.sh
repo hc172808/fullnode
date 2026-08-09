@@ -179,6 +179,8 @@ fi
 
 [[ "$GYDS_DATADIR" != *$'\n'* && "$GYDS_DATADIR" != *$'\r'* ]] \
   || { echo "[ERROR] Data directory contains a newline, which is invalid." >&2; exit 1; }
+[[ "$GYDS_DATADIR" != *[[:space:]]* ]] \
+  || { echo "[ERROR] Data directory cannot contain whitespace: ${GYDS_DATADIR}" >&2; exit 1; }
 
 validate_port() {
   local name="$1" value="$2"
@@ -898,6 +900,11 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
+  _rw_paths="$(awk -F= '/^ReadWritePaths=/{print $2}' /etc/systemd/system/gyds-fullnode.service)"
+  for _rw_path in $_rw_paths; do
+    [[ "$_rw_path" == /* ]] ||
+      die "Generated systemd service contains a non-absolute ReadWritePaths entry: ${_rw_path}"
+  done
   if command -v systemd-analyze &>/dev/null; then
     systemd-analyze verify /etc/systemd/system/gyds-fullnode.service \
       || die "Generated systemd service is invalid. Review /etc/systemd/system/gyds-fullnode.service."
