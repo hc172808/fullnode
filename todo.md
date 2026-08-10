@@ -3,6 +3,114 @@
 This checklist records the work still needed for production wallet support and
 the deployment failure shown in the uploaded screenshot.
 
+## Plan 6 — Implement and verify `net_enode`
+
+### Evidence from the uploaded genesis-node screenshot
+
+The command reached the local RPC server on port `8545`, but the node returned:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32601,
+    "message": "method net_enode not found"
+  },
+  "id": 1
+}
+```
+
+This confirms that the RPC service is running. The immediate failure is an
+unimplemented JSON-RPC method, not a `127.0.0.1` connectivity failure.
+
+### Implementation checklist
+
+- [ ] Add `GYDS_P2P_ADVERTISE_HOST` to configuration. It must be the genesis
+  server's public IP or DNS name, not `0.0.0.0` or `127.0.0.1`.
+- [ ] Add the advertised P2P port configuration, defaulting to
+  `GYDS_P2P_PORT=30303`.
+- [ ] Extend the RPC/P2P interface so RPC can read the local node ID,
+  advertised host, and P2P port.
+- [ ] Implement `net_enode` in the JSON-RPC dispatcher.
+- [ ] Return a documented, non-empty result containing the local node identity
+  and reachable P2P endpoint. Keep the response format stable for node
+  operators and tooling.
+- [ ] Keep the P2P bind address on all interfaces (`:30303`, equivalent to
+  `0.0.0.0:30303`) while advertising only the public address.
+- [ ] Add a useful error when `GYDS_P2P_ADVERTISE_HOST` is empty for a node
+  that is expected to accept remote peers.
+- [ ] Implement `net_peerCount` using the live P2P peer count instead of the
+  current hardcoded `0x0`.
+- [ ] Add retry/backoff for bootstrap peers and log each dial, handshake,
+  rejection, and reconnect event.
+- [ ] Verify TCP `30303` is open in both the server firewall and hosting
+  provider security group.
+- [ ] Ensure every node has the same chain ID/genesis hash and a unique
+  `<GYDS_DATA_DIR>/node.key`.
+
+### Configuration examples
+
+Genesis node:
+
+```env
+GYDS_NODE_MODE=genesis
+GYDS_CHAIN_ID=198282
+GYDS_RPC_HOST=0.0.0.0
+GYDS_RPC_PORT=8545
+GYDS_P2P_PORT=30303
+GYDS_P2P_ADVERTISE_HOST=GENESIS_PUBLIC_IP_OR_DNS
+```
+
+Joining node:
+
+```env
+GYDS_NODE_MODE=sync
+GYDS_CHAIN_ID=198282
+GYDS_RPC_HOST=0.0.0.0
+GYDS_RPC_PORT=8545
+GYDS_P2P_PORT=30303
+GYDS_BOOTSTRAP_NODES=GENESIS_PUBLIC_IP_OR_DNS:30303
+GYDS_P2P_ADVERTISE_HOST=JOINING_NODE_PUBLIC_IP_OR_DNS
+```
+
+`GYDS_BOOTSTRAP_NODES` must contain a real public `host:port`. Do not use the
+HTTPS RPC URL, `127.0.0.1`, or `0.0.0.0` for node-to-node peering.
+
+### Verification after implementation
+
+Run on the genesis node:
+
+```bash
+curl -sS http://127.0.0.1:8545 \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"net_enode","params":[],"id":1}' | jq
+
+curl -sS http://127.0.0.1:8545 \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":2}' | jq
+
+curl -sS http://127.0.0.1:8545/api/peers | jq
+sudo ss -lntp | grep -E ':(30303|8545)\b'
+```
+
+Run from each joining node:
+
+```bash
+nc -vz GENESIS_PUBLIC_IP_OR_DNS 30303
+curl -sS http://127.0.0.1:8545/api/peers | jq
+sudo journalctl -u gyds-fullnode -n 200 --no-pager \
+  | grep -Ei 'p2p|peer|bootstrap|dial|handshake|auth|reconnect'
+```
+
+Acceptance criteria:
+
+- [ ] The screenshot command returns a successful `net_enode` result.
+- [ ] The result never advertises `127.0.0.1` or `0.0.0.0`.
+- [ ] `net_peerCount` matches `/api/peers`.
+- [ ] Genesis and joining nodes show each other as connected.
+- [ ] Joining nodes synchronize to the genesis node's block height.
+- [ ] A service restart reconnects without manually recreating node identity.
+
 ## Plan 7 — Fix P2P peering, node identity, wallet storage, and PIN configuration
 
 ### Findings from the current implementation
@@ -149,7 +257,7 @@ curl -sS http://127.0.0.1:8545/api/peers | jq
 Do not mark P2P complete until the firewall test, handshake logs, peer count,
 peer list, and height synchronization all pass on both servers.
 
-## Plan 6 — Make the public RPC wallet-ready
+## Plan 8 — Make the public RPC wallet-ready
 
 Your public JSON-RPC endpoint is:
 
