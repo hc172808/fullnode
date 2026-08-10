@@ -3,6 +3,152 @@
 This checklist records the work still needed for production wallet support and
 the deployment failure shown in the uploaded screenshot.
 
+## Plan 7 — Fix P2P peering, node identity, wallet storage, and PIN configuration
+
+### Findings from the current implementation
+
+- [ ] Confirm every joining node runs `full`, `genesis`, `sync`, `boost`, or
+  `lite` mode. The `rpc` mode intentionally has **no P2P**.
+- [x] The Go P2P listener uses `:30303`, which listens on all interfaces
+  (`0.0.0.0`) rather than only `127.0.0.1`.
+- [x] The HTTP/RPC listener defaults to `GYDS_RPC_HOST=0.0.0.0`; preserve this
+  behavior for externally reachable nodes.
+- [ ] Treat `0.0.0.0` as a bind address only. Do **not** advertise
+  `0.0.0.0:30303` to peers. Bootstrap nodes must use the real public IP or DNS
+  name of the genesis node, for example `203.0.113.10:30303`.
+- [ ] Verify that the genesis node and joining nodes use the same chain ID
+  (`198282`) and the same genesis hash.
+- [ ] Verify that every node has a unique persisted `<dataDir>/node.key`.
+  Never copy the genesis node's `node.key` to another server.
+- [ ] Check that the joining node has `GYDS_BOOTSTRAP_NODES=<genesis-public-ip>:30303`
+  and is not using the wallet/RPC URL as its bootstrap address.
+- [ ] Open TCP and UDP `30303` on the genesis server and confirm the hosting
+  provider's firewall/security group also allows it. The current Go transport
+  uses TCP; UDP is still useful if discovery is added later.
+- [ ] Test the path from each joining node to the genesis node:
+
+  ```bash
+  nc -vz GENESIS_PUBLIC_IP 30303
+  curl -sS http://127.0.0.1:8545/api/peers | jq
+  journalctl -u gyds-fullnode -n 200 --no-pager | grep -Ei 'p2p|peer|bootstrap|dial|handshake|auth'
+  ```
+
+### Required P2P code fixes
+
+- [ ] Add a configurable advertised P2P host, for example
+  `GYDS_P2P_ADVERTISE_HOST`, separate from the listener bind address. The
+  advertised endpoint must be `public-host:30303`, never `0.0.0.0:30303`.
+- [ ] Add a stable `net_enode` or equivalent RPC response containing this
+  node's public node ID and advertised P2P endpoint. The current
+  `net_enode` request returns no useful result because it is not implemented in
+  the RPC dispatcher.
+- [ ] Add `net_peerCount` from the actual P2P server. It currently returns the
+  hardcoded value `0x0` even when peers may be connected.
+- [ ] Add a retry loop with backoff for `GYDS_BOOTSTRAP_NODES`; the current
+  startup path attempts each peer once and never retries after a temporary
+  firewall, DNS, or boot-order failure.
+- [ ] Start the P2P listener before outbound bootstrap dialing, then perform
+  dialing asynchronously after the listener is ready.
+- [ ] Log the configured bootstrap address, resolved address, dial error, local
+  node ID, remote node ID, chain ID mismatch, and successful handshake.
+- [ ] Reject or clearly report a peer when chain IDs or genesis hashes differ.
+- [ ] Ensure P2P peers are removed from the peer map on every disconnect and
+  that `/api/peers` reports only live, authorized connections.
+- [ ] Add tests for inbound connection, outbound connection, retry behavior,
+  duplicate node keys, chain mismatch, peer authorization, and disconnect
+  cleanup.
+
+### Correct RPC diagnostics
+
+The default dedicated JSON-RPC port is `8545`, not `8544`. Use this while
+testing unless the node's `.env` explicitly sets `GYDS_RPC_PORT=8544`:
+
+```bash
+curl -sS http://127.0.0.1:8545 \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' | jq
+
+curl -sS http://127.0.0.1:8545 \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' | jq
+
+curl -sS http://127.0.0.1:8545/api/peers | jq
+
+curl -sS http://127.0.0.1:8545 \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"net_enode","params":[],"id":1}' | jq
+```
+
+Acceptance criteria:
+
+- [ ] `net_enode` returns a non-empty node ID and reachable advertised P2P
+  address.
+- [ ] `net_peerCount` equals the number of connected peers.
+- [ ] `/api/peers` shows the genesis node and each joining node.
+- [ ] The joining node's height catches up to the genesis node's height.
+- [ ] Restarting either node reconnects without manually editing state.
+
+### Wallet storage policy
+
+- [x] The setup wizard's generated/imported wallet key is written server-side
+  to `.env` as `GYDS_WALLET_PRIVATE_KEY`; it is not intentionally stored in
+  browser local storage.
+- [ ] Keep server-side wallet persistence optional. The setup wizard must allow
+  `Skip wallet`, and an empty wallet key must remain valid.
+- [ ] Protect `.env` with mode `0600` or an equivalent owner-only permission,
+  keep it outside the public static directory, and never include private keys in
+  API responses, HTML, logs, or backups sent to third parties.
+- [ ] Add a clear warning that a server-side private key controls funds and
+  should be used only on a secured wallet/validator host.
+- [ ] Prefer an encrypted server keystore with an operator-supplied unlock
+  secret for production; do not silently generate or persist a private key.
+- [ ] Keep browser/MetaMask signing optional. Browser wallets should remain
+  self-custodied and should not be copied into server storage.
+- [ ] Add a recovery test: restart the node and confirm the optional server
+  wallet remains available without putting the key in browser storage.
+
+### PIN configuration policy
+
+- [ ] Add an optional `GYDS_DASHBOARD_PIN` environment setting. Do not store
+  the plaintext PIN in logs or API responses.
+- [ ] On startup, if `GYDS_DASHBOARD_PIN` is set, validate its length and
+  update the hashed `<dataDir>/admin/.pin_hash` atomically.
+- [ ] Define empty/unset behavior explicitly: either keep the existing hashed
+  PIN unchanged, or provide a separate documented switch to disable the PIN;
+  never disable authentication accidentally because an environment variable is
+  missing.
+- [ ] Allow changing the PIN by editing the server `.env`, then restarting the
+  node. Document the exact procedure and ownership/permissions.
+- [ ] Make the setup wizard and `.env` behavior consistent. The current setup
+  path skips changing the PIN when a hash already exists.
+- [ ] Add tests for first-time PIN creation, `.env` PIN rotation, invalid PIN,
+  unset PIN, restart persistence, and failed/partial writes.
+
+### Two-server verification runbook
+
+On the genesis server:
+
+```bash
+grep -E '^(GYDS_NODE_MODE|GYDS_CHAIN_ID|GYDS_P2P_PORT|GYDS_RPC_PORT|GYDS_P2P_ADVERTISE_HOST|GYDS_PEER_AUTH|GYDS_ALLOWED_NODES)=' /opt/gyds-fullnode/.env
+sudo ss -lntp | grep -E ':(30303|8545)\b'
+sudo ufw status
+curl -sS http://127.0.0.1:8545/api/node-id | jq
+curl -sS http://127.0.0.1:8545/api/peers | jq
+```
+
+On each joining server:
+
+```bash
+grep -E '^(GYDS_NODE_MODE|GYDS_CHAIN_ID|GYDS_P2P_PORT|GYDS_RPC_PORT|GYDS_BOOTSTRAP_NODES|GYDS_PEER_AUTH|GYDS_ALLOWED_NODES)=' /opt/gyds-fullnode/.env
+nc -vz GENESIS_PUBLIC_IP 30303
+sudo systemctl restart gyds-fullnode
+sudo journalctl -u gyds-fullnode -n 200 --no-pager | grep -Ei 'bootstrap|connected|handshake|auth|peer|dial|failed'
+curl -sS http://127.0.0.1:8545/api/peers | jq
+```
+
+Do not mark P2P complete until the firewall test, handshake logs, peer count,
+peer list, and height synchronization all pass on both servers.
+
 ## Plan 6 — Make the public RPC wallet-ready
 
 Your public JSON-RPC endpoint is:
