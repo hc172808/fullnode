@@ -1,0 +1,139 @@
+bash deploy.sh
+
+  ██████╗ ██╗   ██╗██████╗ ███████╗
+  ██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝
+  ██║  ███╗╚████╔╝ ██║  ██║███████╗
+  ██║   ██║ ╚██╔╝  ██║  ██║╚════██║
+  ╚██████╔╝  ██║   ██████╔╝███████║
+   ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝
+  GYDS Chain Full Node — Production Deploy
+══════════════════════════════════════════
+
+
+━━━  Loading Configuration  ━━━
+
+[16:34:32]   Resolved relative data directory './data' to '/root/fullnode/data'
+[16:34:32] ✓ Chain ID       : 198282
+[16:34:32] ✓ Node mode      : rpc
+[16:34:32] ✓ Dashboard port : 5000
+[16:34:32] ✓ RPC port       : 8545
+[16:34:32] ✓ WebSocket port : 8546
+[16:34:32] ✓ P2P port       : 30303
+[16:34:32] ✓ Data directory : /root/fullnode/data
+[16:34:32] ✓ Storage limit  : 10 GB
+
+━━━  Checking Prerequisites  ━━━
+
+[16:34:32] ✓ curl
+[16:34:32] ✓ git
+[16:34:32] ✓ jq
+[16:34:32] ✓ tar
+[16:34:32] ✓ awk
+[16:34:32] ✓ sed
+[16:34:32] ✓ grep
+[16:34:32] ✓ hostname
+[16:34:32] ✓ python3
+[16:34:32] ✓ Go 1.25.5
+
+━━━  Building Binary  ━━━
+
+[16:34:32]   Version    : b16f1f2
+[16:34:32]   Go version : go1.25.5
+[16:34:32]   Build time : 2026-08-09T16:34:32Z
+[16:34:32]   Downloading module dependencies...
+[16:34:36]   Compiling...
+[16:35:37] ✓ Binary built: bin/gyds-fullnode  (15M)
+
+━━━  Creating System User  ━━━
+
+[16:35:37] ✓ System user already exists: gyds
+
+━━━  Configuring Storage  ━━━
+
+[16:35:37] ✓ Data directory: /root/fullnode/data
+[16:35:37]   Available disk space: 35 GB  (configured limit: 10 GB)
+[16:35:37] ✓ Storage monitor: /etc/gyds-fullnode/check-storage.sh
+
+━━━  Installing Binary  ━━━
+
+[16:35:37] ✓ Binary installed to: /usr/local/bin/gyds-fullnode
+[16:35:37] ✓ Existing configuration preserved at: /opt/gyds-fullnode/.env  (use --update to overwrite)
+[16:35:37] ✓ Git update helper installed: /usr/local/bin/gyds-fullnode-update
+
+━━━  Configuring Firewall  ━━━
+
+[16:35:37]  Configuring UFW firewall...
+[16:35:37]  SSH port 22/tcp will remain open — verifying before enabling firewall.
+Backing up 'user.rules' to '/etc/ufw/user.rules.20260809_163539'
+Backing up 'before.rules' to '/etc/ufw/before.rules.20260809_163539'
+Backing up 'after.rules' to '/etc/ufw/after.rules.20260809_163539'
+Backing up 'user6.rules' to '/etc/ufw/user6.rules.20260809_163539'
+Backing up 'before6.rules' to '/etc/ufw/before6.rules.20260809_163539'
+Backing up 'after6.rules' to '/etc/ufw/after6.rules.20260809_163539'
+
+Default incoming policy changed to 'deny'
+(be sure to update your rules accordingly)
+Default outgoing policy changed to 'allow'
+(be sure to update your rules accordingly)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+Logging enabled
+Firewall is active and enabled on system startup
+[16:35:45]  UFW active
+[16:35:45]  SSH        : port 22/tcp  (rate-limited)
+[16:35:45]  Dashboard  : port 5000/tcp
+[16:35:45]  JSON-RPC   : port 8545/tcp
+[16:35:45]  WebSocket  : port 8546/tcp
+[16:35:45]  P2P        : port 30303/tcp + udp
+[16:35:45]  Applying sysctl network hardening...
+[16:35:45]  Sysctl hardening applied
+
+╔══════════════════════════════════════════════════════╗
+║        GYDS Full Node — Firewall Hardened            ║
+╚══════════════════════════════════════════════════════╝
+  Ports open:  SSH:22  Dashboard:5000  RPC:8545  WS:8546  P2P:30303
+  fail2ban: unavailable/skipped (UFW protection remains active)
+
+  Useful commands:
+    Status  : sudo bash setup-firewall.sh --status
+    Unban   : sudo bash setup-firewall.sh --unban <ip>
+
+[16:35:45] ✓ Firewall rules applied
+
+━━━  Setting Up System Service  ━━━
+
+Created symlink /etc/systemd/system/multi-user.target.wants/gyds-fullnode.service -> /etc/systemd/system/gyds-fullnode.service.
+[16:35:46] ✓ Service enabled and started
+[16:35:49] ✗ ERROR: Service failed to start. Diagnostics:
+Aug 09 16:35:46 rpc-node systemd[1]: Started GYDS Chain Full Node.
+Aug 09 16:35:46 rpc-node systemd[1]: gyds-fullnode.service: Main process exited, code=exited, status=1/FAILURE
+Aug 09 16:35:46 rpc-node systemd[1]: gyds-fullnode.service: Failed with result 'exit-code'.
+[16:35:49] ✗ ERROR: Resolve the errors above and retry. Run 'bash deploy.sh --update' after fixing.
