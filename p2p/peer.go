@@ -74,12 +74,12 @@ type PeerStatus struct {
 
 // Peer represents a single TCP connection to a remote node.
 type Peer struct {
-	mu         sync.Mutex
-	conn       net.Conn
-	info       *PeerInfo
-	sendCh     chan Message
-	quit       chan struct{}
-	onMsg      func(*Peer, Message)
+	mu     sync.Mutex
+	conn   net.Conn
+	info   *PeerInfo
+	sendCh chan Message
+	quit   chan struct{}
+	onMsg  func(*Peer, Message)
 	// auth state (set once, then read-only)
 	challenge  string // hex nonce we sent to this peer
 	peerNodeID string // verified Node ID of the remote peer
@@ -188,15 +188,16 @@ type Server struct {
 	peers     map[string]*Peer
 	port      int
 	chainID   int64
+	nodeMode  string
 	height    func() uint64
 	onMsg     func(*Peer, Message)
 	blockProv BlockFetcher
 	quit      chan struct{}
 
 	// Auth — set via SetAuth before Start().
-	nodeKey      *NodeKey             // our own identity (nil = no auth)
-	peerAuth     bool                 // if true, require challenge-response
-	allowedNodes map[string]struct{}  // whitelist of permitted node IDs
+	nodeKey      *NodeKey            // our own identity (nil = no auth)
+	peerAuth     bool                // if true, require challenge-response
+	allowedNodes map[string]struct{} // whitelist of permitted node IDs
 }
 
 func NewServer(port int, chainID int64, height func() uint64) *Server {
@@ -204,10 +205,22 @@ func NewServer(port int, chainID int64, height func() uint64) *Server {
 		peers:        make(map[string]*Peer),
 		port:         port,
 		chainID:      chainID,
+		nodeMode:     "full",
 		height:       height,
 		quit:         make(chan struct{}),
 		allowedNodes: make(map[string]struct{}),
 	}
+}
+
+// SetNodeMode records the local node mode for peer handshakes.
+// Call this before Start so connected peers see the configured role.
+func (s *Server) SetNodeMode(mode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if mode == "" {
+		mode = "full"
+	}
+	s.nodeMode = mode
 }
 
 // SetAuth configures peer authorization. Call before Start().
@@ -298,6 +311,7 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 	s.mu.RLock()
 	nk := s.nodeKey
 	requireAuth := s.peerAuth
+	nodeMode := s.nodeMode
 	s.mu.RUnlock()
 
 	// Register peer immediately so we can receive their handshake.
@@ -315,7 +329,7 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 	hs, _ := json.Marshal(PeerInfo{
 		ChainID:  s.chainID,
 		Height:   s.height(),
-		NodeMode: "full",
+		NodeMode: nodeMode,
 		Version:  "1.0.0",
 		NodeID:   myNodeID,
 	})

@@ -89,6 +89,21 @@ bash deploy.sh
 ```
 `deploy.sh` builds the binary, installs it as a systemd service, and applies UFW-only rules (requires root). It does not install or configure fail2ban.
 
+### Deploy a specific node mode
+Set the mode in the `.env` file before deploying. The installer persists the selected mode in the installed systemd service and restarts the node with that mode:
+```bash
+# Network bootstrapper / initial validator
+GYDS_NODE_MODE=genesis bash deploy.sh --env .env
+
+# API and dashboard only; no P2P or block production
+GYDS_NODE_MODE=rpc bash deploy.sh --env .env
+```
+For a genesis node, leave `GYDS_BOOTSTRAP_NODES` empty. For an RPC node, point `GYDS_DATA_DIR` at the chain data it should read. Verify the active mode with:
+```bash
+curl http://127.0.0.1:5000/api/status
+```
+The response includes `nodeMode`, and the dashboard badge uses the same live value.
+
 ## Project structure
 ```
 main.go             — entry point, node mode dispatch

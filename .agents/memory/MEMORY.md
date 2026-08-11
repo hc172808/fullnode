@@ -6,3 +6,4 @@
 - [Setup data directory alignment](setup-data-directory.md) — PIN and node identity must persist under the same data directory used after restart
 - [Production boot and updates](production-boot-updates.md) — exactly one node runtime starts at boot; Git updates must build, back up, health-check, and roll back safely
 - [HTTP upgrade middleware](http-upgrade-middleware.md) — response-writer middleware must preserve optional server interfaces such as Hijacker for WebSocket upgrades
+- [Node mode reporting](node-mode-reporting.md) — runtime, dashboard, peer handshakes, and systemd must all use the selected node role

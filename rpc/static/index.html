@@ -524,7 +524,7 @@
         <span>Block</span><span>Hash</span><span>TXs</span><span>Age</span>
       </div>
       <div id="blocksFeed">
-        <div class="text-center text-muted" style="padding:22px;font-size:13px">Connecting to fullnode…</div>
+        <div class="text-center text-muted" style="padding:22px;font-size:13px">Connecting to node…</div>
       </div>
     </div>
 
@@ -906,9 +906,6 @@ function showToast(msg) {
 }
 
 window.addEventListener('load', () => {
-  const host = window.location.hostname;
-  if (host.includes('lite')) document.getElementById('nodeLabel').textContent = 'Lite Node';
-
   if (typeof ethers === 'undefined') return;
 
   provider = new ethers.providers.JsonRpcProvider(RPC_URL, {
@@ -983,12 +980,28 @@ async function pollNode() {
     setText('sChainId',   String(data.chainId ?? CHAIN_ID));
     setText('sTotalTxs',  Number(data.totalTxs ?? 0).toLocaleString());
     setText('sNetwork',   String(data.networkName ?? 'GYDS Chain'));
+    setNodeLabel(data.nodeMode);
   } catch {
     document.getElementById('netDot').className = 'dot off';
     setText('sStatus', '● Offline');
     setClass('sStatus', 'stat-val warn');
     setText('sCountdown', '—');
   }
+}
+
+function setNodeLabel(mode) {
+  const labels = {
+    full: 'Full Node',
+    lite: 'Lite Node',
+    rpc: 'RPC Node',
+    boost: 'Boost Node',
+    genesis: 'Genesis Node',
+    sync: 'Sync Node',
+    validator: 'Validator Node',
+    testnode: 'Test Node'
+  };
+  const label = document.getElementById('nodeLabel');
+  if (label && labels[mode]) label.textContent = labels[mode];
 }
 
 async function pollBlocks() {

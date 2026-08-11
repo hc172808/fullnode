@@ -176,6 +176,7 @@ func runFullNode(cfg *config.Config) error {
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
+	rpcSrv.SetNodeMode(cfg.NodeMode)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -187,6 +188,7 @@ func runFullNode(cfg *config.Config) error {
 	})
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetNodeMode(cfg.NodeMode)
 	wireBlockProvider(p2pSrv, chain)
 	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
@@ -220,10 +222,12 @@ func runLiteNode(cfg *config.Config) error {
 
 	// Lite nodes serve RPC and dashboard but do NOT produce blocks.
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), liteDataDir, cfg.ExternalURL, version)
+	rpcSrv.SetNodeMode(cfg.NodeMode)
 
 	// Connect to bootstrap peers for header sync only.
 	if len(cfg.P2PBootstrap) > 0 {
 		p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+		p2pSrv.SetNodeMode(cfg.NodeMode)
 		wireAuth(p2pSrv, cfg)
 		rpcSrv.SetP2P(p2pSrv)
 		for _, addr := range cfg.P2PBootstrap {
@@ -258,6 +262,7 @@ func runRPCNode(cfg *config.Config) error {
 	log.Info().Uint64("height", chain.Height()).Msg("Chain loaded for RPC serving")
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
+	rpcSrv.SetNodeMode(cfg.NodeMode)
 
 	log.Info().
 		Int("rpcPort", cfg.RPCPort).
@@ -285,6 +290,7 @@ func runBoostNode(cfg *config.Config) error {
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
+	rpcSrv.SetNodeMode(cfg.NodeMode)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -297,6 +303,7 @@ func runBoostNode(cfg *config.Config) error {
 
 	// Boost: connect to ALL configured peers simultaneously.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetNodeMode(cfg.NodeMode)
 	wireBlockProvider(p2pSrv, chain)
 	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
@@ -348,6 +355,7 @@ func runGenesisNode(cfg *config.Config) error {
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
+	rpcSrv.SetNodeMode(cfg.NodeMode)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -358,6 +366,7 @@ func runGenesisNode(cfg *config.Config) error {
 
 	// Genesis node listens for incoming peer connections and serves blocks to them.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetNodeMode(cfg.NodeMode)
 	wireBlockProvider(p2pSrv, chain)
 	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
@@ -391,7 +400,9 @@ const syncMaxWait = 15 * time.Second
 // ── Sync (Full) Node ──────────────────────────────────────────────────────────
 // Phase 1 — Discovery: connect to bootstrap peers and wait for handshakes.
 // Phase 2 — Catch-up: request blocks in batches via MsgGetBlocks / MsgBlocks
-//            and apply them to the local chain until we reach the network head.
+//
+//	and apply them to the local chain until we reach the network head.
+//
 // Phase 3 — Steady-state: start PoS engine and operate as a full node.
 //
 // Requires at least one GYDS_BOOTSTRAP_NODES entry (host:port, no scheme).
@@ -464,7 +475,7 @@ func runSyncNode(cfg *config.Config) error {
 			Uint64("behind", networkHeight-localHeight).
 			Msg("Starting block catch-up from peers")
 
-		// Drain any stale messages from the channel.
+			// Drain any stale messages from the channel.
 	drain:
 		for {
 			select {
@@ -532,6 +543,7 @@ func runSyncNode(cfg *config.Config) error {
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
+	rpcSrv.SetNodeMode(cfg.NodeMode)
 	rpcSrv.SetP2P(p2pSrv)
 
 	engine.OnNewBlock(func(b *core.Block) {
@@ -629,8 +641,8 @@ func runTestNode(cfg *config.Config) error {
 
 	testCfg := *cfg
 	testCfg.DataDir = testDir
-	testCfg.BlockTime = 5 * time.Second    // Fast blocks for testing
-	testCfg.P2PBootstrap = nil              // No peers
+	testCfg.BlockTime = 5 * time.Second // Fast blocks for testing
+	testCfg.P2PBootstrap = nil          // No peers
 	testCfg.PeerAuth = false
 	testCfg.ChainID = core.GydsTestGenesis.ChainID // 31337 (0x7a69) — distinct from mainnet
 
@@ -648,6 +660,7 @@ func runTestNode(cfg *config.Config) error {
 	engine := consensus.NewPoSEngine(chain, vs, testCfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, testCfg.DashboardPort, testCfg.RPCPort, int(testCfg.BlockTime.Seconds()), testCfg.DataDir, testCfg.ExternalURL, version)
+	rpcSrv.SetNodeMode(testCfg.NodeMode)
 	// Enforce loopback-only binding so the test node is never reachable externally.
 	rpcSrv.SetLoopbackOnly()
 

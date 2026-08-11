@@ -1,4 +1,4 @@
-modules = ["web", "go-1.21", "bash"]
+modules = ["web", "go-1.21", "bash", "python-base-3.13"]
 [agent]
 expertMode = true
 stack = "BEST_EFFORT_FALLBACK"
@@ -55,9 +55,12 @@ localPort = 15021
 externalPort = 8000
 
 [[ports]]
+localPort = 15500
+externalPort = 8008
+
+[[ports]]
 localPort = 18545
 externalPort = 3001
-exposeLocalhost = true
 
 [[ports]]
 localPort = 18547

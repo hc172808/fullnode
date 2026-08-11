@@ -529,6 +529,15 @@ if [[ $EUID -eq 0 ]]; then
     printf 'GYDS_DATA_DIR=%s\n' "$GYDS_DATA_DIR" >> "${INSTALL_DIR}/.env"
   fi
 
+  # Node mode is a deployment choice, not chain state or a secret. Keep the
+  # installed service aligned with the mode selected in the .env passed to this
+  # deployment, even when the rest of an existing configuration is preserved.
+  if grep -q '^GYDS_NODE_MODE=' "${INSTALL_DIR}/.env"; then
+    sed -i "s|^GYDS_NODE_MODE=.*|GYDS_NODE_MODE=${GYDS_NODE_MODE}|" "${INSTALL_DIR}/.env"
+  else
+    printf 'GYDS_NODE_MODE=%s\n' "$GYDS_NODE_MODE" >> "${INSTALL_DIR}/.env"
+  fi
+
   mkdir -p "$LOG_DIR"
   chown "${APP_USER}:${APP_USER}" "$LOG_DIR"       2>/dev/null || true
   chown "${APP_USER}:${APP_USER}" "$GYDS_DATA_DIR" 2>/dev/null || true
@@ -605,6 +614,7 @@ Environment=GYDS_RPC_PORT=${GYDS_RPC_PORT}
 Environment=GYDS_WS_PORT=${GYDS_WS_PORT}
 Environment=GYDS_P2P_PORT=${GYDS_P2P_PORT}
 Environment=GYDS_DATA_DIR=${GYDS_DATA_DIR}
+Environment=GYDS_NODE_MODE=${GYDS_NODE_MODE}
 ExecStart=${BINARY_PATH} start
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure

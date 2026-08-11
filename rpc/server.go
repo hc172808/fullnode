@@ -51,6 +51,7 @@ type Server struct {
 
 	externalURL string
 	bindHost    string // host to bind listeners on ("" / "0.0.0.0" = all interfaces, "127.0.0.1" = loopback only)
+	nodeMode    string
 
 	pendingTx   map[string]*core.Transaction
 	pendingTxMu sync.RWMutex
@@ -94,6 +95,7 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
 		dashPort:    dashPort,
 		rpcPort:     rpcPort,
 		externalURL: externalURL,
+		nodeMode:    "full",
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -111,6 +113,14 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
 
 // SetP2P wires the P2P server so the RPC layer can connect to imported nodes.
 func (s *Server) SetP2P(p P2PConnector) { s.p2p = p }
+
+// SetNodeMode exposes the configured local node role to the dashboard and API.
+func (s *Server) SetNodeMode(mode string) {
+	if mode == "" {
+		mode = "full"
+	}
+	s.nodeMode = mode
+}
 
 // SetLoopbackOnly restricts all HTTP listeners to 127.0.0.1.
 // Must be called before StartDashboard / StartRPC.
@@ -546,7 +556,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	jsonOK(w, s.chain.Stats())
+	stats := s.chain.Stats()
+	stats["nodeMode"] = s.nodeMode
+	jsonOK(w, stats)
 }
 
 func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
