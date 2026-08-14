@@ -104,24 +104,25 @@ sudo journalctl -u gyds-fullnode -n 200 --no-pager \
 
 Acceptance criteria:
 
-- [ ] The screenshot command returns a successful `net_enode` result.
+- [x] The screenshot command returns a successful `net_enode` result when
+  `GYDS_P2P_ADVERTISE_HOST` is configured.
 - [ ] The result never advertises `127.0.0.1` or `0.0.0.0`.
-- [ ] `net_peerCount` matches `/api/peers`.
+- [x] `net_peerCount` reports authorized live peers and matches `/api/peers`.
 - [ ] Genesis and joining nodes show each other as connected.
 - [ ] Joining nodes synchronize to the genesis node's block height.
 - [ ] A service restart reconnects without manually recreating node identity.
 
-## Plan 7 — Fix P2P peering, node identity, wallet storage, and PIN configuration
+## Plan 7 — Fix P2P peering, wallet storage, PIN configuration, and ports
 
 ### Findings from the current implementation
 
-- [ ] Confirm every joining node runs `full`, `genesis`, `sync`, `boost`, or
+- [x] Confirm every joining node runs `full`, `genesis`, `sync`, `boost`, or
   `lite` mode. The `rpc` mode intentionally has **no P2P**.
 - [x] The Go P2P listener uses `:30303`, which listens on all interfaces
   (`0.0.0.0`) rather than only `127.0.0.1`.
 - [x] The HTTP/RPC listener defaults to `GYDS_RPC_HOST=0.0.0.0`; preserve this
   behavior for externally reachable nodes.
-- [ ] Treat `0.0.0.0` as a bind address only. Do **not** advertise
+- [x] Treat `0.0.0.0` as a bind address only. Do **not** advertise
   `0.0.0.0:30303` to peers. Bootstrap nodes must use the real public IP or DNS
   name of the genesis node, for example `203.0.113.10:30303`.
 - [ ] Verify that the genesis node and joining nodes use the same chain ID
@@ -143,18 +144,16 @@ Acceptance criteria:
 
 ### Required P2P code fixes
 
-- [ ] Add a configurable advertised P2P host, for example
+- [x] Add a configurable advertised P2P host, for example
   `GYDS_P2P_ADVERTISE_HOST`, separate from the listener bind address. The
   advertised endpoint must be `public-host:30303`, never `0.0.0.0:30303`.
-- [ ] Add a stable `net_enode` or equivalent RPC response containing this
+- [x] Add a stable `net_enode` or equivalent RPC response containing this
   node's public node ID and advertised P2P endpoint. The current
   `net_enode` request returns no useful result because it is not implemented in
   the RPC dispatcher.
-- [ ] Add `net_peerCount` from the actual P2P server. It currently returns the
-  hardcoded value `0x0` even when peers may be connected.
-- [ ] Add a retry loop with backoff for `GYDS_BOOTSTRAP_NODES`; the current
-  startup path attempts each peer once and never retries after a temporary
-  firewall, DNS, or boot-order failure.
+- [x] Add `net_peerCount` from the actual P2P server. It now excludes pending
+  and unauthorized connections.
+- [x] Add a retry loop with backoff for `GYDS_BOOTSTRAP_NODES`.
 - [ ] Start the P2P listener before outbound bootstrap dialing, then perform
   dialing asynchronously after the listener is ready.
 - [ ] Log the configured bootstrap address, resolved address, dial error, local
@@ -165,6 +164,82 @@ Acceptance criteria:
 - [ ] Add tests for inbound connection, outbound connection, retry behavior,
   duplicate node keys, chain mismatch, peer authorization, and disconnect
   cleanup.
+
+### Port matrix and node-linking guide
+
+Ports may be reused on different servers. They must be different when more
+than one GYDS process runs on the same server.
+
+| Listener | Default | Modes | Purpose |
+|---|---:|---|---|
+| Dashboard HTTP | 5000 | all modes except an intentionally disabled deployment | Browser dashboard, setup, guides, REST APIs |
+| JSON-RPC HTTP | 8545 | all modes with RPC enabled | MetaMask, ethers.js, wallet RPC |
+| WebSocket path | 8545 `/api/ws` | all modes with RPC enabled | WebSocket subscriptions; `GYDS_WS_PORT` is legacy compatibility only |
+| P2P TCP | 30303 | full, lite, sync, boost, genesis, validator | Peer handshakes, blocks, transactions |
+| P2P UDP | none currently | no mode | Reserved for future discovery; opening UDP is optional |
+| `genesis` command | no listener | command only | Prints the canonical genesis JSON and exits |
+| `rpc` mode P2P | none | rpc, testnode | RPC-only and isolated test nodes do not join the peer network |
+
+For two nodes on one server, use a unique set such as dashboard `5000/5001`,
+RPC `8545/8547`, and P2P `30303/30304`. On separate servers, both nodes can
+use the defaults. The joining node's `GYDS_BOOTSTRAP_NODES` must point to the
+genesis node's public P2P address, not its RPC or dashboard URL.
+
+Genesis node:
+
+```env
+GYDS_NODE_MODE=genesis
+GYDS_CHAIN_ID=198282
+GYDS_DASHBOARD_PORT=5000
+GYDS_RPC_PORT=8545
+GYDS_P2P_PORT=30303
+GYDS_P2P_ADVERTISE_HOST=genesis.example.com
+GYDS_BOOTSTRAP_NODES=
+```
+
+Joining full, validator, boost, or lite node:
+
+```env
+GYDS_NODE_MODE=full        # or validator, boost, lite, or sync
+GYDS_CHAIN_ID=198282
+GYDS_DASHBOARD_PORT=5000
+GYDS_RPC_PORT=8545
+GYDS_P2P_PORT=30303
+GYDS_P2P_ADVERTISE_HOST=joining.example.com
+GYDS_BOOTSTRAP_NODES=genesis.example.com:30303
+```
+
+Linking procedure:
+
+1. Build every node from the same repository revision and confirm the same
+   chain ID/genesis output with `./bin/gyds-fullnode genesis`.
+2. Run the genesis node first and share its `host:30303` endpoint.
+3. Set `GYDS_BOOTSTRAP_NODES` on each joining node, open TCP `30303` in both
+   the host firewall and cloud security group, then restart the joining node.
+4. Verify `net_enode`, `net_peerCount`, `/api/peers`, and
+   `eth_blockNumber` on both nodes. A node key is generated under each node's
+   own `GYDS_DATA_DIR`; never copy `node.key` between nodes.
+5. For public wallet use, publish HTTPS for the RPC origin and use the returned
+   `/gyds-network.json` metadata. The stable `/logo.png` endpoint is available
+   on both the dashboard and dedicated RPC origins.
+
+The Replit preview proxy is suitable for the dashboard/RPC HTTP ports. Public
+P2P joining requires a deployment or host that exposes TCP `30303` directly;
+an HTTP preview URL cannot be used as a bootstrap peer.
+
+### Wallet, PIN, and environment follow-up
+
+- [x] Publish a stable `/logo.png` endpoint with CORS and cache headers so
+  wallet icon URLs do not depend on a source filename.
+- [x] Include `GYDS_P2P_ADVERTISE_HOST` in setup-generated `.env` files.
+- [x] Load `GYDS_NETWORK_NAME`, `GYDS_WS_PORT`, `GYDS_MAX_PEERS`, and
+  `GYDS_LOG_FORMAT` from the environment.
+- [x] Allow the setup-generated `GYDS_DASHBOARD_PIN` to bootstrap the stored
+  hash once. Existing hashes are never overwritten; the plaintext value may be
+  removed from `.env` after initialization.
+- [ ] Verify the logo and metadata from the public HTTPS RPC origin in each
+  target wallet.
+- [ ] Verify joining-node synchronization against a reachable public P2P host.
 
 ### Correct RPC diagnostics
 

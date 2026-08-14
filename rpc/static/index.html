@@ -1438,7 +1438,7 @@ const GYDS_CHAIN_PARAMS = {
   nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
   rpcUrls:           [PUBLIC_BASE_URL + '/rpc'],
   blockExplorerUrls: [window.location.origin],
-  iconUrls:          [PUBLIC_BASE_URL + '/gyds-coin.png', PUBLIC_BASE_URL + '/gyds-coin.jpg'],
+  iconUrls:          [PUBLIC_BASE_URL + '/logo.png'],
 };
 
 async function addChainToWallet(label, btn) {
@@ -1877,7 +1877,7 @@ async function quickAddChain(label, btn) {
     nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
     rpcUrls:           [PUBLIC_BASE_URL + '/rpc'],
     blockExplorerUrls: [window.location.origin],
-    iconUrls:          [PUBLIC_BASE_URL + '/gyds-coin.png', PUBLIC_BASE_URL + '/gyds-coin.jpg'],
+    iconUrls:          [PUBLIC_BASE_URL + '/logo.png'],
   };
   try {
     await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [params] });

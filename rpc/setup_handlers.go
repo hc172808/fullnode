@@ -10,27 +10,28 @@ import (
 )
 
 type setupConfig struct {
-	ChainID        string `json:"chainId"`
-	NetworkName    string `json:"networkName"`
-	NodeMode       string `json:"nodeMode"`
-	BlockTime      string `json:"blockTime"`
-	WalletAddress  string `json:"walletAddress"`
-	WalletKey      string `json:"walletKey"`
-	ValidatorKey   string `json:"validatorKey"`
-	RPCPort        string `json:"rpcPort"`
-	WSPort         string `json:"wsPort"`
-	P2PPort        string `json:"p2pPort"`
-	MaxPeers       string `json:"maxPeers"`
-	BootstrapNodes string `json:"bootstrapNodes"`
-	DataDir        string `json:"dataDir"`
-	StorageLimitGB string `json:"storageLimitGb"`
-	EnableFirewall string `json:"enableFirewall"`
-	EnableFail2ban string `json:"enableFail2ban"`
-	SSHPort        string `json:"sshPort"`
-	AllowedIPs     string `json:"allowedIps"`
-	LogLevel       string `json:"logLevel"`
-	LogFormat      string `json:"logFormat"`
-	DashboardPin   string `json:"dashboardPin"`
+	ChainID          string `json:"chainId"`
+	NetworkName      string `json:"networkName"`
+	NodeMode         string `json:"nodeMode"`
+	BlockTime        string `json:"blockTime"`
+	WalletAddress    string `json:"walletAddress"`
+	WalletKey        string `json:"walletKey"`
+	ValidatorKey     string `json:"validatorKey"`
+	RPCPort          string `json:"rpcPort"`
+	WSPort           string `json:"wsPort"`
+	P2PPort          string `json:"p2pPort"`
+	P2PAdvertiseHost string `json:"p2pAdvertiseHost"`
+	MaxPeers         string `json:"maxPeers"`
+	BootstrapNodes   string `json:"bootstrapNodes"`
+	DataDir          string `json:"dataDir"`
+	StorageLimitGB   string `json:"storageLimitGb"`
+	EnableFirewall   string `json:"enableFirewall"`
+	EnableFail2ban   string `json:"enableFail2ban"`
+	SSHPort          string `json:"sshPort"`
+	AllowedIPs       string `json:"allowedIps"`
+	LogLevel         string `json:"logLevel"`
+	LogFormat        string `json:"logFormat"`
+	DashboardPin     string `json:"dashboardPin"`
 }
 
 // envSetting writes a shell-compatible .env assignment. Setup values such as
@@ -160,6 +161,11 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	w1("")
 	w1("# ── P2P Networking ─────────────────────────────────────────────")
 	w1(envSetting("GYDS_P2P_PORT", cfg.P2PPort))
+	if strings.TrimSpace(cfg.P2PAdvertiseHost) != "" {
+		w1(envSetting("GYDS_P2P_ADVERTISE_HOST", cfg.P2PAdvertiseHost))
+	} else {
+		w1("# GYDS_P2P_ADVERTISE_HOST=")
+	}
 	w1(envSetting("GYDS_MAX_PEERS", cfg.MaxPeers))
 	if strings.TrimSpace(cfg.BootstrapNodes) != "" {
 		w1(envSetting("GYDS_BOOTSTRAP_NODES", cfg.BootstrapNodes))
@@ -172,6 +178,13 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	w1(envSetting("GYDS_STORAGE_LIMIT_GB", cfg.StorageLimitGB))
 	w1("")
 	w1("# ── Firewall & Security ────────────────────────────────────────")
+	if pin != "" {
+		w1("# Dashboard PIN is also stored here for easy node reconfiguration.")
+		w1("# Keep this file mode 0600 and remove the value after the node is initialized if desired.")
+		w1(envSetting("GYDS_DASHBOARD_PIN", pin))
+	} else {
+		w1("# GYDS_DASHBOARD_PIN=")
+	}
 	w1(envSetting("GYDS_ENABLE_FIREWALL", cfg.EnableFirewall))
 	w1(envSetting("GYDS_ENABLE_FAIL2BAN", cfg.EnableFail2ban))
 	w1(envSetting("GYDS_SSH_PORT", cfg.SSHPort))

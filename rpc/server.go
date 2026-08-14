@@ -73,6 +73,14 @@ type subscriber struct {
 
 func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir, externalURL, nodeVersion string) *Server {
 	auth := NewAuthStore(dataDir)
+	// A PIN supplied by the setup wizard in .env bootstraps the hash on the
+	// first start. Existing hashes are never overwritten by environment data.
+	// Operators can then remove the plaintext value from .env if preferred.
+	if rawPin := strings.TrimSpace(os.Getenv("GYDS_DASHBOARD_PIN")); rawPin != "" && !auth.PinIsSet() {
+		if err := auth.SetPin(rawPin); err != nil {
+			log.Warn().Err(err).Msg("Could not initialize dashboard PIN from GYDS_DASHBOARD_PIN")
+		}
+	}
 	adminDB, _ := NewAdminDB(dataDir)
 	updater := NewUpdateChecker(nodeVersion)
 	updater.Start(24 * time.Hour)
@@ -242,6 +250,8 @@ func (s *Server) setupDashboardRoutes() {
 	r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
 
 	// Static assets (JS, CSS, images)
+	r.HandleFunc("/logo.png", s.handleLogo).Methods("GET")
+	r.HandleFunc("/favicon.ico", s.handleLogo).Methods("GET")
 	r.HandleFunc("/{file:.*\\.js}", s.handleStaticAsset).Methods("GET")
 	r.HandleFunc("/{file:.*\\.css}", s.handleStaticAsset).Methods("GET")
 	r.HandleFunc("/{file:.*\\.jpg}", s.handleStaticAsset).Methods("GET")
@@ -308,6 +318,8 @@ func (s *Server) setupRPCRoutes() {
 	// The dedicated RPC origin is commonly the URL given to external wallets.
 	// Serve the same public metadata and logo assets there as on the dashboard
 	// so iconUrls do not resolve to 404.
+	r.HandleFunc("/logo.png", s.handleLogo).Methods("GET")
+	r.HandleFunc("/favicon.ico", s.handleLogo).Methods("GET")
 	r.HandleFunc("/gyds-network.json", s.handleNetworkMetadata).Methods("GET")
 	r.HandleFunc("/gyd-token.json", s.handleGYDMetadata).Methods("GET")
 	r.HandleFunc("/{file:.*\\.jpg}", s.handleStaticAsset).Methods("GET")
@@ -340,6 +352,28 @@ func (s *Server) handleStaticAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+}
+
+// handleLogo provides a stable, short URL for wallet registries. Some wallet
+// clients reject long or changing asset paths even when the underlying image
+// is served correctly.
+func (s *Server) handleLogo(w http.ResponseWriter, r *http.Request) {
+	f, err := staticFiles.Open("static/gyds-coin.png")
+	if err != nil {
+		http.Error(w, "logo unavailable", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	data, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, "logo unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 // handleNodeInfo returns JSON with all connection endpoints for this node.
@@ -408,7 +442,7 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 		"rpcUrls":           []string{base + "/rpc"},
 		"wsUrls":            []string{websocketURL(base) + "/api/ws"},
 		"explorerUrls":      []string{base},
-		"iconUrls":          []string{base + "/gyds-coin.png", base + "/gyds-coin.jpg"},
+		"iconUrls":          []string{base + "/logo.png"},
 		"connectionInfoUrl": base + "/gyds-connection-info.json",
 	})
 }
@@ -427,7 +461,7 @@ func (s *Server) handleGYDMetadata(w http.ResponseWriter, r *http.Request) {
 		"isStablecoin":     true,
 		"tokenType":        "node-managed-genesis-token",
 		"contractAddress":  nil,
-		"logoUrl":          base + "/gyd-coin.png",
+		"logoUrl":          base + "/logo.png",
 		"description":      "GYD is a node-managed genesis token on GYDS Chain. It is not currently an ERC-20 contract.",
 		"networkMetadata":  base + "/gyds-network.json",
 		"balanceApi":       base + "/api/tokens/{address}",

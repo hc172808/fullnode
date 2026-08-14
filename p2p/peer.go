@@ -567,7 +567,16 @@ func (s *Server) Broadcast(msg Message) {
 func (s *Server) PeerCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return len(s.peers)
+	count := 0
+	for _, p := range s.peers {
+		p.mu.Lock()
+		authorized := p.authorized
+		p.mu.Unlock()
+		if authorized {
+			count++
+		}
+	}
+	return count
 }
 
 // P2PPort returns the TCP port on which this node listens for peers.
@@ -595,6 +604,10 @@ func (s *Server) Peers() []PeerStatus {
 	out := make([]PeerStatus, 0, len(s.peers))
 	for addr, p := range s.peers {
 		p.mu.Lock()
+		if !p.authorized {
+			p.mu.Unlock()
+			continue
+		}
 		ps := PeerStatus{
 			Addr:       addr,
 			NodeID:     p.peerNodeID,

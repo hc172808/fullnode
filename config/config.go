@@ -77,6 +77,9 @@ func FromEnv() *Config {
 	if v := os.Getenv("GYDS_NODE_MODE"); v != "" {
 		cfg.NodeMode = v
 	}
+	if v := os.Getenv("GYDS_NETWORK_NAME"); v != "" {
+		cfg.NetworkName = v
+	}
 	if v := os.Getenv("GYDS_P2P_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.P2PPort = p
@@ -95,6 +98,16 @@ func FromEnv() *Config {
 			cfg.DashboardPort = p
 		}
 	}
+	if v := os.Getenv("GYDS_WS_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			cfg.WSPort = p
+		}
+	}
+	if v := os.Getenv("GYDS_MAX_PEERS"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			cfg.MaxPeers = p
+		}
+	}
 	if v := os.Getenv("GYDS_RPC_HOST"); v != "" {
 		cfg.RPCHost = v
 	}
@@ -103,6 +116,9 @@ func FromEnv() *Config {
 	}
 	if v := os.Getenv("GYDS_LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
+	}
+	if v := os.Getenv("GYDS_LOG_FORMAT"); v != "" {
+		cfg.LogFormat = v
 	}
 	if v := os.Getenv("GYDS_BOOTSTRAP_NODES"); v != "" {
 		// Support comma-separated list of peers.
