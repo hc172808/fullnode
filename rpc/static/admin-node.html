@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>GYDS Admin — Node Control</title>
+  <style>
+    :root{--bg:#0b0f1a;--panel:#111827;--panel2:#1a2235;--line:#263449;--text:#e2e8f0;--muted:#8190a5;--green:#10b981;--blue:#3b82f6;--amber:#f59e0b;--red:#ef4444}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .top{height:58px;padding:0 24px;background:#0e1420;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+    .logo{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,var(--green),var(--blue));display:grid;place-items:center;font-size:11px;font-weight:900}
+    .brand{font-weight:700}.brand span{color:var(--green)}.pill{font-size:11px;color:var(--green);border:1px solid #1b6b52;background:#103426;padding:4px 9px;border-radius:20px}
+    .grow{flex:1}a{color:var(--muted);text-decoration:none;font-size:12px;margin-left:18px}a:hover{color:var(--text)}
+    main{max-width:1180px;margin:0 auto;padding:28px 22px 60px}.heading{display:flex;align-items:flex-end;gap:12px;margin-bottom:22px}.heading h1{font-size:23px;margin:0}.heading p{color:var(--muted);margin:0 0 2px}
+    .grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.8fr);gap:18px}.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:22px}
+    .card h2{font-size:15px;margin:0 0 5px}.sub{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:18px}
+    .fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{display:flex;flex-direction:column;gap:6px}.wide{grid-column:1/-1}label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+    input,select,textarea{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:10px 11px;outline:0}input:focus,select:focus,textarea:focus{border-color:var(--green)}textarea{min-height:74px;resize:vertical;font-family:monospace;font-size:12px}
+    .hint{font-size:11px;color:var(--muted);line-height:1.4}.check{display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px}.check input{accent-color:var(--green)}
+    .actions{display:flex;gap:9px;align-items:center;margin-top:20px}.btn{border:0;border-radius:7px;padding:10px 15px;font-weight:700;font-size:12px;cursor:pointer;color:white}.btn:disabled{opacity:.45;cursor:not-allowed}.green{background:var(--green)}.blue{background:var(--blue)}.ghost{background:var(--panel2);border:1px solid var(--line)}
+    .notice{font-size:12px;margin-top:13px;padding:10px 12px;border-radius:7px;display:none}.notice.show{display:block}.ok{color:#86efac;background:#0c2d21;border:1px solid #1d6048}.err{color:#fca5a5;background:#35191c;border:1px solid #71343b}.warn{color:#fcd34d;background:#382a0e;border:1px solid #735715}
+    .peer-head{display:flex;align-items:center;margin-bottom:10px}.peer-head h2{flex:1}.count{font-size:11px;color:var(--green)}.peer-list{display:flex;flex-direction:column;gap:8px;max-height:350px;overflow:auto}.peer{padding:11px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px}.peer-top{display:flex;justify-content:space-between;gap:12px}.peer-id{font:11px monospace;color:#93c5fd;overflow:hidden;text-overflow:ellipsis}.peer-mode{font-size:10px;color:var(--green);text-transform:uppercase}.peer-meta{font-size:11px;color:var(--muted);margin-top:6px}.empty{color:var(--muted);font-size:12px;padding:22px 5px;text-align:center;border:1px dashed var(--line);border-radius:8px}
+    .quick{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:15px}.quick input{grid-column:1/-1}.quick .btn{width:100%}.identity{font:11px monospace;word-break:break-all;color:#93c5fd;background:var(--panel2);border-radius:7px;padding:10px;margin-top:13px}
+    @media(max-width:850px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.wide{grid-column:auto}.top{padding:0 14px}main{padding:20px 14px}}
+  </style>
+</head>
+<body>
+  <header class="top"><div class="logo">GY</div><div class="brand">GYDS <span>Chain</span></div><span class="pill">Admin Control</span><div class="grow"></div><a href="/">← Dashboard</a><a href="/admin/db">Database</a><a href="/admin/logout" style="color:#ef8888">Logout</a></header>
+  <main>
+    <div class="heading"><h1>Node Control</h1><p>Change the node role, network, wallet/peer settings, then apply to restart.</p></div>
+    <div class="grid">
+      <section class="card">
+        <h2>Runtime configuration</h2><div class="sub">The setup wizard is locked after first use. Changes here are written to the server's protected <code>.env</code> and loaded on restart.</div>
+        <div class="fields">
+          <div class="field"><label>Node role</label><select id="nodeMode">
+            <option value="full">Full Node</option><option value="lite">Lite Node</option><option value="rpc">RPC Node</option><option value="boost">Boost Node</option><option value="genesis">Genesis Node</option><option value="sync">Sync Node</option><option value="validator">Validator Node</option><option value="testnode">Test Node</option>
+          </select><span class="hint">RPC mode has no P2P. Sync catches up after restart.</span></div>
+          <div class="field"><label>Chain ID</label><input id="chainId" type="number" min="1"/></div>
+          <div class="field"><label>Network name</label><input id="networkName"/></div>
+          <div class="field"><label>Block time (seconds)</label><input id="blockTime" type="number" min="1"/></div>
+          <div class="field"><label>Data directory</label><input id="dataDir"/><span class="hint">Do not copy another node's node.key into this directory.</span></div>
+          <div class="field"><label>Wallet address</label><input id="walletAddress" placeholder="Optional server wallet address"/></div>
+          <div class="field"><label>Validator key</label><input id="validatorKey" type="password" placeholder="Already configured / unchanged"/><span class="hint" id="validatorHint">The key is never returned to the browser.</span></div>
+          <div class="field"><label>Wallet private key</label><input id="walletPrivateKey" type="password" placeholder="Leave blank to keep current key"/><span class="hint">Never returned to the browser. Use only on a secured node.</span></div>
+          <div class="field"><label>RPC port</label><input id="rpcPort" type="number" min="1" max="65535"/></div>
+          <div class="field"><label>WebSocket port</label><input id="wsPort" type="number" min="1" max="65535"/></div>
+          <div class="field"><label>P2P port</label><input id="p2pPort" type="number" min="1" max="65535"/></div>
+          <div class="field"><label>Maximum peers</label><input id="maxPeers" type="number" min="1" max="10000"/></div>
+          <div class="field wide"><label>Advertised P2P host</label><input id="p2pAdvertiseHost" placeholder="public-ip-or-dns (never 0.0.0.0)"/><span class="hint">The listener still binds all interfaces; this is the reachable host shared with peers.</span></div>
+          <div class="field wide"><label>Bootstrap peers</label><textarea id="bootstrapNodes" placeholder="genesis.example.com:30303, 203.0.113.10:30303"></textarea></div>
+          <div class="field wide"><label>Allowed node IDs</label><textarea id="allowedNodes" placeholder="One or more ed25519 node IDs, comma-separated"></textarea></div>
+          <div class="field"><label>Log level</label><select id="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option></select></div>
+          <div class="field"><label>Log format</label><select id="logFormat"><option>json</option><option>pretty</option></select></div>
+          <label class="check wide"><input id="peerAuth" type="checkbox"/> Require authenticated peers (use Allowed node IDs to whitelist)</label>
+        </div>
+        <div class="actions"><button class="btn green" id="applyBtn" onclick="applyConfig()">Apply &amp; Restart Node</button><span class="hint">The dashboard will briefly disconnect.</span></div><div id="configNotice" class="notice"></div>
+      </section>
+      <aside class="card">
+        <div class="peer-head"><h2>Connected nodes</h2><span class="count" id="peerCount">0 connected</span></div>
+        <div class="sub">Live authorized P2P connections. Refreshes every 5 seconds.</div>
+        <div id="peerList" class="peer-list"><div class="empty">Loading connected nodes…</div></div>
+        <div class="identity" id="identity">Loading node identity…</div>
+        <div class="quick"><input id="peerAddress" placeholder="host:30303 or tcp://host:30303"/><button class="btn blue" onclick="peerAction('/admin/node/connect')">Connect</button><button class="btn ghost" onclick="peerAction('/admin/node/sync')">Sync / Connect</button></div>
+        <div id="peerNotice" class="notice"></div>
+      </aside>
+    </div>
+  </main>
+<script>
+const $=id=>document.getElementById(id);
+function show(id,msg,type){const e=$(id);e.textContent=msg;e.className='notice show '+type}
+async function loadConfig(){try{const r=await fetch('/admin/node/config');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load config');
+  for(const [id,key] of Object.entries({nodeMode:'nodeMode',chainId:'chainId',networkName:'networkName',blockTime:'blockTime',dataDir:'dataDir',walletAddress:'walletAddress',rpcPort:'rpcPort',wsPort:'wsPort',p2pPort:'p2pPort',maxPeers:'maxPeers',p2pAdvertiseHost:'p2pAdvertiseHost',bootstrapNodes:'bootstrapNodes',allowedNodes:'allowedNodes',logLevel:'logLevel',logFormat:'logFormat'}))$(id).value=d[key]??'';
+  $('peerAuth').checked=!!d.peerAuth;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
+ }catch(e){show('configNotice',e.message,'err')}}
+async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configNotice','Saving configuration and restarting…','warn');
+ const body={};for(const id of ['nodeMode','networkName','dataDir','p2pAdvertiseHost','bootstrapNodes','allowedNodes','logLevel','logFormat'])body[id]=$(id).value;
+ for(const id of ['chainId','blockTime','rpcPort','wsPort','p2pPort','maxPeers'])body[id]=Number($(id).value);body.peerAuth=$('peerAuth').checked;
+ const key=$('validatorKey').value.trim();if(key)body.validatorKey=key;const walletKey=$('walletPrivateKey').value.trim();if(walletKey)body.walletPrivateKey=walletKey;body.walletAddress=$('walletAddress').value.trim();
+ try{const r=await fetch('/admin/node/config/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not apply');show('configNotice',d.message,'ok');setTimeout(()=>location.reload(),2500)}catch(e){b.disabled=false;show('configNotice',e.message,'err')}}
+async function refreshPeers(){try{const [p,n]=await Promise.all([fetch('/api/peers').then(r=>r.json()),fetch('/api/node-id').then(r=>r.json())]);const peers=p.peers||[];$('peerCount').textContent=peers.length+' connected';$('identity').textContent=n.enode?'Enode: '+n.enode:'Node ID: '+(n.nodeId||'not available; P2P may be disabled');$('peerList').innerHTML=peers.length?peers.map(x=>`<div class="peer"><div class="peer-top"><span class="peer-id">${esc(x.nodeId||x.addr)}</span><span class="peer-mode">${esc(x.nodeMode||'unknown')}</span></div><div class="peer-meta">${esc(x.addr)} · height ${Number(x.height||0).toLocaleString()} · ${x.authorized?'authorized':'pending'}</div></div>`).join(''):'<div class="empty">No connected nodes yet. Add a bootstrap address and use Connect.</div>'}catch(e){$('peerList').innerHTML='<div class="empty">Unable to load peer list.</div>'}}
+async function peerAction(path){const address=$('peerAddress').value.trim();if(!address){show('peerNotice','Enter a peer host:port first.','err');return}try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address})});const d=await r.json();if(!r.ok)throw Error(d.error||'Peer action failed');show('peerNotice',d.message||'Request sent.','ok');setTimeout(refreshPeers,700)}catch(e){show('peerNotice',e.message,'err')}}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+loadConfig();refreshPeers();setInterval(refreshPeers,5000);
+</script>
+</body>
+</html>

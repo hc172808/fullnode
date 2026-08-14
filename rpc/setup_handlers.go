@@ -43,6 +43,17 @@ func envSetting(key, value string) string {
 }
 
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
+	if s.setupConfigured() {
+		// Configuration is intentionally managed from the authenticated Admin
+		// dashboard after the first setup. Do not leave a second, unauthenticated
+		// configuration surface available.
+		if cookie, err := r.Cookie(sessionCookieName); err == nil && s.auth.ValidSession(cookie.Value) {
+			http.Redirect(w, r, "/admin/node", http.StatusFound)
+		} else {
+			http.Redirect(w, r, "/admin/login", http.StatusFound)
+		}
+		return
+	}
 	f, err := staticFiles.Open("static/setup.html")
 	if err != nil {
 		http.Error(w, "setup page unavailable", http.StatusNotFound)
@@ -63,13 +74,17 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
-	_, err := os.Stat(".env")
-	configured := err == nil
+	configured := s.setupConfigured()
 	jsonOK(w, map[string]interface{}{
 		"configured": configured,
 		"height":     s.chain.Height(),
 		"pinSet":     s.auth.PinIsSet(),
 	})
+}
+
+func (s *Server) setupConfigured() bool {
+	_, err := os.Stat(".env")
+	return err == nil
 }
 
 func (s *Server) handleGuidesPage(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +108,14 @@ func (s *Server) handleGuidesPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
+	if s.setupConfigured() {
+		if cookie, err := r.Cookie(sessionCookieName); err != nil || !s.auth.ValidSession(cookie.Value) {
+			jsonErr(w, http.StatusForbidden, "setup is locked after initial configuration; use the Admin dashboard")
+			return
+		}
+		jsonErr(w, http.StatusGone, "setup wizard is disabled after initial configuration; use the Admin dashboard")
+		return
+	}
 	var cfg setupConfig
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		jsonErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())

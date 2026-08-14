@@ -64,7 +64,7 @@ func (s *Server) handleAdminLoginSubmit(w http.ResponseWriter, r *http.Request) 
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
-	jsonOK(w, map[string]string{"status": "ok", "redirect": "/admin/db"})
+	jsonOK(w, map[string]string{"status": "ok", "redirect": "/admin/node"})
 }
 
 // ── GET /admin/logout ─────────────────────────────────────────────────────────

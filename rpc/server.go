@@ -54,6 +54,7 @@ type Server struct {
 	externalURL string
 	bindHost    string // host to bind listeners on ("" / "0.0.0.0" = all interfaces, "127.0.0.1" = loopback only)
 	nodeMode    string
+	dataDir     string
 
 	pendingTx   map[string]*core.Transaction
 	pendingTxMu sync.RWMutex
@@ -106,6 +107,7 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
 		rpcPort:     rpcPort,
 		externalURL: externalURL,
 		nodeMode:    "full",
+		dataDir:     dataDir,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -293,6 +295,11 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/set-pin", s.handleAdminSetPinPage).Methods("GET")
 	admin.HandleFunc("/set-pin", s.handleAdminSetPinSubmit).Methods("POST")
 	admin.HandleFunc("/wallet", s.handleAdminWallet).Methods("GET")
+	admin.HandleFunc("/node", s.handleAdminNodePage).Methods("GET")
+	admin.HandleFunc("/node/config", s.requireAdminSession(s.handleAdminNodeConfig)).Methods("GET")
+	admin.HandleFunc("/node/config/apply", s.requireAdminSession(s.handleAdminNodeConfigApply)).Methods("POST")
+	admin.HandleFunc("/node/connect", s.requireAdminSession(s.handleAdminNodeConnect)).Methods("POST")
+	admin.HandleFunc("/node/sync", s.requireAdminSession(s.handleAdminNodeSync)).Methods("POST")
 	admin.HandleFunc("/db", s.handleAdminDBPage).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBTables)).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBCreateTable)).Methods("POST")
