@@ -189,17 +189,18 @@ func runFullNode(cfg *config.Config) error {
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
+	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
 	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
 
-	for _, addr := range cfg.P2PBootstrap {
-		if err := p2pSrv.ConnectTo(addr); err != nil {
-			log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
-		}
-	}
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P server failed to start (continuing without P2P)")
+	}
+	for _, addr := range cfg.P2PBootstrap {
+		if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
+			log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
+		}
 	}
 
 	engine.Start()
@@ -228,15 +229,16 @@ func runLiteNode(cfg *config.Config) error {
 	if len(cfg.P2PBootstrap) > 0 {
 		p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
 		p2pSrv.SetNodeMode(cfg.NodeMode)
+		p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 		wireAuth(p2pSrv, cfg)
 		rpcSrv.SetP2P(p2pSrv)
-		for _, addr := range cfg.P2PBootstrap {
-			if err := p2pSrv.ConnectTo(addr); err != nil {
-				log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
-			}
-		}
 		if err := p2pSrv.Start(); err != nil {
 			log.Warn().Err(err).Msg("P2P start failed")
+		}
+		for _, addr := range cfg.P2PBootstrap {
+			if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
+				log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
+			}
 		}
 		log.Info().Strs("peers", cfg.P2PBootstrap).Msg("Lite node connected to bootstrap peers for header sync")
 	} else {
@@ -304,19 +306,20 @@ func runBoostNode(cfg *config.Config) error {
 	// Boost: connect to ALL configured peers simultaneously.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
+	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
 	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
+	if err := p2pSrv.Start(); err != nil {
+		log.Warn().Err(err).Msg("P2P start failed")
+	}
 	connected := 0
 	for _, addr := range cfg.P2PBootstrap {
-		if err := p2pSrv.ConnectTo(addr); err != nil {
+		if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
 			log.Warn().Err(err).Str("addr", addr).Msg("Bootstrap connection failed")
 		} else {
 			connected++
 		}
-	}
-	if err := p2pSrv.Start(); err != nil {
-		log.Warn().Err(err).Msg("P2P start failed")
 	}
 	boostPeers := cfg.MaxPeers
 	if boostPeers < 50 {
@@ -367,6 +370,7 @@ func runGenesisNode(cfg *config.Config) error {
 	// Genesis node listens for incoming peer connections and serves blocks to them.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
+	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
 	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
@@ -411,8 +415,7 @@ func runSyncNode(cfg *config.Config) error {
 	log.Info().Msg("Mode: Sync Full Node — catch-up sync then steady-state full node")
 
 	if len(cfg.P2PBootstrap) == 0 {
-		log.Warn().Msg("No GYDS_BOOTSTRAP_NODES configured — sync node cannot reach the network")
-		log.Warn().Msg("Set GYDS_BOOTSTRAP_NODES=<host>:<port> (comma-separated) and restart")
+		return fmt.Errorf("sync requires GYDS_BOOTSTRAP_NODES=<public-host>:<p2p-port>; no bootstrap peers are configured")
 	}
 
 	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
@@ -420,21 +423,27 @@ func runSyncNode(cfg *config.Config) error {
 
 	// ── Phase 1: Connect to peers ──────────────────────────────────────────────
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetNodeMode(cfg.NodeMode)
+	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	// Also serve blocks so peers that connect to us can sync from us.
 	wireBlockProvider(p2pSrv, chain)
 	wireAuth(p2pSrv, cfg)
 
+	if err := p2pSrv.Start(); err != nil {
+		return fmt.Errorf("sync P2P listener failed: %w", err)
+	}
+
 	connected := 0
 	for _, addr := range cfg.P2PBootstrap {
-		if err := p2pSrv.ConnectTo(addr); err != nil {
-			log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
+		if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
+			log.Warn().Err(err).Str("addr", addr).Msg("Bootstrap peer unavailable after retries")
 		} else {
 			connected++
 			log.Info().Str("addr", addr).Msg("Connected to sync peer")
 		}
 	}
-	if err := p2pSrv.Start(); err != nil {
-		log.Warn().Err(err).Msg("P2P listen failed — continuing with outbound connections only")
+	if connected == 0 {
+		return fmt.Errorf("sync could not connect to any bootstrap peer; verify GYDS_BOOTSTRAP_NODES uses a public host:port and TCP %d is open", cfg.P2PPort)
 	}
 
 	// ── Phase 2: Block catch-up ────────────────────────────────────────────────
@@ -451,16 +460,20 @@ func runSyncNode(cfg *config.Config) error {
 		}
 	})
 
-	// Wait for at least one peer handshake (up to 8 s) to know the network height.
+	// Wait for at least one peer handshake (up to 8 s). A peer at genesis has
+	// height zero, so PeerCount—not MaxPeerHeight—is the connection signal.
 	if connected > 0 {
 		log.Info().Int("peers", connected).Msg("Waiting for peer handshakes…")
 		deadline := time.Now().Add(8 * time.Second)
 		for time.Now().Before(deadline) {
-			if p2pSrv.MaxPeerHeight() > 0 {
+			if p2pSrv.PeerCount() > 0 {
 				break
 			}
 			time.Sleep(200 * time.Millisecond)
 		}
+	}
+	if p2pSrv.PeerCount() == 0 {
+		return fmt.Errorf("bootstrap TCP connection succeeded but no peer handshake was accepted; check chain ID %d, peer authorization, and the remote node logs", cfg.ChainID)
 	}
 
 	networkHeight := p2pSrv.MaxPeerHeight()
@@ -561,6 +574,22 @@ func runSyncNode(cfg *config.Config) error {
 	return serveAndWait(rpcSrv, chain, engine)
 }
 
+func connectBootstrapWithRetry(srv *p2p.Server, addr string) error {
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		log.Info().Str("addr", addr).Int("attempt", attempt).Msg("Dialing bootstrap peer")
+		if err := srv.ConnectTo(addr); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt*2) * time.Second)
+			}
+		}
+	}
+	return lastErr
+}
+
 // ── Validator Node ────────────────────────────────────────────────────────────
 // Explicit PoS validator node. Identical to a full node in architecture but
 // clearly identified as a block-producing validator. The optional
@@ -601,17 +630,19 @@ func runValidatorNode(cfg *config.Config) error {
 	})
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetNodeMode(cfg.NodeMode)
+	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
 	wireAuth(p2pSrv, cfg)
 	rpcSrv.SetP2P(p2pSrv)
 
-	for _, addr := range cfg.P2PBootstrap {
-		if err := p2pSrv.ConnectTo(addr); err != nil {
-			log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
-		}
-	}
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P server failed to start (continuing without P2P)")
+	}
+	for _, addr := range cfg.P2PBootstrap {
+		if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
+			log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
+		}
 	}
 
 	engine.Start()

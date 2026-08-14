@@ -32,6 +32,7 @@ GYDS_NODE_MODE=full
 GYDS_DASHBOARD_PORT=5000
 GYDS_RPC_PORT=8545
 GYDS_P2P_PORT=30303
+GYDS_P2P_ADVERTISE_HOST=   # public IP/DNS peers should dial
 GYDS_DATA_DIR=./data
 GYDS_BLOCK_TIME=120         # seconds
 GYDS_BOOTSTRAP_NODES=       # comma-separated tcp://host:port

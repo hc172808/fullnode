@@ -408,6 +408,11 @@
         </div>
       </div>
       <div class="field" style="margin-top:8px">
+        <label>Public P2P Host <span style="color:var(--muted);font-weight:400;text-transform:none">(recommended)</span></label>
+        <input type="text" id="p2pAdvertiseHost" placeholder="203.0.113.10 or node.example.com" />
+        <div class="field-hint">The public IP or DNS name other nodes should dial. Never use 0.0.0.0 or 127.0.0.1.</div>
+      </div>
+      <div class="field" style="margin-top:8px">
         <label>Bootstrap Peers <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></label>
         <textarea id="bootstrapNodes" placeholder="tcp://node1.gydschain.io:30303&#10;tcp://node2.gydschain.io:30303"></textarea>
         <div class="field-hint">One peer per line. Leave blank to run as an isolated node.</div>
@@ -958,6 +963,7 @@ function collectConfig() {
     rpcPort:        document.getElementById('rpcPort').value,
     wsPort:         document.getElementById('wsPort').value,
     p2pPort:        document.getElementById('p2pPort').value,
+    p2pAdvertiseHost: document.getElementById('p2pAdvertiseHost').value.trim(),
     maxPeers:       document.getElementById('maxPeers').value,
     bootstrapNodes: bootstrap,
     peerAuth:       document.getElementById('peerAuthEnabled').checked,
@@ -987,6 +993,7 @@ function buildReview() {
     ['Wallet',         cfg.walletAddress ? cfg.walletAddress.slice(0,12)+'…' : '(none)'],
     ['RPC Port',       cfg.rpcPort],
     ['P2P Port',       cfg.p2pPort],
+    ['Public P2P Host', cfg.p2pAdvertiseHost || '(not set)'],
     ['Data Dir',       cfg.dataDir],
     ['Storage Limit',  cfg.storageLimitGb + ' GB'],
     ['Firewall',       cfg.enableFirewall === 'true' ? '✓ Enabled' : '✗ Disabled'],
@@ -1063,6 +1070,9 @@ function buildEnvText(cfg) {
     ``,
     `# ── P2P Networking ─────────────────────────────────────────────`,
     `GYDS_P2P_PORT=${cfg.p2pPort}`,
+    cfg.p2pAdvertiseHost
+      ? `GYDS_P2P_ADVERTISE_HOST=${cfg.p2pAdvertiseHost}`
+      : `# GYDS_P2P_ADVERTISE_HOST=`,
     `GYDS_MAX_PEERS=${cfg.maxPeers}`,
     cfg.bootstrapNodes
       ? `GYDS_BOOTSTRAP_NODES=${cfg.bootstrapNodes}`

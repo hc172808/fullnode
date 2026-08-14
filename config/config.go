@@ -12,9 +12,10 @@ type Config struct {
 	NetworkName string
 	NodeMode    string
 
-	P2PPort      int
-	P2PBootstrap []string
-	MaxPeers     int
+	P2PPort          int
+	P2PAdvertiseHost string
+	P2PBootstrap     []string
+	MaxPeers         int
 
 	RPCPort       int
 	RPCHost       string
@@ -43,24 +44,25 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		ChainID:       198282,
-		NetworkName:   "GYDS Chain",
-		NodeMode:      "full",
-		P2PPort:       30303,
-		P2PBootstrap:  []string{},
-		MaxPeers:      25,
-		RPCPort:       8545,
-		DashboardPort: 5000,
-		RPCHost:       "0.0.0.0",
-		RPCEnabled:    true,
-		WSPort:        8546,
-		WSEnabled:     true,
-		DataDir:       "./data",
-		LogLevel:      "info",
-		LogFormat:     "pretty",
-		BlockTime:     120 * time.Second,
-		SyncMode:      "full",
-		SnapshotSync:  true,
+		ChainID:          198282,
+		NetworkName:      "GYDS Chain",
+		NodeMode:         "full",
+		P2PPort:          30303,
+		P2PAdvertiseHost: "",
+		P2PBootstrap:     []string{},
+		MaxPeers:         25,
+		RPCPort:          8545,
+		DashboardPort:    5000,
+		RPCHost:          "0.0.0.0",
+		RPCEnabled:       true,
+		WSPort:           8546,
+		WSEnabled:        true,
+		DataDir:          "./data",
+		LogLevel:         "info",
+		LogFormat:        "pretty",
+		BlockTime:        120 * time.Second,
+		SyncMode:         "full",
+		SnapshotSync:     true,
 	}
 }
 
@@ -79,6 +81,9 @@ func FromEnv() *Config {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.P2PPort = p
 		}
+	}
+	if v := os.Getenv("GYDS_P2P_ADVERTISE_HOST"); v != "" {
+		cfg.P2PAdvertiseHost = strings.TrimSpace(v)
 	}
 	if v := os.Getenv("GYDS_RPC_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {

@@ -25,27 +25,27 @@ unimplemented JSON-RPC method, not a `127.0.0.1` connectivity failure.
 
 ### Implementation checklist
 
-- [ ] Add `GYDS_P2P_ADVERTISE_HOST` to configuration. It must be the genesis
+- [x] Add `GYDS_P2P_ADVERTISE_HOST` to configuration. It must be the genesis
   server's public IP or DNS name, not `0.0.0.0` or `127.0.0.1`.
-- [ ] Add the advertised P2P port configuration, defaulting to
+- [x] Add the advertised P2P port configuration, defaulting to
   `GYDS_P2P_PORT=30303`.
-- [ ] Extend the RPC/P2P interface so RPC can read the local node ID,
+- [x] Extend the RPC/P2P interface so RPC can read the local node ID,
   advertised host, and P2P port.
-- [ ] Implement `net_enode` in the JSON-RPC dispatcher.
+- [x] Implement `net_enode` in the JSON-RPC dispatcher.
 - [ ] Return a documented, non-empty result containing the local node identity
   and reachable P2P endpoint. Keep the response format stable for node
   operators and tooling.
-- [ ] Keep the P2P bind address on all interfaces (`:30303`, equivalent to
+- [x] Keep the P2P bind address on all interfaces (`:30303`, equivalent to
   `0.0.0.0:30303`) while advertising only the public address.
-- [ ] Add a useful error when `GYDS_P2P_ADVERTISE_HOST` is empty for a node
+- [x] Add a useful error when `GYDS_P2P_ADVERTISE_HOST` is empty for a node
   that is expected to accept remote peers.
-- [ ] Implement `net_peerCount` using the live P2P peer count instead of the
+- [x] Implement `net_peerCount` using the live P2P peer count instead of the
   current hardcoded `0x0`.
-- [ ] Add retry/backoff for bootstrap peers and log each dial, handshake,
+- [x] Add retry/backoff for bootstrap peers and log each dial, handshake,
   rejection, and reconnect event.
 - [ ] Verify TCP `30303` is open in both the server firewall and hosting
   provider security group.
-- [ ] Ensure every node has the same chain ID/genesis hash and a unique
+- [x] Ensure every node has the same chain ID/genesis hash and a unique
   `<GYDS_DATA_DIR>/node.key`.
 
 ### Configuration examples

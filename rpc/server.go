@@ -32,6 +32,8 @@ type P2PConnector interface {
 	ConnectTo(addr string) error
 	PeerCount() int
 	NodeID() string
+	Enode() string
+	P2PPort() int
 	Peers() []p2p.PeerStatus
 }
 
@@ -303,6 +305,18 @@ func (s *Server) setupDashboardRoutes() {
 func (s *Server) setupRPCRoutes() {
 	r := mux.NewRouter()
 	r.HandleFunc("/health", s.handleHealth).Methods("GET")
+	// The dedicated RPC origin is commonly the URL given to external wallets.
+	// Serve the same public metadata and logo assets there as on the dashboard
+	// so iconUrls do not resolve to 404.
+	r.HandleFunc("/gyds-network.json", s.handleNetworkMetadata).Methods("GET")
+	r.HandleFunc("/gyd-token.json", s.handleGYDMetadata).Methods("GET")
+	r.HandleFunc("/{file:.*\\.jpg}", s.handleStaticAsset).Methods("GET")
+	r.HandleFunc("/{file:.*\\.jpeg}", s.handleStaticAsset).Methods("GET")
+	r.HandleFunc("/{file:.*\\.png}", s.handleStaticAsset).Methods("GET")
+	r.HandleFunc("/{file:.*\\.gif}", s.handleStaticAsset).Methods("GET")
+	r.HandleFunc("/{file:.*\\.ico}", s.handleStaticAsset).Methods("GET")
+	r.HandleFunc("/{file:.*\\.webp}", s.handleStaticAsset).Methods("GET")
+	r.HandleFunc("/{file:.*\\.svg}", s.handleStaticAsset).Methods("GET")
 	r.HandleFunc("/", s.handleJSONRPC).Methods("POST", "OPTIONS")
 	r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/ws", s.handleWS)
@@ -437,6 +451,14 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 	rpcURL := fmt.Sprintf("http://0.0.0.0:%d", s.rpcPort)
 	wsURL := fmt.Sprintf("ws://0.0.0.0:%d/api/ws", s.rpcPort)
 	dashURL := fmt.Sprintf("http://0.0.0.0:%d", s.dashPort)
+	p2pPort := 30303
+	enode := ""
+	peerCount := 0
+	if s.p2p != nil {
+		p2pPort = s.p2p.P2PPort()
+		enode = s.p2p.Enode()
+		peerCount = s.p2p.PeerCount()
+	}
 	if extBase != "" {
 		// Public deployments normally terminate TLS at Nginx. Use the
 		// reverse-proxy paths instead of exposing the internal listener ports.
@@ -453,11 +475,13 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 		"rpc_url":       rpcURL,
 		"ws_url":        wsURL,
 		"dashboard_url": dashURL,
-		"p2p_port":      30303,
+		"p2p_port":      p2pPort,
+		"enode":         enode,
+		"peer_count":    peerCount,
 		"ports": map[string]interface{}{
 			"dashboard": s.dashPort,
 			"rpc":       s.rpcPort,
-			"p2p":       30303,
+			"p2p":       p2pPort,
 		},
 		"metamask": map[string]interface{}{
 			"networkName":    "GYDS Chain",
@@ -649,7 +673,13 @@ func (s *Server) handleNodeIDInfo(w http.ResponseWriter, r *http.Request) {
 	if s.p2p != nil {
 		nodeID = s.p2p.NodeID()
 	}
-	jsonOK(w, map[string]interface{}{"nodeId": nodeID})
+	enode := ""
+	peerCount := 0
+	if s.p2p != nil {
+		enode = s.p2p.Enode()
+		peerCount = s.p2p.PeerCount()
+	}
+	jsonOK(w, map[string]interface{}{"nodeId": nodeID, "enode": enode, "peerCount": peerCount})
 }
 
 // handleTokenInfo returns metadata for every genesis-defined token.
@@ -789,7 +819,21 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 		resp.Result = true
 
 	case "net_peerCount":
-		resp.Result = "0x0"
+		count := 0
+		if s.p2p != nil {
+			count = s.p2p.PeerCount()
+		}
+		resp.Result = fmt.Sprintf("0x%x", count)
+
+	case "net_enode":
+		if s.p2p == nil || s.p2p.Enode() == "" {
+			resp.Error = map[string]interface{}{
+				"code":    -32001,
+				"message": "P2P advertised host is not configured; set GYDS_P2P_ADVERTISE_HOST",
+			}
+		} else {
+			resp.Result = s.p2p.Enode()
+		}
 
 	case "eth_syncing":
 		resp.Result = false

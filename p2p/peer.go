@@ -84,6 +84,8 @@ type Peer struct {
 	challenge  string // hex nonce we sent to this peer
 	peerNodeID string // verified Node ID of the remote peer
 	authorized bool   // true after challenge-response is verified (or auth is off)
+	closeOnce  sync.Once
+	onClose    func(*Peer)
 }
 
 func NewPeer(conn net.Conn, onMsg func(*Peer, Message)) *Peer {
@@ -110,13 +112,13 @@ func (p *Peer) Send(msg Message) {
 }
 
 func (p *Peer) Close() {
-	select {
-	case <-p.quit:
-		// already closed
-	default:
+	p.closeOnce.Do(func() {
 		close(p.quit)
 		p.conn.Close()
-	}
+		if p.onClose != nil {
+			p.onClose(p)
+		}
+	})
 }
 
 func (p *Peer) RemoteAddr() string {
@@ -184,15 +186,16 @@ type BlockFetcher func(from uint64, count int) json.RawMessage
 // ── Server ────────────────────────────────────────────────────────────────────
 
 type Server struct {
-	mu        sync.RWMutex
-	peers     map[string]*Peer
-	port      int
-	chainID   int64
-	nodeMode  string
-	height    func() uint64
-	onMsg     func(*Peer, Message)
-	blockProv BlockFetcher
-	quit      chan struct{}
+	mu            sync.RWMutex
+	peers         map[string]*Peer
+	port          int
+	chainID       int64
+	nodeMode      string
+	advertiseHost string
+	height        func() uint64
+	onMsg         func(*Peer, Message)
+	blockProv     BlockFetcher
+	quit          chan struct{}
 
 	// Auth — set via SetAuth before Start().
 	nodeKey      *NodeKey            // our own identity (nil = no auth)
@@ -221,6 +224,15 @@ func (s *Server) SetNodeMode(mode string) {
 		mode = "full"
 	}
 	s.nodeMode = mode
+}
+
+// SetAdvertiseHost configures the public host included in the node's enode.
+// The listener still binds on all interfaces; this value is only for peers
+// and wallet/operator diagnostics.
+func (s *Server) SetAdvertiseHost(host string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.advertiseHost = strings.TrimSpace(host)
 }
 
 // SetAuth configures peer authorization. Call before Start().
@@ -317,6 +329,13 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 	// Register peer immediately so we can receive their handshake.
 	s.mu.Lock()
 	s.peers[addr] = peer
+	peer.onClose = func(closed *Peer) {
+		s.mu.Lock()
+		if current, ok := s.peers[addr]; ok && current == closed {
+			delete(s.peers, addr)
+		}
+		s.mu.Unlock()
+	}
 	s.mu.Unlock()
 
 	peer.Start()
@@ -368,16 +387,29 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 
 	case MsgHandshake:
 		var info PeerInfo
-		if err := json.Unmarshal(msg.Payload, &info); err == nil {
-			peer.mu.Lock()
-			peer.info = &info
-			// If the remote included its node ID and we aren't in auth mode,
-			// record it for display purposes.
-			if info.NodeID != "" && peer.peerNodeID == "" {
-				peer.peerNodeID = info.NodeID
-			}
-			peer.mu.Unlock()
+		if err := json.Unmarshal(msg.Payload, &info); err != nil {
+			log.Warn().Err(err).Str("peer", peer.RemoteAddr()).Msg("invalid peer handshake")
+			peer.Close()
+			return
 		}
+		if info.ChainID != s.chainID {
+			log.Warn().
+				Str("peer", peer.RemoteAddr()).
+				Int64("localChainId", s.chainID).
+				Int64("remoteChainId", info.ChainID).
+				Msg("peer rejected — chain ID mismatch")
+			peer.Close()
+			return
+		}
+		peer.mu.Lock()
+		peer.info = &info
+		// If the remote included its node ID and we aren't in auth mode,
+		// record it for display purposes.
+		if info.NodeID != "" && peer.peerNodeID == "" {
+			peer.peerNodeID = info.NodeID
+		}
+		peer.mu.Unlock()
+		log.Info().Str("peer", peer.RemoteAddr()).Str("nodeId", info.NodeID).Int64("chainId", info.ChainID).Msg("peer handshake accepted")
 
 	case MsgAuthChallenge:
 		// We received a challenge from the remote node — sign it and respond.
@@ -536,6 +568,24 @@ func (s *Server) PeerCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.peers)
+}
+
+// P2PPort returns the TCP port on which this node listens for peers.
+func (s *Server) P2PPort() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.port
+}
+
+// Enode returns a stable Ethereum-style endpoint for this node. An empty
+// result means the operator has not configured a public advertised host.
+func (s *Server) Enode() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.nodeKey == nil || s.advertiseHost == "" {
+		return ""
+	}
+	return fmt.Sprintf("enode://%s@%s", s.nodeKey.ID(), net.JoinHostPort(s.advertiseHost, fmt.Sprintf("%d", s.port)))
 }
 
 // Peers returns the current status of all connected peers.
