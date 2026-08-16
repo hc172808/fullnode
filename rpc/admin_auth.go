@@ -189,7 +189,6 @@ func (a *AuthStore) NewSession() string {
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.sessions = make(map[string]*adminSession)
 	a.sessions[token] = &adminSession{
 		token:    token,
 		created:  time.Now(),

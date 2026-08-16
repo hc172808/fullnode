@@ -13,7 +13,13 @@ import (
 
 func (s *Server) handleAdminLoginPage(w http.ResponseWriter, r *http.Request) {
 	if !s.auth.PinIsSet() {
-		http.Redirect(w, r, "/setup?step=6", http.StatusFound)
+		if s.setupConfigured() {
+			// A configured node with no PIN is intentionally unlocked. Do not send
+			// users back through setup just because they opened the admin URL.
+			http.Redirect(w, r, "/", http.StatusFound)
+		} else {
+			http.Redirect(w, r, "/setup?step=6", http.StatusFound)
+		}
 		return
 	}
 	serveStaticPage(w, "static/admin-login.html")

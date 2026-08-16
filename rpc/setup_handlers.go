@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -44,6 +45,12 @@ func envSetting(key, value string) string {
 
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 	if s.setupConfigured() {
+		if !s.auth.PinIsSet() {
+			// Setup was completed with PIN protection skipped. The node remains
+			// server-configured and unlocked; avoid a setup/login redirect loop.
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
 		// Configuration is intentionally managed from the authenticated Admin
 		// dashboard after the first setup. Do not leave a second, unauthenticated
 		// configuration surface available.
@@ -76,14 +83,31 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	configured := s.setupConfigured()
 	jsonOK(w, map[string]interface{}{
-		"configured": configured,
-		"height":     s.chain.Height(),
-		"pinSet":     s.auth.PinIsSet(),
+		"configured":   configured,
+		"height":       s.chain.Height(),
+		"pinSet":       s.auth.PinIsSet(),
+		"serverStored": configured,
+		"walletConfigured": strings.TrimSpace(os.Getenv("GYDS_WALLET_ADDRESS")) != "" ||
+			strings.TrimSpace(os.Getenv("GYDS_WALLET_PRIVATE_KEY")) != "",
 	})
 }
 
+func setupMarkerPath(dataDir string) string {
+	if strings.TrimSpace(dataDir) == "" {
+		return ""
+	}
+	return filepath.Join(dataDir, "admin", "setup.complete")
+}
+
 func (s *Server) setupConfigured() bool {
-	_, err := os.Stat(".env")
+	if _, err := os.Stat(".env"); err == nil {
+		return true
+	}
+	marker := setupMarkerPath(s.dataDir)
+	if marker == "" {
+		return false
+	}
+	_, err := os.Stat(marker)
 	return err == nil
 }
 
@@ -226,6 +250,21 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	if err := os.WriteFile(".env", []byte(content), 0600); err != nil {
 		jsonErr(w, http.StatusInternalServerError, "failed to write .env: "+err.Error())
 		return
+	}
+
+	// Keep setup completion beside the configured data directory as well as the
+	// .env file. This prevents a service started with a different working
+	// directory from showing the setup wizard again on another computer.
+	setupMarker := setupMarkerPath(cfg.DataDir)
+	if setupMarker != "" {
+		if err := os.MkdirAll(filepath.Dir(setupMarker), 0700); err != nil {
+			jsonErr(w, http.StatusInternalServerError, "failed to create setup state directory: "+err.Error())
+			return
+		}
+		if err := os.WriteFile(setupMarker, []byte("configured\n"), 0600); err != nil {
+			jsonErr(w, http.StatusInternalServerError, "failed to persist setup state: "+err.Error())
+			return
+		}
 	}
 
 	// If a dashboard PIN was provided during setup, set it in the directory

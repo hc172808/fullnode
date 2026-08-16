@@ -435,6 +435,13 @@
 
   <!-- ── Entry Screen (no wallet loaded) ── -->
   <div id="entryScreen">
+    <div id="serverConfigNotice" class="alert alert-info hidden" style="margin-bottom:20px;text-align:left">
+      <strong>✓ This node is already configured on the server.</strong>
+      <div style="margin-top:5px">
+        Node setup, PIN, chain data, and server keys are stored on the node.
+        The wallet shown below is a separate browser wallet and is not the node setup.
+      </div>
+    </div>
 
     <!-- ── Coin Story Hero ── -->
     <div class="coin-story-hero">
@@ -928,6 +935,8 @@ window.addEventListener('load', () => {
     if (d.configured) {
       const link = document.getElementById('setupNavLink');
       if (link) link.style.display = 'none';
+      const notice = document.getElementById('serverConfigNotice');
+      if (notice) notice.classList.remove('hidden');
     }
   }).catch(() => {});
 
