@@ -266,6 +266,8 @@ func (s *Server) setupDashboardRoutes() {
 
 	// Connection info download
 	r.HandleFunc("/gyds-connection-info.json", s.handleConnectionInfo).Methods("GET")
+	r.HandleFunc("/gyds-genesis.json", s.handleGenesisInfo).Methods("GET")
+	r.HandleFunc("/genesis.json", s.handleGenesisInfo).Methods("GET")
 	r.HandleFunc("/gyds-network.json", s.handleNetworkMetadata).Methods("GET")
 	r.HandleFunc("/gyd-token.json", s.handleGYDMetadata).Methods("GET")
 
@@ -404,6 +406,27 @@ func (s *Server) handleConnectionInfo(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.Encode(s.buildConnectionInfo())
+}
+
+// handleGenesisInfo serves the deterministic block-0 definition that a
+// Genesis Node operator can share with joining nodes and tooling.
+func (s *Server) handleGenesisInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="gyds-genesis.json"`)
+
+	genesis := core.GenesisBlock(core.GydsGenesis)
+	payload := map[string]interface{}{
+		"format":      "gyds-genesis-v1",
+		"chainId":     core.GydsGenesis.ChainID,
+		"networkName": core.GydsGenesis.NetworkName,
+		"genesisHash": genesis.Hash,
+		"config":      core.GydsGenesis,
+		"block":       genesis,
+	}
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(payload)
 }
 
 // publicBaseURL returns the configured public origin when available. When

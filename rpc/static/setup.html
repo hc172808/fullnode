@@ -647,6 +647,21 @@
 
       <pre class="env-preview" id="envPreview"></pre>
 
+      <div id="genesisExport" class="alert alert-info hidden" style="margin-top:20px">
+        <strong>🌱 Genesis block JSON is ready</strong>
+        <div style="margin-top:6px">
+          Share this deterministic block-0 file with nodes joining this network.
+          It contains the genesis hash, chain configuration, allocations, and full block header.
+        </div>
+        <div class="field-row" style="margin-top:14px">
+          <a class="btn btn-accent2" href="/gyds-genesis.json" download="gyds-genesis.json" style="flex:1;justify-content:center">⬇ Download genesis.json</a>
+          <button class="btn btn-outline" onclick="copyGenesisURL()" style="flex:1;justify-content:center">⧉ Copy JSON URL</button>
+        </div>
+        <div class="field-hint" style="margin-top:8px">
+          URL: <code id="genesisURL"></code>
+        </div>
+      </div>
+
       <div class="field-row mt-4" style="margin-top:20px">
         <button class="btn btn-outline btn-sm" onclick="downloadEnv()" style="flex:1;justify-content:center">⬇ Download .env</button>
         <button class="btn btn-accent2" onclick="saveToServer()" id="saveBtn" style="flex:2;justify-content:center">
@@ -1021,6 +1036,13 @@ function buildReview() {
   }).join('\n');
   document.getElementById('envPreview').innerHTML = envHtml;
 
+  const genesisExport = document.getElementById('genesisExport');
+  if (genesisExport) {
+    const genesisURL = new URL('/gyds-genesis.json', window.location.href).href;
+    genesisExport.classList.toggle('hidden', cfg.nodeMode !== 'genesis');
+    document.getElementById('genesisURL').textContent = genesisURL;
+  }
+
   // Next steps checklist
   const nl = document.getElementById('nextStepsList');
   nl.innerHTML = `
@@ -1113,6 +1135,16 @@ function downloadEnv() {
   a.click();
   URL.revokeObjectURL(url);
   showToast('.env downloaded');
+}
+
+async function copyGenesisURL() {
+  const url = new URL('/gyds-genesis.json', window.location.href).href;
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Genesis JSON URL copied');
+  } catch {
+    showToast('Copy failed — select the URL above');
+  }
 }
 
 async function saveToServer() {
