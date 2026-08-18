@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # The image creates this account and the node process must never run as
+    # root. The host-side installer creates the matching service account too.
+    user: "gyds:gyds"
     # The host data directory is represented by this named volume in Docker.
     # Override any host-specific GYDS_DATA_DIR from .env so state and the
     # dashboard PIN remain under the mounted /app/data path.

@@ -451,13 +451,15 @@ if $USE_DOCKER; then
 fi
 
 # ── System user ───────────────────────────────────────────────────────────────
+if ! getent group "$APP_USER" >/dev/null 2>&1; then
+  groupadd --system "$APP_USER"
+fi
 if ! id "$APP_USER" &>/dev/null; then
-  useradd --system --no-create-home --shell /usr/sbin/nologin "$APP_USER" \
+  useradd --system --no-create-home --shell /usr/sbin/nologin \
+    --gid "$APP_USER" "$APP_USER" \
     || adduser --system --no-create-home --shell /usr/sbin/nologin "$APP_USER"
 fi
-if $USE_DOCKER && command -v docker &>/dev/null; then
-  usermod -aG docker "$APP_USER"
-fi
+usermod --gid "$APP_USER" "$APP_USER" 2>/dev/null || true
 
 # ── Firewall ──────────────────────────────────────────────────────────────────
 log "Configuring firewall..."
@@ -1104,6 +1106,7 @@ else
 fi
 echo ""
 echo "  Data dir   : ${GYDS_DATADIR}"
+echo "  Node user  : ${APP_USER} (non-root runtime account)"
 echo "  Dashboard  : HTTP port ${GYDS_DASHBOARD_PORT}"
 echo "  LevelDB    : ${GYDS_DATADIR}/state.db/   (chain blocks + account state)"
 echo "  Keystore   : ${GYDS_DATADIR}/keystore/"

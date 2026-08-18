@@ -257,6 +257,7 @@ log "P2P port       : $GYDS_P2P_PORT"
 log "P2P advertise  : ${GYDS_P2P_ADVERTISE_HOST:-<not configured>}"
 log "Bootstrap      : ${GYDS_BOOTSTRAP_NODES:-<none>}"
 log "Data directory : $GYDS_DATA_DIR"
+log "Node user      : $APP_USER (non-root runtime account)"
 log "Storage limit  : ${GYDS_STORAGE_LIMIT_GB} GB"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
@@ -456,11 +457,16 @@ if ! $SKIP_SERVICE; then
     warn "Not running as root — skipping system user creation."
     SKIP_SERVICE=true
   else
+    if ! getent group "$APP_GROUP" >/dev/null 2>&1; then
+      groupadd --system "$APP_GROUP"
+      log "Created system group: ${APP_GROUP}"
+    fi
     if ! id "$APP_USER" &>/dev/null; then
       useradd --system --no-create-home --shell /usr/sbin/nologin \
-              --comment "GYDS Chain Fullnode" "$APP_USER"
+              --gid "$APP_GROUP" --comment "GYDS Chain Fullnode" "$APP_USER"
       log "Created system user: ${APP_USER}"
     else
+      usermod --gid "$APP_GROUP" "$APP_USER" 2>/dev/null || true
       log "System user already exists: ${APP_USER}"
     fi
   fi
