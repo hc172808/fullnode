@@ -223,12 +223,39 @@ case "$GYDS_NODE_MODE" in
   *) die "GYDS_NODE_MODE='${GYDS_NODE_MODE}' is not a recognised node mode." ;;
 esac
 
+# A production peer must advertise an address other nodes can actually dial.
+# Bind addresses such as 0.0.0.0 and loopback are valid listeners but invalid
+# bootstrap/enode endpoints, so fail before installing a service that cannot
+# join the network correctly.
+case "$GYDS_NODE_MODE" in
+  full|lite|boost|genesis|sync|validator)
+    if [[ -z "${GYDS_P2P_ADVERTISE_HOST:-}" ]]; then
+      die "GYDS_P2P_ADVERTISE_HOST is required for ${GYDS_NODE_MODE} mode. Set it to this server's public IP or DNS name."
+    fi
+    case "${GYDS_P2P_ADVERTISE_HOST}" in
+      0.0.0.0|127.0.0.1|localhost|::|\\:\\:1)
+        die "GYDS_P2P_ADVERTISE_HOST must be a public IP or DNS name, not ${GYDS_P2P_ADVERTISE_HOST}."
+        ;;
+    esac
+    ;;
+esac
+
+if [[ "$GYDS_NODE_MODE" == "sync" && -z "${GYDS_BOOTSTRAP_NODES:-}" ]]; then
+  die "GYDS_BOOTSTRAP_NODES is required for sync mode. Use the genesis node's public host:${GYDS_P2P_PORT}."
+fi
+
+if [[ -n "${GYDS_EXTERNAL_URL:-}" && "${GYDS_EXTERNAL_URL}" != https://* ]]; then
+  warn "GYDS_EXTERNAL_URL is not HTTPS. Wallet metadata and icon URLs may be rejected by external wallets."
+fi
+
 log "Chain ID       : $GYDS_CHAIN_ID"
 log "Node mode      : $GYDS_NODE_MODE"
 log "Dashboard port : $GYDS_DASHBOARD_PORT"
 log "RPC port       : $GYDS_RPC_PORT"
 log "WebSocket port : $GYDS_WS_PORT"
 log "P2P port       : $GYDS_P2P_PORT"
+log "P2P advertise  : ${GYDS_P2P_ADVERTISE_HOST:-<not configured>}"
+log "Bootstrap      : ${GYDS_BOOTSTRAP_NODES:-<none>}"
 log "Data directory : $GYDS_DATA_DIR"
 log "Storage limit  : ${GYDS_STORAGE_LIMIT_GB} GB"
 

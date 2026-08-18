@@ -189,6 +189,7 @@ type Server struct {
 	mu            sync.RWMutex
 	peers         map[string]*Peer
 	port          int
+	maxPeers      int
 	chainID       int64
 	nodeMode      string
 	advertiseHost string
@@ -207,12 +208,21 @@ func NewServer(port int, chainID int64, height func() uint64) *Server {
 	return &Server{
 		peers:        make(map[string]*Peer),
 		port:         port,
+		maxPeers:     25,
 		chainID:      chainID,
 		nodeMode:     "full",
 		height:       height,
 		quit:         make(chan struct{}),
 		allowedNodes: make(map[string]struct{}),
 	}
+}
+
+// SetMaxPeers limits the number of inbound and outbound peer connections.
+// A value <= 0 disables the limit. Call this before Start().
+func (s *Server) SetMaxPeers(max int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxPeers = max
 }
 
 // SetNodeMode records the local node mode for peer handshakes.
@@ -317,9 +327,25 @@ func (s *Server) acceptLoop(ln net.Listener) {
 
 // onNewConn handles both inbound (outbound=false) and outbound (outbound=true) connections.
 func (s *Server) onNewConn(conn net.Conn, outbound bool) {
-	peer := NewPeer(conn, s.handleMessage)
 	addr := conn.RemoteAddr().String()
 
+	s.mu.Lock()
+	if _, ok := s.peers[addr]; ok {
+		s.mu.Unlock()
+		log.Warn().Str("peer", addr).Msg("rejecting duplicate peer connection")
+		conn.Close()
+		return
+	}
+	if s.maxPeers > 0 && len(s.peers) >= s.maxPeers {
+		maxPeers := s.maxPeers
+		s.mu.Unlock()
+		log.Warn().Str("peer", addr).Int("maxPeers", maxPeers).Msg("rejecting peer connection — max peers reached")
+		conn.Close()
+		return
+	}
+	s.mu.Unlock()
+
+	peer := NewPeer(conn, s.handleMessage)
 	s.mu.RLock()
 	nk := s.nodeKey
 	requireAuth := s.peerAuth
@@ -591,10 +617,23 @@ func (s *Server) P2PPort() int {
 func (s *Server) Enode() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.nodeKey == nil || s.advertiseHost == "" {
+	if s.nodeKey == nil || !validAdvertiseHost(s.advertiseHost) {
 		return ""
 	}
 	return fmt.Sprintf("enode://%s@%s", s.nodeKey.ID(), net.JoinHostPort(s.advertiseHost, fmt.Sprintf("%d", s.port)))
+}
+
+// validAdvertiseHost rejects bind-only and local addresses. Those values are
+// useful for listeners but cannot be reached by another node.
+func validAdvertiseHost(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "" || strings.EqualFold(host, "localhost") {
+		return false
+	}
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+		return !ip.IsLoopback() && !ip.IsUnspecified()
+	}
+	return !strings.ContainsAny(host, "/ \t\r\n")
 }
 
 // Peers returns the current status of all connected peers.

@@ -188,6 +188,7 @@ func runFullNode(cfg *config.Config) error {
 	})
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
@@ -197,11 +198,7 @@ func runFullNode(cfg *config.Config) error {
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P server failed to start (continuing without P2P)")
 	}
-	for _, addr := range cfg.P2PBootstrap {
-		if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
-			log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
-		}
-	}
+	startBootstrapDialers(p2pSrv, cfg.P2PBootstrap)
 
 	engine.Start()
 	log.Info().Dur("blockTime", cfg.BlockTime).Msg("PoS engine started")
@@ -228,6 +225,7 @@ func runLiteNode(cfg *config.Config) error {
 	// Connect to bootstrap peers for header sync only.
 	if len(cfg.P2PBootstrap) > 0 {
 		p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+		p2pSrv.SetMaxPeers(cfg.MaxPeers)
 		p2pSrv.SetNodeMode(cfg.NodeMode)
 		p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 		wireAuth(p2pSrv, cfg)
@@ -235,11 +233,7 @@ func runLiteNode(cfg *config.Config) error {
 		if err := p2pSrv.Start(); err != nil {
 			log.Warn().Err(err).Msg("P2P start failed")
 		}
-		for _, addr := range cfg.P2PBootstrap {
-			if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
-				log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
-			}
-		}
+		startBootstrapDialers(p2pSrv, cfg.P2PBootstrap)
 		log.Info().Strs("peers", cfg.P2PBootstrap).Msg("Lite node connected to bootstrap peers for header sync")
 	} else {
 		log.Warn().Msg("No bootstrap peers configured — lite node running in isolated mode")
@@ -305,6 +299,7 @@ func runBoostNode(cfg *config.Config) error {
 
 	// Boost: connect to ALL configured peers simultaneously.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
@@ -313,19 +308,13 @@ func runBoostNode(cfg *config.Config) error {
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P start failed")
 	}
-	connected := 0
-	for _, addr := range cfg.P2PBootstrap {
-		if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
-			log.Warn().Err(err).Str("addr", addr).Msg("Bootstrap connection failed")
-		} else {
-			connected++
-		}
-	}
 	boostPeers := cfg.MaxPeers
 	if boostPeers < 50 {
 		boostPeers = 50
 	}
-	log.Info().Int("connected", connected).Int("maxPeers", boostPeers).Msg("Boost P2P started")
+	p2pSrv.SetMaxPeers(boostPeers)
+	startBootstrapDialers(p2pSrv, cfg.P2PBootstrap)
+	log.Info().Int("maxPeers", boostPeers).Msg("Boost P2P started")
 
 	engine.Start()
 	log.Info().Dur("blockTime", cfg.BlockTime).Msg("Boost PoS engine started")
@@ -369,6 +358,7 @@ func runGenesisNode(cfg *config.Config) error {
 
 	// Genesis node listens for incoming peer connections and serves blocks to them.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
@@ -423,6 +413,7 @@ func runSyncNode(cfg *config.Config) error {
 
 	// ── Phase 1: Connect to peers ──────────────────────────────────────────────
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	// Also serve blocks so peers that connect to us can sync from us.
@@ -590,6 +581,22 @@ func connectBootstrapWithRetry(srv *p2p.Server, addr string) error {
 	return lastErr
 }
 
+// startBootstrapDialers starts outbound dialing only after the P2P listener
+// has been started. This keeps the dashboard and RPC available while a
+// bootstrap host is slow or temporarily offline.
+func startBootstrapDialers(srv *p2p.Server, addrs []string) {
+	if len(addrs) == 0 {
+		return
+	}
+	go func() {
+		for _, addr := range addrs {
+			if err := connectBootstrapWithRetry(srv, addr); err != nil {
+				log.Warn().Err(err).Str("addr", addr).Msg("Bootstrap connection unavailable; peer can retry from the operator")
+			}
+		}
+	}()
+}
+
 // ── Validator Node ────────────────────────────────────────────────────────────
 // Explicit PoS validator node. Identical to a full node in architecture but
 // clearly identified as a block-producing validator. The optional
@@ -630,6 +637,7 @@ func runValidatorNode(cfg *config.Config) error {
 	})
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
@@ -639,11 +647,7 @@ func runValidatorNode(cfg *config.Config) error {
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P server failed to start (continuing without P2P)")
 	}
-	for _, addr := range cfg.P2PBootstrap {
-		if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
-			log.Warn().Err(err).Str("addr", addr).Msg("Failed to connect to bootstrap peer")
-		}
-	}
+	startBootstrapDialers(p2pSrv, cfg.P2PBootstrap)
 
 	engine.Start()
 	log.Info().
