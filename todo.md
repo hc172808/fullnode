@@ -409,6 +409,61 @@ Validation completed on **2026-08-09**:
 - [ ] After those decisions, add Admin controls, wallet import metadata, tests,
   and migration documentation together. Do not fabricate a contract address
   before the contract is deployed on the target chain.
+
+## Plan 10 — Genesis-only treasury authority
+
+### Product decision
+
+- [x] Only the configured `genesis` node may propose GYD supply operations.
+- [x] Other nodes must never expose a local mint/burn control and must only
+  accept an operation after validating and replicating it from the chain.
+- [x] Treat the issuer as a treasury authority, not as an ordinary wallet
+  balance. The treasury must have a documented starting allocation, authority
+  key, and audit history.
+
+### Recommended treasury model
+
+- [ ] Create a dedicated treasury address separate from the genesis node's
+  operator wallet and validator reward wallet.
+- [ ] Keep the treasury signing key offline or behind a protected signing
+  process. Do not place the private key in every node's `.env`, browser
+  storage, or wallet UI.
+- [ ] Prefer a multisignature or threshold approval process for production
+  mint/burn requests. If the first release uses one genesis authority, make
+  that a documented transitional policy with a key-rotation path.
+- [ ] Define whether treasury funds are spendable GYD reserves, an issuer
+  balance, or unissued supply. Never silently mix treasury funds with total
+  supply accounting.
+
+### Genesis-only issuance rules
+
+- [ ] Add a signed, consensus-visible `Mint`/`Burn` transaction type with the
+  genesis treasury authority and chain ID bound into the signed payload.
+- [ ] Reject mint/burn transactions received from every non-genesis node,
+  including forged transactions using the genesis node's network address.
+  Authorization must be cryptographic, not based only on node mode or IP.
+- [ ] Enforce nonce, replay protection, maximum amount, and optional daily or
+  epoch issuance limits.
+- [ ] Require every node to validate the authority signature, current supply,
+  destination address, amount, and operation sequence before applying state.
+- [ ] Broadcast confirmed issuance operations so joining nodes replay the same
+  state transitions and reach the same total supply.
+- [ ] Expose the treasury address, total supply, issued supply, and operation
+  history as read-only public data. Never expose the private key.
+- [ ] Show mint/burn status and transaction hashes in the authenticated Admin
+  dashboard only on the genesis node.
+
+### Acceptance tests
+
+- [ ] A mint request from the genesis authority is accepted, included in a
+  block, and produces the same balances and total supply on every node.
+- [ ] A request from a full, sync, validator, lite, or RPC node is rejected
+  even when it targets the GYD contract address.
+- [ ] A forged or replayed genesis issuance request is rejected.
+- [ ] Restarting the genesis node preserves the treasury nonce, supply, and
+  audit history.
+- [ ] A new node can synchronize all historical issuance operations without
+  receiving any private key.
 - [x] Keep GYD defined as a stablecoin with 18 decimals and a
   **10,000,000,000 GYD** genesis supply.
 - [x] Split the 1B GYDS genesis allocation across the three genesis validator
