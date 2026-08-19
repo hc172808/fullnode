@@ -358,6 +358,41 @@ Validation completed on **2026-08-09**:
 ## Completed in the codebase
 
 - [x] Set the native GYDS genesis supply to exactly **1,000,000,000 GYDS**.
+
+## Plan 9 — Wallet persistence, branding, and the two-coin model
+
+### Confirmed behavior
+
+- [x] Setup is server-side. Opening the dashboard from another device does not
+  restart the setup wizard; the device may still need the Admin PIN/login.
+- [x] Keep node configuration and wallet state under the persistent
+  `GYDS_DATA_DIR`; operators must persist that directory across restarts and
+  container replacement.
+- [x] Publish stable network metadata and a stable `/logo.png` URL for wallets
+  that support custom network icons.
+- [x] Document that native GYDS has no contract address, just as ETH has no
+  ERC-20 contract address on Ethereum.
+- [x] Document that GYD currently has no contract address and is not yet
+  wallet-importable as a standard ERC-20 token.
+- [x] Document the current genesis supplies: 1,000,000,000 GYDS and
+  10,000,000,000 GYD.
+- [ ] Verify `/gyds-network.json`, `/gyd-token.json`, and `/logo.png` from the
+  public HTTPS RPC origin in each target wallet. Metadata availability does
+  not guarantee that a wallet will display the icon.
+
+### Supply and wallet-token decisions required before implementation
+
+- [ ] Decide whether supply changes are allowed only before a new genesis is
+  created, or whether the live network needs an authenticated mint/burn policy.
+  Never make live supply changes an unaudited dashboard field.
+- [ ] Decide whether GYD should become a standard ERC-20 contract with a
+  permanent contract address, or remain a node-managed GYDS-20 token.
+- [ ] If GYD becomes an ERC-20 token, define the mint authority, pause/freeze
+  policy, maximum supply policy, deployment block, metadata URI, and migration
+  path for existing GYD balances before deploying it.
+- [ ] After those decisions, add Admin controls, wallet import metadata, tests,
+  and migration documentation together. Do not fabricate a contract address
+  before the contract is deployed on the target chain.
 - [x] Keep GYD defined as a stablecoin with 18 decimals and a
   **10,000,000,000 GYD** genesis supply.
 - [x] Split the 1B GYDS genesis allocation across the three genesis validator
