@@ -382,11 +382,27 @@ Validation completed on **2026-08-09**:
 
 ### Supply and wallet-token decisions required before implementation
 
-- [ ] Decide whether supply changes are allowed only before a new genesis is
-  created, or whether the live network needs an authenticated mint/burn policy.
-  Never make live supply changes an unaudited dashboard field.
-- [ ] Decide whether GYD should become a standard ERC-20 contract with a
-  permanent contract address, or remain a node-managed GYDS-20 token.
+- [x] Product decision: allow authenticated Admin mint/burn on the live
+  network, subject to consensus-safe authorization and an auditable supply
+  policy. Never make live supply changes an unaudited dashboard field.
+- [x] Product decision: GYD should become a standard ERC-20 contract with a
+  permanent contract address.
+- [ ] Replace the current simplified transaction path with consensus-backed
+  signed transaction decoding and execution. `eth_sendRawTransaction` currently
+  indexes a placeholder transaction instead of executing it.
+- [ ] Implement a production EVM-compatible contract state path. The current
+  custom VM does not yet provide Ethereum-compatible selectors, calldata
+  semantics, contract deployment, storage commitment, or consensus replication
+  sufficient for a real ERC-20.
+- [ ] Implement and test ERC-20 `name`, `symbol`, `decimals`, `totalSupply`,
+  `balanceOf`, `transfer`, `approve`, `allowance`, `transferFrom`, `mint`, and
+  `burn` behavior with standard ABI encoding and event logs.
+- [ ] Make Admin mint/burn submit a signed/consensus transaction or governance
+  action replicated by every node. Do not mutate a local JSON file or local
+  account map as a substitute for chain state.
+- [ ] Deploy the GYD contract once on the target chain and record its resulting
+  permanent address. Until deployment and verification pass, `/gyd-token.json`
+  must continue to omit `contractAddress` and report `walletImportable: false`.
 - [ ] If GYD becomes an ERC-20 token, define the mint authority, pause/freeze
   policy, maximum supply policy, deployment block, metadata URI, and migration
   path for existing GYD balances before deploying it.
