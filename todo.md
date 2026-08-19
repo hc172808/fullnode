@@ -18,6 +18,8 @@ the deployment failure shown in the uploaded screenshot.
   persistence behavior.
 - [x] Use `https://explorer.netlifegy.com` as the canonical explorer URL for
   every node and wallet network configuration.
+- [x] Use `https://rpc.netlifegy.com` as the canonical public RPC endpoint for
+  RPC-node setup and wallet network configuration.
 
 ## Plan 8 — Reset, Git updates, persistent peers, and wallet onboarding
 

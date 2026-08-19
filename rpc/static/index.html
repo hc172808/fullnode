@@ -853,7 +853,7 @@ const CHAIN_ID   = 198282;
 const SYMBOL     = 'GYDS';
 const GAS_LIMIT  = 21000;
 const GAS_PRICE  = ethers.utils.parseUnits('1', 'gwei');
-const RPC_URL    = window.location.origin + '/rpc';
+  const RPC_URL    = 'https://rpc.netlifegy.com';
 const PUBLIC_BASE_URL = window.location.origin;
 
 // ── State ───────────────────────────────────────────────────────────────────
@@ -926,7 +926,7 @@ window.addEventListener('load', () => {
   });
 
   // Populate manual network config fields in the Connect pane.
-  const rpcUrl = window.location.origin + '/rpc';
+  const rpcUrl = 'https://rpc.netlifegy.com';
   const explorerUrl = 'https://explorer.netlifegy.com';
   const rpcEl = document.getElementById('netConfigRpc');
   const expEl = document.getElementById('netConfigExplorer');
@@ -1450,7 +1450,7 @@ const GYDS_CHAIN_PARAMS = {
   chainId:           '0x3068a', // 198282
   chainName:         'GYDS Chain',
   nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
-  rpcUrls:           [PUBLIC_BASE_URL + '/rpc'],
+  rpcUrls:           ['https://rpc.netlifegy.com'],
   blockExplorerUrls: ['https://explorer.netlifegy.com'],
   iconUrls:          [PUBLIC_BASE_URL + '/logo.png'],
 };
@@ -1890,7 +1890,7 @@ async function quickAddChain(label, btn) {
     chainId:           '0x3068a',
     chainName:         'GYDS Chain',
     nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
-    rpcUrls:           [PUBLIC_BASE_URL + '/rpc'],
+    rpcUrls:           ['https://rpc.netlifegy.com'],
     blockExplorerUrls: ['https://explorer.netlifegy.com'],
     iconUrls:          [PUBLIC_BASE_URL + '/logo.png'],
   };

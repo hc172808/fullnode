@@ -27,7 +27,10 @@ import (
 	"github.com/gydschain/fullnode/p2p"
 )
 
-const canonicalExplorerURL = "https://explorer.netlifegy.com"
+const (
+	canonicalExplorerURL = "https://explorer.netlifegy.com"
+	canonicalRPCURL      = "https://rpc.netlifegy.com"
+)
 
 // P2PConnector is the minimal interface the RPC server needs from the P2P layer.
 type P2PConnector interface {
@@ -471,8 +474,8 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 			"symbol":   "GYDS",
 			"decimals": 18,
 		},
-		"rpcUrls":           []string{base + "/rpc"},
-		"wsUrls":            []string{websocketURL(base) + "/api/ws"},
+		"rpcUrls":           []string{canonicalRPCURL},
+		"wsUrls":            []string{websocketURL(canonicalRPCURL) + "/api/ws"},
 		"explorerUrls":      []string{canonicalExplorerURL},
 		"iconUrls":          []string{base + "/logo.png"},
 		"connectionInfoUrl": base + "/gyds-connection-info.json",
@@ -514,8 +517,8 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 	}
 
 	extBase := strings.TrimRight(s.externalURL, "/")
-	rpcURL := fmt.Sprintf("http://0.0.0.0:%d", s.rpcPort)
-	wsURL := fmt.Sprintf("ws://0.0.0.0:%d/api/ws", s.rpcPort)
+	rpcURL := canonicalRPCURL
+	wsURL := websocketURL(canonicalRPCURL) + "/api/ws"
 	dashURL := fmt.Sprintf("http://0.0.0.0:%d", s.dashPort)
 	p2pPort := 30303
 	enode := ""
@@ -527,9 +530,8 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 	}
 	if extBase != "" {
 		// Public deployments normally terminate TLS at Nginx. Use the
-		// reverse-proxy paths instead of exposing the internal listener ports.
-		rpcURL = extBase + "/rpc"
-		wsURL = websocketURL(extBase) + "/api/ws"
+		// reverse-proxy paths for dashboard and metadata assets. RPC is the
+		// shared canonical RPC node so wallets use one stable endpoint.
 		dashURL = extBase
 	}
 
