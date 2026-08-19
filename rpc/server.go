@@ -1237,6 +1237,10 @@ func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
 			} else {
 				res.Status = "connected"
 				connected++
+				if err := persistBootstrapNode(addr); err != nil {
+					res.Status = "connected-not-persisted"
+					res.Error = err.Error()
+				}
 			}
 		} else {
 			res.Status = "queued"
