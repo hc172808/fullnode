@@ -163,6 +163,9 @@ func persistBootstrapNode(addr string) error {
 	}
 
 	peers := append(append([]string(nil), cfg.P2PBootstrap...), addr)
+	if err := config.SaveBootstrapNodes(cfg.DataDir, peers); err != nil {
+		return err
+	}
 	return updateEnvFile(map[string]string{
 		"GYDS_BOOTSTRAP_NODES": strings.Join(peers, ","),
 	})
@@ -210,6 +213,10 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 	}
 	if err := updateEnvFile(updates); err != nil {
 		jsonErr(w, http.StatusInternalServerError, "could not save node configuration: "+err.Error())
+		return
+	}
+	if err := config.SaveBootstrapNodes(c.DataDir, strings.Split(c.BootstrapNodes, ",")); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not persist bootstrap peers: "+err.Error())
 		return
 	}
 
@@ -268,12 +275,14 @@ func (s *Server) handleAdminNodeConnect(w http.ResponseWriter, r *http.Request) 
 		jsonErr(w, http.StatusBadRequest, "peer address is required (host:port)")
 		return
 	}
-	if err := s.p2p.ConnectTo(action.Address); err != nil {
-		jsonErr(w, http.StatusBadGateway, err.Error())
+	// Save first. A peer may be restarting or temporarily offline; it must
+	// still be retried automatically after this node restarts.
+	if err := persistBootstrapNode(action.Address); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not persist peer: "+err.Error())
 		return
 	}
-	if err := persistBootstrapNode(action.Address); err != nil {
-		jsonErr(w, http.StatusInternalServerError, "connected, but could not persist peer: "+err.Error())
+	if err := s.p2p.ConnectTo(action.Address); err != nil {
+		jsonErr(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	jsonOK(w, map[string]interface{}{"ok": true, "message": "Connection attempt started", "peers": s.p2p.Peers()})
@@ -288,12 +297,12 @@ func (s *Server) handleAdminNodeSync(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&action)
 	if strings.TrimSpace(action.Address) != "" {
 		action.Address = p2p.NormalizeAddr(action.Address)
-		if err := s.p2p.ConnectTo(action.Address); err != nil {
-			jsonErr(w, http.StatusBadGateway, err.Error())
+		if err := persistBootstrapNode(action.Address); err != nil {
+			jsonErr(w, http.StatusInternalServerError, "could not persist peer: "+err.Error())
 			return
 		}
-		if err := persistBootstrapNode(action.Address); err != nil {
-			jsonErr(w, http.StatusInternalServerError, "connected, but could not persist peer: "+err.Error())
+		if err := s.p2p.ConnectTo(action.Address); err != nil {
+			jsonErr(w, http.StatusBadGateway, err.Error())
 			return
 		}
 	}

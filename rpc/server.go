@@ -1230,6 +1230,14 @@ func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// Persist before dialing. The remote node may be temporarily offline,
+		// but this peer must still be retried on the next startup.
+		if err := persistBootstrapNode(addr); err != nil {
+			res.Status = "not-persisted"
+			res.Error = err.Error()
+			results = append(results, res)
+			continue
+		}
 		if s.p2p != nil {
 			if err := s.p2p.ConnectTo(addr); err != nil {
 				res.Status = "failed"
@@ -1237,10 +1245,6 @@ func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
 			} else {
 				res.Status = "connected"
 				connected++
-				if err := persistBootstrapNode(addr); err != nil {
-					res.Status = "connected-not-persisted"
-					res.Error = err.Error()
-				}
 			}
 		} else {
 			res.Status = "queued"

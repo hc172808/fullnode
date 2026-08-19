@@ -133,6 +133,19 @@ func FromEnv() *Config {
 			}
 		}
 	}
+	// The admin panel also maintains a durable runtime copy. Merge it with
+	// environment configuration so a restart or Git update cannot lose peers.
+	cfg.P2PBootstrap = append(cfg.P2PBootstrap, LoadBootstrapNodes(cfg.DataDir)...)
+	seenPeers := make(map[string]bool, len(cfg.P2PBootstrap))
+	uniquePeers := cfg.P2PBootstrap[:0]
+	for _, peer := range cfg.P2PBootstrap {
+		peer = strings.TrimSpace(peer)
+		if peer != "" && !seenPeers[peer] {
+			seenPeers[peer] = true
+			uniquePeers = append(uniquePeers, peer)
+		}
+	}
+	cfg.P2PBootstrap = uniquePeers
 	if v := os.Getenv("GYDS_BLOCK_TIME"); v != "" {
 		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
 			cfg.BlockTime = time.Duration(secs) * time.Second

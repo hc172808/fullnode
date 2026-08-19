@@ -3,6 +3,20 @@
 This checklist records the work still needed for production wallet support and
 the deployment failure shown in the uploaded screenshot.
 
+## Current requested work
+
+- [x] Keep exactly two operational scripts: one safe reset script and one Git
+  update script that pulls updates, rebuilds, restarts, and rolls back safely.
+- [x] Persist every Admin Node configuration and peer connection in the node
+  data directory so settings and sync peers survive restarts and updates.
+- [x] Retry saved peers after startup even when a peer is temporarily offline.
+- [x] Keep dashboard, JSON-RPC, and P2P listeners on distinct ports in the
+  development workflow and deployment configuration.
+- [x] Make wallet network onboarding use the correct dedicated RPC endpoint and
+  stable logo metadata; document native GYDS versus a contract token.
+- [x] Build and restart the node, then verify health, dashboard, RPC, and
+  persistence behavior.
+
 ## Plan 8 — Reset, Git updates, persistent peers, and wallet onboarding
 
 ### Deployment scripts
