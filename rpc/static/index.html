@@ -509,7 +509,8 @@
     <!-- One-click Add GYDS Chain to External Wallet -->
     <div class="add-wallet-card">
       <h3>🔗 Add GYDS Chain to Your Wallet</h3>
-      <p>One click adds GYDS Chain (ID 198282) to MetaMask, Trust Wallet, or any EVM-compatible browser wallet.</p>
+      <p>This adds the native <strong>GYDS</strong> network currency (chain ID 198282) to an EVM wallet. It does not import the separate GYD token.</p>
+      <p style="font-size:12px">Use this page from a public HTTPS node address. If a wallet rejects the one-click request, use the <a href="/gyds-network.json" target="_blank" rel="noopener">manual network metadata</a>.</p>
       <div id="entryConnectAlert" style="display:none;margin-bottom:10px"></div>
       <div class="add-wallet-row">
         <button class="wallet-pill" onclick="quickAddChain('MetaMask', this)">🦊 MetaMask</button>
@@ -518,6 +519,10 @@
         <button class="wallet-pill" onclick="quickAddChain('Coinbase Wallet', this)">🔵 Coinbase</button>
         <button class="wallet-pill" onclick="quickAddChain('Brave Wallet', this)">🦁 Brave</button>
         <button class="wallet-pill" onclick="quickAddChain('your wallet', this)">⬡ Other EVM</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:12px;color:var(--muted)">
+        <img src="/logo.png" alt="GYDS Chain logo" width="32" height="32" style="border-radius:8px">
+        <span>The logo is published at <code>/logo.png</code>. Wallets may cache or ignore network icons.</span>
       </div>
     </div>
 
@@ -1472,7 +1477,8 @@ async function addChainToWallet(label, btn) {
       alertEl.innerHTML = '⚠️ Request cancelled by user.';
     } else {
       alertEl.className = 'alert alert-danger';
-      alertEl.innerHTML = '❌ ' + (e.message || 'Could not add network.');
+    alertEl.innerHTML = '❌ ' + (e.message || 'Could not add network.') +
+      ' Use the <a href="/gyds-network.json" target="_blank" rel="noopener">manual network metadata</a>.';
     }
     alertEl.style.display = 'block';
   } finally {
@@ -1895,7 +1901,10 @@ async function quickAddChain(label, btn) {
     alertEl.style.display = 'block';
   } catch(e) {
     alertEl.className = e.code === 4001 ? 'alert alert-warn' : 'alert alert-danger';
-    alertEl.innerHTML = e.code === 4001 ? '⚠️ Cancelled by user.' : '❌ ' + (e.message || 'Could not add network.');
+    alertEl.innerHTML = e.code === 4001
+      ? '⚠️ Cancelled by user.'
+      : '❌ ' + (e.message || 'Could not add network.') +
+        ' Use the <a href="/gyds-network.json" target="_blank" rel="noopener">manual network metadata</a>.';
     alertEl.style.display = 'block';
   } finally {
     btn.disabled = false;

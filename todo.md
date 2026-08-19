@@ -3,6 +3,39 @@
 This checklist records the work still needed for production wallet support and
 the deployment failure shown in the uploaded screenshot.
 
+## Plan 8 — Reset, Git updates, persistent peers, and wallet onboarding
+
+### Deployment scripts
+
+- [x] Add a guarded reset script that stops the managed node, removes the
+  server `.env` and configured runtime data, and restarts into the setup wizard.
+- [x] Make reset support native systemd, Docker Compose, and explicit
+  application/data directories without allowing dangerous paths.
+- [x] Require confirmation or `--yes` for destructive resets and print exactly
+  what will be deleted.
+- [x] Make the update script pull the configured Git branch, fast-forward only,
+  rebuild/test, restart, and roll back on failed health checks.
+- [x] Preserve `.env`, chain data, node identity, admin state, keystore, and
+  imported peers during updates.
+- [x] Install and document exactly two operational scripts: reset and update.
+
+### Persistent node connections
+
+- [x] Persist peers added from the Admin Node panel or imported node config into
+  `GYDS_BOOTSTRAP_NODES` so they return after a restart.
+- [x] Validate sync mode before saving so it cannot restart without a bootstrap
+  peer and become unavailable.
+- [x] Show persisted bootstrap peers separately from currently connected peers.
+
+### Wallet onboarding and logos
+
+- [x] Make “add GYDS Chain” use a reachable public HTTPS origin for RPC and
+  logo URLs, with a manual fallback for wallets that reject EIP-3085.
+- [x] Clarify that native GYDS is a network currency while GYD is separate and
+  cannot be imported as an ERC-20 token without a real contract address.
+- [x] Confirm `/logo.png` is stable, publicly reachable, square, and listed in
+  network metadata; document that wallets may ignore or cache icons.
+
 ## Plan 6 — Implement and verify `net_enode`
 
 ### Evidence from the uploaded genesis-node screenshot

@@ -4,7 +4,8 @@ services:
     container_name: gyds-fullnode
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     # The image creates this account and the node process must never run as
     # root. The host-side installer creates the matching service account too.
     user: "gyds:gyds"

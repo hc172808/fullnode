@@ -8,3 +8,4 @@
 - [HTTP upgrade middleware](http-upgrade-middleware.md) — response-writer middleware must preserve optional server interfaces such as Hijacker for WebSocket upgrades
 - [Node mode reporting](node-mode-reporting.md) — runtime, dashboard, peer handshakes, and systemd must all use the selected node role
 - [Non-root runtime deployment](non-root-runtime.md) — native and Docker node processes run as dedicated gyds without Docker-daemon privileges
+- [Persistent peer onboarding](persistent-peer-onboarding.md) — admin-added P2P connections must also update bootstrap configuration or they disappear after restart

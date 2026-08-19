@@ -47,7 +47,7 @@
           <div class="field"><label>P2P port</label><input id="p2pPort" type="number" min="1" max="65535"/></div>
           <div class="field"><label>Maximum peers</label><input id="maxPeers" type="number" min="1" max="10000"/></div>
           <div class="field wide"><label>Advertised P2P host</label><input id="p2pAdvertiseHost" placeholder="public-ip-or-dns (never 0.0.0.0)"/><span class="hint">The listener still binds all interfaces; this is the reachable host shared with peers.</span></div>
-          <div class="field wide"><label>Bootstrap peers</label><textarea id="bootstrapNodes" placeholder="genesis.example.com:30303, 203.0.113.10:30303"></textarea></div>
+           <div class="field wide"><label>Bootstrap peers</label><textarea id="bootstrapNodes" placeholder="genesis.example.com:30303, 203.0.113.10:30303"></textarea><span class="hint">Persisted on the server and retried after restart. The Connected nodes panel shows live connections only.</span></div>
           <div class="field wide"><label>Allowed node IDs</label><textarea id="allowedNodes" placeholder="One or more ed25519 node IDs, comma-separated"></textarea></div>
           <div class="field"><label>Log level</label><select id="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option></select></div>
           <div class="field"><label>Log format</label><select id="logFormat"><option>json</option><option>pretty</option></select></div>

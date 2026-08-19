@@ -864,7 +864,7 @@ Type=simple
 User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}
-EnvironmentFile=${APP_DIR}/.env
+EnvironmentFile=-${APP_DIR}/.env
 Environment=GYDS_DATA_DIR=${GYDS_DATADIR}
 ExecStart=${APP_DIR}/bin/gyds-fullnode start
 Restart=on-failure
@@ -928,6 +928,10 @@ fi
 # Install the Git update helper for both Docker and native deployments.
 install -m 0755 "${APP_DIR}/scripts/update-from-git.sh" /usr/local/bin/gyds-fullnode-update
 log "Update helper installed: /usr/local/bin/gyds-fullnode-update"
+if [ -f "${APP_DIR}/scripts/reset-node.sh" ]; then
+  install -m 0755 "${APP_DIR}/scripts/reset-node.sh" /usr/local/bin/gyds-fullnode-reset
+  log "Reset helper installed: /usr/local/bin/gyds-fullnode-reset"
+fi
 
 # ── Health check script ────────────────────────────────────────────────────────
 log "Installing health check..."
@@ -1152,6 +1156,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  QUICK COMMANDS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Update    : sudo bash ${APP_DIR}/setup-fullnode-server.sh --update"
+echo "  Git update: sudo /usr/local/bin/gyds-fullnode-update"
+echo "  Reset     : sudo /usr/local/bin/gyds-fullnode-reset --yes"
 echo "  Uninstall : sudo bash ${APP_DIR}/setup-fullnode-server.sh --uninstall"
 echo "  Port help : sudo bash ${APP_DIR}/setup-fullnode-server.sh --help"
 echo "  RPC test  : curl -s -X POST http://localhost:${GYDS_RPC_PORT} \\"

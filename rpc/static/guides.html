@@ -195,6 +195,7 @@
             <li>Receive GYDS from a network participant, or receive tokens from an issuer, by sharing the wallet address—not the private key.</li>
             <li>Send GYDS through the wallet or standard Ethereum-compatible RPC once the sender has funds and gas.</li>
           </ul>
+          <div class="alert alert-info">ℹ️ GYDS is the native network currency, so add the network rather than importing a token contract. GYD is currently node-managed and has no ERC-20 contract address, so wallets cannot import it as a token yet.</div>
         </div>
       </div>
 
@@ -326,14 +327,15 @@
       <div class="step-card">
         <div class="step-card-header"><div class="step-num">5</div><div class="step-title">Connect MetaMask or ethers.js</div></div>
         <div class="step-body">
-          <p>Your node exposes a standard Ethereum-compatible JSON-RPC. Add it to MetaMask as a custom network:</p>
+          <p>Your node exposes a standard Ethereum-compatible JSON-RPC. Use the dashboard button or add it manually:</p>
           <ul>
             <li><strong>Network Name:</strong> GYDS Chain</li>
-            <li><strong>RPC URL:</strong> <code>http://&lt;your-server-ip&gt;:8545</code></li>
+            <li><strong>RPC URL:</strong> your public HTTPS node origin followed by <code>/rpc</code></li>
             <li><strong>Chain ID:</strong> 198282</li>
             <li><strong>Currency Symbol:</strong> GYDS</li>
+            <li><strong>Logo:</strong> your public HTTPS node origin followed by <code>/logo.png</code> (optional; some wallets ignore icons)</li>
           </ul>
-          <p>Or download the pre-filled connection config from your dashboard at <code>/gyds-connection-info.json</code>.</p>
+          <p>Download the pre-filled network config from <code>/gyds-network.json</code>. A localhost or private LAN address cannot be used by a wallet on another device.</p>
         </div>
       </div>
 

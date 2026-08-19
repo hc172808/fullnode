@@ -584,6 +584,15 @@ UPDATE_WRAPPER
     chmod 755 /usr/local/bin/gyds-fullnode-update
     log "Git update helper installed: /usr/local/bin/gyds-fullnode-update"
   fi
+  if [[ -f "${SCRIPT_DIR}/scripts/reset-node.sh" ]]; then
+    cat > /usr/local/bin/gyds-fullnode-reset <<RESET_WRAPPER
+#!/usr/bin/env bash
+export GYDS_APP_DIR="${SCRIPT_DIR}"
+exec "${SCRIPT_DIR}/scripts/reset-node.sh" "\$@"
+RESET_WRAPPER
+    chmod 755 /usr/local/bin/gyds-fullnode-reset
+    log "Reset helper installed: /usr/local/bin/gyds-fullnode-reset"
+  fi
 else
   warn "Not running as root — binary remains in: ./bin/${APP_NAME}"
   BINARY_PATH="${SCRIPT_DIR}/bin/${APP_NAME}"
@@ -639,7 +648,7 @@ Type=simple
 User=${APP_USER}
 Group=${APP_GROUP}
 WorkingDirectory=${INSTALL_DIR}
-EnvironmentFile=${INSTALL_DIR}/.env
+EnvironmentFile=-${INSTALL_DIR}/.env
 # Explicit values keep command-line port overrides effective even when an
 # existing installed .env is intentionally preserved.
 Environment=GYDS_DASHBOARD_PORT=${GYDS_DASHBOARD_PORT}
