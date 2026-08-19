@@ -7,3 +7,4 @@
 - [Production boot and updates](production-boot-updates.md) — exactly one node runtime starts at boot; Git updates must build, back up, health-check, and roll back safely
 - [HTTP upgrade middleware](http-upgrade-middleware.md) — response-writer middleware must preserve optional server interfaces such as Hijacker for WebSocket upgrades
 - [Node mode reporting](node-mode-reporting.md) — runtime, dashboard, peer handshakes, and systemd must all use the selected node role
+- [Non-root runtime deployment](non-root-runtime.md) — native and Docker node processes run as dedicated gyds without Docker-daemon privileges
