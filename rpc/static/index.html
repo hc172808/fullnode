@@ -927,7 +927,7 @@ window.addEventListener('load', () => {
 
   // Populate manual network config fields in the Connect pane.
   const rpcUrl = window.location.origin + '/rpc';
-  const explorerUrl = window.location.origin;
+  const explorerUrl = 'https://explorer.netlifegy.com';
   const rpcEl = document.getElementById('netConfigRpc');
   const expEl = document.getElementById('netConfigExplorer');
   if (rpcEl) rpcEl.textContent = rpcUrl;
@@ -1451,7 +1451,7 @@ const GYDS_CHAIN_PARAMS = {
   chainName:         'GYDS Chain',
   nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
   rpcUrls:           [PUBLIC_BASE_URL + '/rpc'],
-  blockExplorerUrls: [window.location.origin],
+  blockExplorerUrls: ['https://explorer.netlifegy.com'],
   iconUrls:          [PUBLIC_BASE_URL + '/logo.png'],
 };
 
@@ -1891,7 +1891,7 @@ async function quickAddChain(label, btn) {
     chainName:         'GYDS Chain',
     nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
     rpcUrls:           [PUBLIC_BASE_URL + '/rpc'],
-    blockExplorerUrls: [window.location.origin],
+    blockExplorerUrls: ['https://explorer.netlifegy.com'],
     iconUrls:          [PUBLIC_BASE_URL + '/logo.png'],
   };
   try {

@@ -27,6 +27,8 @@ import (
 	"github.com/gydschain/fullnode/p2p"
 )
 
+const canonicalExplorerURL = "https://explorer.netlifegy.com"
+
 // P2PConnector is the minimal interface the RPC server needs from the P2P layer.
 type P2PConnector interface {
 	ConnectTo(addr string) error
@@ -471,7 +473,7 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 		},
 		"rpcUrls":           []string{base + "/rpc"},
 		"wsUrls":            []string{websocketURL(base) + "/api/ws"},
-		"explorerUrls":      []string{base},
+		"explorerUrls":      []string{canonicalExplorerURL},
 		"iconUrls":          []string{base + "/logo.png"},
 		"connectionInfoUrl": base + "/gyds-connection-info.json",
 	})
@@ -553,7 +555,7 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 			"chainId":        chainID,
 			"chainIdHex":     fmt.Sprintf("0x%x", chainID),
 			"currencySymbol": "GYDS",
-			"blockExplorer":  dashURL,
+			"blockExplorer":  canonicalExplorerURL,
 		},
 		"metadata": map[string]string{
 			"network": strings.TrimRight(dashURL, "/") + "/gyds-network.json",

@@ -16,6 +16,8 @@ the deployment failure shown in the uploaded screenshot.
   stable logo metadata; document native GYDS versus a contract token.
 - [x] Build and restart the node, then verify health, dashboard, RPC, and
   persistence behavior.
+- [x] Use `https://explorer.netlifegy.com` as the canonical explorer URL for
+  every node and wallet network configuration.
 
 ## Plan 8 — Reset, Git updates, persistent peers, and wallet onboarding
 
