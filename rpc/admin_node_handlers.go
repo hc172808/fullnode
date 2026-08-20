@@ -66,6 +66,49 @@ func (s *Server) handleAdminNodeConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAdminNodeStatus returns the live presence and synchronization view used
+// by the operator panel. Peer heights are exchanged during the P2P handshake,
+// so this deliberately reports connected peers rather than stale configured
+// bootstrap addresses.
+func (s *Server) handleAdminNodeStatus(w http.ResponseWriter, r *http.Request) {
+	localHeight := s.chain.Height()
+	peers := []p2p.PeerStatus{}
+	if s.p2p != nil {
+		peers = s.p2p.Peers()
+	}
+
+	byMode := make(map[string]int)
+	highestPeerHeight := localHeight
+	for _, peer := range peers {
+		mode := strings.ToLower(strings.TrimSpace(peer.NodeMode))
+		if mode == "" {
+			mode = "unknown"
+		}
+		byMode[mode]++
+		if peer.Height > highestPeerHeight {
+			highestPeerHeight = peer.Height
+		}
+	}
+
+	syncStatus := "no-peers"
+	if len(peers) > 0 {
+		syncStatus = "synced"
+		if highestPeerHeight > localHeight {
+			syncStatus = "syncing"
+		}
+	}
+	jsonOK(w, map[string]interface{}{
+		"nodeMode":          s.nodeMode,
+		"localHeight":       localHeight,
+		"highestPeerHeight": highestPeerHeight,
+		"blocksBehind":      highestPeerHeight - localHeight,
+		"syncStatus":        syncStatus,
+		"connected":         len(peers),
+		"nodeTypes":         byMode,
+		"checkedAt":         time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 func validPort(name string, port int) error {
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("%s must be between 1 and 65535", name)

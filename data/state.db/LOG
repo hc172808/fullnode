@@ -57,3 +57,9 @@
 =============== Aug 19, 2026 (UTC) ===============
 05:21:49.492053 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
 05:21:49.493530 CURRENT: missing target file: MANIFEST-000007
+=============== Aug 19, 2026 (UTC) ===============
+23:48:55.104627 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+23:48:55.106117 CURRENT: missing target file: MANIFEST-000007
+=============== Aug 20, 2026 (UTC) ===============
+00:11:17.621172 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+00:11:17.758879 CURRENT: missing target file: MANIFEST-000007

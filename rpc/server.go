@@ -307,6 +307,7 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/node/config/apply", s.requireAdminSession(s.handleAdminNodeConfigApply)).Methods("POST")
 	admin.HandleFunc("/node/connect", s.requireAdminSession(s.handleAdminNodeConnect)).Methods("POST")
 	admin.HandleFunc("/node/sync", s.requireAdminSession(s.handleAdminNodeSync)).Methods("POST")
+	admin.HandleFunc("/node/status", s.requireAdminSession(s.handleAdminNodeStatus)).Methods("GET")
 	admin.HandleFunc("/db", s.handleAdminDBPage).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBTables)).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBCreateTable)).Methods("POST")
