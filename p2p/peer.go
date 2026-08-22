@@ -38,12 +38,13 @@ type Message struct {
 
 // PeerInfo is exchanged during the initial handshake to share chain state.
 type PeerInfo struct {
-	ID       string `json:"id"`
-	ChainID  int64  `json:"chainId"`
-	Height   uint64 `json:"height"`
-	NodeMode string `json:"nodeMode"`
-	Version  string `json:"version"`
-	NodeID   string `json:"nodeId,omitempty"` // ed25519 public key (hex)
+	ID          string `json:"id"`
+	ChainID     int64  `json:"chainId"`
+	GenesisHash string `json:"genesisHash,omitempty"`
+	Height      uint64 `json:"height"`
+	NodeMode    string `json:"nodeMode"`
+	Version     string `json:"version"`
+	NodeID      string `json:"nodeId,omitempty"` // ed25519 public key (hex)
 }
 
 // AuthChallengePayload is sent server→client to start the auth handshake.
@@ -191,6 +192,7 @@ type Server struct {
 	port          int
 	maxPeers      int
 	chainID       int64
+	genesisHash   string
 	nodeMode      string
 	advertiseHost string
 	height        func() uint64
@@ -234,6 +236,15 @@ func (s *Server) SetNodeMode(mode string) {
 		mode = "full"
 	}
 	s.nodeMode = mode
+}
+
+// SetGenesisHash makes the genesis identity part of the handshake. Chain ID
+// alone is not sufficient: two incompatible networks can accidentally reuse
+// the same numeric ID.
+func (s *Server) SetGenesisHash(hash string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.genesisHash = hash
 }
 
 // SetAdvertiseHost configures the public host included in the node's enode.
@@ -350,6 +361,7 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 	nk := s.nodeKey
 	requireAuth := s.peerAuth
 	nodeMode := s.nodeMode
+	genesisHash := s.genesisHash
 	s.mu.RUnlock()
 
 	// Register peer immediately so we can receive their handshake.
@@ -372,11 +384,12 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 		myNodeID = nk.ID()
 	}
 	hs, _ := json.Marshal(PeerInfo{
-		ChainID:  s.chainID,
-		Height:   s.height(),
-		NodeMode: nodeMode,
-		Version:  "1.0.0",
-		NodeID:   myNodeID,
+		ChainID:     s.chainID,
+		GenesisHash: genesisHash,
+		Height:      s.height(),
+		NodeMode:    nodeMode,
+		Version:     "1.0.0",
+		NodeID:      myNodeID,
 	})
 	peer.Send(Message{Type: MsgHandshake, Payload: hs})
 
@@ -424,6 +437,18 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 				Int64("localChainId", s.chainID).
 				Int64("remoteChainId", info.ChainID).
 				Msg("peer rejected — chain ID mismatch")
+			peer.Close()
+			return
+		}
+		s.mu.RLock()
+		localGenesis := s.genesisHash
+		s.mu.RUnlock()
+		if localGenesis != "" && info.GenesisHash != "" && info.GenesisHash != localGenesis {
+			log.Warn().
+				Str("peer", peer.RemoteAddr()).
+				Str("localGenesis", localGenesis).
+				Str("remoteGenesis", info.GenesisHash).
+				Msg("peer rejected — genesis hash mismatch")
 			peer.Close()
 			return
 		}

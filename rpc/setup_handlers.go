@@ -19,6 +19,7 @@ type setupConfig struct {
 	WalletKey        string `json:"walletKey"`
 	ValidatorKey     string `json:"validatorKey"`
 	RPCPort          string `json:"rpcPort"`
+	DashboardPort    string `json:"dashboardPort"`
 	WSPort           string `json:"wsPort"`
 	P2PPort          string `json:"p2pPort"`
 	P2PAdvertiseHost string `json:"p2pAdvertiseHost"`
@@ -158,6 +159,7 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	cfg.NodeMode = def(cfg.NodeMode, "full")
 	cfg.BlockTime = def(cfg.BlockTime, "120")
 	cfg.RPCPort = def(cfg.RPCPort, "8545")
+	cfg.DashboardPort = def(cfg.DashboardPort, "5000")
 	cfg.WSPort = def(cfg.WSPort, "8546")
 	cfg.P2PPort = def(cfg.P2PPort, "30303")
 	cfg.MaxPeers = def(cfg.MaxPeers, "25")
@@ -170,7 +172,11 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	cfg.LogFormat = def(cfg.LogFormat, "json")
 
 	pin := strings.TrimSpace(cfg.DashboardPin)
-	if pin != "" && (len(pin) < pinMinLen || len(pin) > pinMaxLen) {
+	if pin == "" {
+		jsonErr(w, http.StatusBadRequest, "dashboard PIN is required during node setup")
+		return
+	}
+	if len(pin) < pinMinLen || len(pin) > pinMaxLen {
 		jsonErr(w, http.StatusBadRequest,
 			fmt.Sprintf("dashboard PIN must be %d–%d characters", pinMinLen, pinMaxLen))
 		return
@@ -202,6 +208,7 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	}
 	w1("")
 	w1("# ── RPC / API Ports ────────────────────────────────────────────")
+	w1(envSetting("GYDS_DASHBOARD_PORT", cfg.DashboardPort))
 	w1(envSetting("GYDS_RPC_PORT", cfg.RPCPort))
 	w1("GYDS_RPC_HOST=0.0.0.0")
 	w1(envSetting("GYDS_WS_PORT", cfg.WSPort))

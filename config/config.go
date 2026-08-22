@@ -77,6 +77,14 @@ func FromEnv() *Config {
 	if v := os.Getenv("GYDS_NODE_MODE"); v != "" {
 		cfg.NodeMode = v
 	}
+	// The test node is intentionally isolated and uses its own standard ports
+	// unless the operator explicitly overrides them.
+	if strings.EqualFold(cfg.NodeMode, "testnode") {
+		cfg.DashboardPort = 15000
+		cfg.RPCPort = 18545
+		cfg.WSPort = 18546
+		cfg.P2PPort = 31337
+	}
 	if v := os.Getenv("GYDS_NETWORK_NAME"); v != "" {
 		cfg.NetworkName = v
 	}

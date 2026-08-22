@@ -271,6 +271,7 @@ func (s *Server) setupDashboardRoutes() {
 
 	// Connection info download
 	r.HandleFunc("/gyds-connection-info.json", s.handleConnectionInfo).Methods("GET", "HEAD")
+	r.HandleFunc("/api/updates", s.handleUpdates).Methods("GET")
 	r.HandleFunc("/gyds-genesis.json", s.handleGenesisInfo).Methods("GET", "HEAD")
 	r.HandleFunc("/genesis.json", s.handleGenesisInfo).Methods("GET", "HEAD")
 	r.HandleFunc("/gyds-network.json", s.handleNetworkMetadata).Methods("GET", "HEAD")

@@ -188,6 +188,7 @@ func runFullNode(cfg *config.Config) error {
 	})
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -225,6 +226,7 @@ func runLiteNode(cfg *config.Config) error {
 	// Connect to bootstrap peers for header sync only.
 	if len(cfg.P2PBootstrap) > 0 {
 		p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+		p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
 		p2pSrv.SetMaxPeers(cfg.MaxPeers)
 		p2pSrv.SetNodeMode(cfg.NodeMode)
 		p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -299,6 +301,7 @@ func runBoostNode(cfg *config.Config) error {
 
 	// Boost: connect to ALL configured peers simultaneously.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -358,6 +361,7 @@ func runGenesisNode(cfg *config.Config) error {
 
 	// Genesis node listens for incoming peer connections and serves blocks to them.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -413,6 +417,7 @@ func runSyncNode(cfg *config.Config) error {
 
 	// ── Phase 1: Connect to peers ──────────────────────────────────────────────
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -637,6 +642,7 @@ func runValidatorNode(cfg *config.Config) error {
 	})
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)

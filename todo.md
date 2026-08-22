@@ -1,5 +1,31 @@
 # GYDS Chain production TODO
 
+## Plan 9 — Multi-node setup, network identity, and automatic maintenance
+
+- [x] Use chain ID `198282` for the live GYDS network and keep the isolated
+  test node on chain ID `31337`.
+- [x] Provide setup choices for full, lite, RPC, boost, genesis, sync,
+  validator, and isolated testnode roles.
+- [x] Give each role a documented non-overlapping default dashboard, RPC,
+  WebSocket, and P2P port profile while keeping all ports editable.
+- [x] Require the dashboard PIN during setup; the server rejects setup saves
+  that do not include a valid PIN.
+- [x] Apply UFW and fail2ban during deployment when enabled, including the
+  selected node ports.
+- [x] Check for newer node releases in the running dashboard and provide a
+  safe fast-forward update path with backups, health checks, and rollback.
+- [x] Add a privileged systemd timer for automatic OS security updates and
+  safe node updates; it never reboots or mutates a genesis block.
+- [x] Verify the configured genesis hash against peers before accepting them,
+  and document that intentional genesis changes require a coordinated reset.
+
+### Network rule
+
+Changing the genesis configuration or chain ID does **not** automatically
+change already-running nodes. Those nodes reject incompatible peers. A
+genesis change is a new network and requires an explicit coordinated migration
+or fresh data directories; silent propagation would risk a split-brain chain.
+
 This checklist records the work still needed for production wallet support and
 the deployment failure shown in the uploaded screenshot.
 

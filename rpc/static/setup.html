@@ -385,6 +385,11 @@
     <div class="step-body">
       <div class="field-row">
         <div class="field">
+          <label>Dashboard Port</label>
+          <input type="number" id="dashboardPort" value="5000" min="1" max="65535" />
+          <div class="field-hint">Web dashboard for this node. Each node on the same server must use a different port.</div>
+        </div>
+        <div class="field">
           <label>JSON-RPC Port</label>
           <input type="number" id="rpcPort" value="8545" min="1" max="65535" />
           <div class="field-hint">HTTP API (e.g. MetaMask, ethers.js)</div>
@@ -493,7 +498,7 @@
     <div class="step-header">
       <div class="step-num">Step 5 of 8</div>
       <div class="step-title">Firewall &amp; Security</div>
-      <div class="step-desc">Configure UFW rules for the node. <code>deploy.sh</code> applies these settings in UFW-only mode when run as root.</div>
+      <div class="step-desc">Configure UFW and fail2ban protection for this node. <code>deploy.sh</code> applies both when run as root.</div>
     </div>
     <div class="step-body">
 
@@ -512,7 +517,7 @@
         <div class="toggle-row">
           <div class="toggle-info">
             <strong>Additional protection</strong>
-            <span>Optional fail2ban setup is separate from <code>deploy.sh</code> and is not installed automatically</span>
+            <span>Blocks repeated SSH, RPC flood, malformed RPC, and scan attempts automatically</span>
           </div>
           <label class="toggle">
             <input type="checkbox" id="enableFail2ban" checked />
@@ -555,7 +560,7 @@
     </div>
     <div class="step-body">
       <div class="alert alert-info" style="margin-bottom:18px">
-        🔒 The PIN is hashed (SHA-256) and stored only on your server. It cannot be recovered — choose something you won't forget. If you skip it, you can create one only by running setup again.
+         🔒 The PIN is hashed (SHA-256) and stored only on your server. It cannot be recovered — choose something you won't forget.
       </div>
       <div class="field-row">
         <div class="field">
@@ -575,15 +580,8 @@
       </div>
       <div id="pinMatchHint" style="font-size:12px;margin-top:6px;min-height:18px"></div>
 
-      <div class="toggle-row" style="margin-top:16px">
-        <div class="toggle-info">
-          <strong>Skip PIN setup</strong>
-          <span>Leave the dashboard unlocked. A PIN can only be created from this setup wizard.</span>
-        </div>
-        <label class="toggle">
-          <input type="checkbox" id="skipPin" onchange="toggleSkipPin()" />
-          <span class="slider"></span>
-        </label>
+      <div class="alert alert-warn" style="margin-top:16px">
+        PIN setup is required before this node configuration can be saved. Store it securely; it cannot be recovered from the node.
       </div>
     </div>
     <div class="step-footer">
@@ -799,6 +797,24 @@ function selectMode(mode, el) {
   // Show validator key field only for validator mode
   const vkField = document.getElementById('validatorKeyField');
   if (vkField) vkField.style.display = (mode === 'validator') ? '' : 'none';
+  // Safe, non-overlapping defaults for running multiple node roles on one host.
+  // Operators can still edit any port after selecting a role.
+  const ports = {
+    full:      [5000, 8545, 8546, 30303],
+    lite:      [5010, 8555, 8556, 30313],
+    rpc:       [5020, 8565, 8566, 30323],
+    boost:     [5030, 8575, 8576, 30333],
+    genesis:   [5040, 8585, 8586, 30343],
+    sync:      [5050, 8595, 8596, 30353],
+    validator: [5060, 8605, 8606, 30363],
+    testnode:  [15000, 18545, 18546, 31337],
+  }[mode];
+  if (ports) {
+    ['dashboardPort','rpcPort','wsPort','p2pPort'].forEach((id, i) => {
+      const input = document.getElementById(id);
+      if (input && !input.dataset.userEdited) input.value = ports[i];
+    });
+  }
 }
 
 // ── Step 2: Wallet ────────────────────────────────────────────────────────────
@@ -899,8 +915,6 @@ function validatePinMatch() {
   const confirm = document.getElementById('setupPinConfirm').value;
   const hint = document.getElementById('pinMatchHint');
   const btn = document.getElementById('pinNextBtn');
-  const skip = document.getElementById('skipPin').checked;
-  if (skip) { hint.textContent = ''; btn.disabled = false; return; }
   if (!pin) { hint.textContent = ''; btn.disabled = false; return; }
   if (pin.length < 4 || pin.length > 16) {
     hint.textContent = 'PIN must be 4–16 characters';
@@ -925,22 +939,10 @@ function validatePinMatch() {
 }
 
 function toggleSkipPin() {
-  const skip = document.getElementById('skipPin').checked;
-  const pinInput = document.getElementById('setupPin');
-  const confirmInput = document.getElementById('setupPinConfirm');
-  pinInput.disabled = skip;
-  confirmInput.disabled = skip;
-    document.getElementById('pinMatchHint').textContent = skip ? 'PIN setup skipped — the dashboard will remain unlocked' : '';
-  document.getElementById('pinNextBtn').disabled = false;
+  // Kept as a no-op for compatibility with old bookmarked setup pages.
 }
 
 function commitPin() {
-  const skip = document.getElementById('skipPin').checked;
-  if (skip) {
-    dashboardPin = '';
-    goStep(7);
-    return;
-  }
   const pin = document.getElementById('setupPin').value;
   const confirm = document.getElementById('setupPinConfirm').value;
   if (!pin) { showToast('Enter a PIN or enable Skip'); return; }
@@ -992,6 +994,7 @@ function collectConfig() {
     logLevel:       document.getElementById('logLevel').value,
     logFormat:      document.getElementById('logFormat').value,
     dashboardPin:   dashboardPin,
+    dashboardPort:  document.getElementById('dashboardPort').value,
   };
 }
 
@@ -1007,6 +1010,7 @@ function buildReview() {
     ['Block Time',     cfg.nodeMode === 'testnode' ? '5s (auto)' : cfg.blockTime + 's'],
     ['Wallet',         cfg.walletAddress ? cfg.walletAddress.slice(0,12)+'…' : '(none)'],
     ['RPC Port',       cfg.rpcPort],
+    ['Dashboard Port', cfg.dashboardPort],
     ['P2P Port',       cfg.p2pPort],
     ['Public P2P Host', cfg.p2pAdvertiseHost || '(not set)'],
     ['Data Dir',       cfg.dataDir],
@@ -1086,6 +1090,7 @@ function buildEnvText(cfg) {
       : `# GYDS_VALIDATOR_KEY=`,
     ``,
     `# ── RPC / API Ports ────────────────────────────────────────────`,
+    `GYDS_DASHBOARD_PORT=${cfg.dashboardPort}`,
     `GYDS_RPC_PORT=${cfg.rpcPort}`,
     `GYDS_RPC_HOST=0.0.0.0`,
     `GYDS_WS_PORT=${cfg.wsPort}`,

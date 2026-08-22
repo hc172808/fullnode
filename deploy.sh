@@ -223,6 +223,16 @@ case "$GYDS_NODE_MODE" in
   *) die "GYDS_NODE_MODE='${GYDS_NODE_MODE}' is not a recognised node mode." ;;
 esac
 
+# Keep testnode private even if an operator copied a production .env.
+if [[ "$GYDS_NODE_MODE" == "testnode" ]]; then
+  GYDS_RPC_HOST="127.0.0.1"
+  GYDS_DASHBOARD_PORT=15000
+  GYDS_RPC_PORT=18545
+  GYDS_WS_PORT=18546
+  GYDS_P2P_PORT=31337
+  info "Testnode ports forced to dashboard=15000 rpc=18545 ws=18546 p2p=31337"
+fi
+
 # A production peer must advertise an address other nodes can actually dial.
 # Bind addresses such as 0.0.0.0 and loopback are valid listeners but invalid
 # bootstrap/enode endpoints, so fail before installing a service that cannot
@@ -584,6 +594,10 @@ UPDATE_WRAPPER
     chmod 755 /usr/local/bin/gyds-fullnode-update
     log "Git update helper installed: /usr/local/bin/gyds-fullnode-update"
   fi
+  if [[ -f "${SCRIPT_DIR}/scripts/auto-maintenance.sh" ]]; then
+    install -m 0755 "${SCRIPT_DIR}/scripts/auto-maintenance.sh" /usr/local/bin/gyds-fullnode-maintenance
+    log "Automatic OS and node maintenance installed"
+  fi
   if [[ -f "${SCRIPT_DIR}/scripts/reset-node.sh" ]]; then
     cat > /usr/local/bin/gyds-fullnode-reset <<RESET_WRAPPER
 #!/usr/bin/env bash
@@ -616,14 +630,19 @@ elif ! command -v ufw &>/dev/null; then
   warn "Then run: sudo bash setup-firewall.sh"
 else
   # Keep deployment limited to the UFW network boundary.
+  _firewall_args=(
+    --ssh-port "${GYDS_SSH_PORT}"
+    --dashboard-port "${GYDS_DASHBOARD_PORT}"
+    --rpc-port "${GYDS_RPC_PORT}"
+    --ws-port "${GYDS_WS_PORT}"
+    --p2p-port "${GYDS_P2P_PORT}"
+    --data-dir "${GYDS_DATA_DIR}"
+  )
+  if [[ "${GYDS_ENABLE_FAIL2BAN:-true}" != "true" ]]; then
+    _firewall_args+=(--no-fail2ban)
+  fi
   bash "${SCRIPT_DIR}/setup-firewall.sh" \
-    --ssh-port       "${GYDS_SSH_PORT}" \
-    --dashboard-port "${GYDS_DASHBOARD_PORT}" \
-    --rpc-port       "${GYDS_RPC_PORT}" \
-    --ws-port        "${GYDS_WS_PORT}" \
-    --p2p-port       "${GYDS_P2P_PORT}" \
-    --data-dir       "${GYDS_DATA_DIR}" \
-    --ufw-only \
+    "${_firewall_args[@]}" \
     || die "setup-firewall.sh failed — see output above for details."
   log "Firewall rules applied"
 fi
@@ -718,6 +737,40 @@ SYSTEMD
     error "Service failed to start. Diagnostics:"
     journalctl -u gyds-fullnode -n 30 --no-pager >&2 || true
     die "Resolve the errors above and retry. Run 'bash deploy.sh --update' after fixing."
+  fi
+
+  # Daily maintenance applies OS security updates and then invokes the safe
+  # fast-forward-only node updater. No automatic reboot is performed.
+  if [[ -x /usr/local/bin/gyds-fullnode-maintenance ]]; then
+    cat > /etc/systemd/system/gyds-fullnode-maintenance.service <<MAINT_SERVICE
+[Unit]
+Description=GYDS OS security and node maintenance
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=-${INSTALL_DIR}/.env
+Environment=GYDS_APP_DIR=${SCRIPT_DIR}
+ExecStart=/usr/local/bin/gyds-fullnode-maintenance
+MAINT_SERVICE
+    cat > /etc/systemd/system/gyds-fullnode-maintenance.timer <<MAINT_TIMER
+[Unit]
+Description=Daily GYDS maintenance
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target
+MAINT_TIMER
+    chmod 644 /etc/systemd/system/gyds-fullnode-maintenance.service \
+      /etc/systemd/system/gyds-fullnode-maintenance.timer
+    systemctl daemon-reload
+    systemctl enable --now gyds-fullnode-maintenance.timer
+    log "Daily OS security and node update timer enabled (03:30 + random delay)"
   fi
 fi
 
