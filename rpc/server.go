@@ -468,6 +468,17 @@ func websocketURL(base string) string {
 // also useful for registries and operators that need one canonical definition.
 func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 	base := s.publicBaseURL(r)
+	rpcURL := base + "/rpc"
+	requestHost := strings.ToLower(r.Host)
+	if host, _, err := net.SplitHostPort(requestHost); err == nil {
+		requestHost = host
+	}
+	if requestHost == "rpc.netlifegy.com" || strings.Contains(strings.ToLower(base), "rpc.netlifegy.com") {
+		rpcURL = strings.TrimRight(base, "/") + ":" + strconv.Itoa(s.rpcPort)
+		if requestHost == "rpc.netlifegy.com" {
+			rpcURL = "https://rpc.netlifegy.com:" + strconv.Itoa(s.rpcPort)
+		}
+	}
 	jsonOK(w, map[string]interface{}{
 		"name":       "GYDS Chain",
 		"chainId":    "0x3068a",
@@ -478,11 +489,8 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 			"symbol":   "GYDS",
 			"decimals": 18,
 		},
-		// Use the same node origin for manual wallet setup as the one-click
-		// flow. A wallet can reject a canonical endpoint already registered under
-		// another chain ID, while this node-specific path remains unambiguous.
-		"rpcUrls":           []string{base + "/rpc"},
-		"wsUrls":            []string{websocketURL(base) + "/api/ws"},
+		"rpcUrls":           []string{rpcURL},
+		"wsUrls":            []string{websocketURL(rpcURL) + "/api/ws"},
 		"explorerUrls":      []string{canonicalExplorerURL},
 		"iconUrls":          []string{base + "/logo.png"},
 		"connectionInfoUrl": base + "/gyds-connection-info.json",

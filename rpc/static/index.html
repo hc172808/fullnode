@@ -855,9 +855,11 @@ const GAS_LIMIT  = 21000;
 const GAS_PRICE  = ethers.utils.parseUnits('1', 'gwei');
   const RPC_URL    = 'https://rpc.netlifegy.com';
 const PUBLIC_BASE_URL = window.location.origin;
-// A wallet may reject a canonical RPC URL that it already assigned to a
-// different chain. Use this node's same-origin endpoint for EIP-3085.
-const WALLET_RPC_URL = window.location.origin + '/rpc';
+// The public RPC node is exposed through Cloudflare on its dedicated RPC
+// port. Other/local nodes keep the same-origin fallback for development.
+const WALLET_RPC_URL = window.location.hostname === 'rpc.netlifegy.com'
+  ? window.location.protocol + '//rpc.netlifegy.com:8545'
+  : window.location.origin + '/rpc';
 
 // ── State ───────────────────────────────────────────────────────────────────
 let provider = null;
