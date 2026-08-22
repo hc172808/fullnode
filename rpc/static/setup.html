@@ -1171,8 +1171,9 @@ async function saveToServer() {
        const pinNotice = data.pinStatus
          ? `<br><strong>${esc(data.pinStatus)}</strong>`
          : '';
-       res.innerHTML = `<div class="alert alert-success">✓ .env saved to server.${pinNotice}<br>Restart the node to apply the selected configuration.</div>`;
+       res.innerHTML = `<div class="alert alert-success">✓ .env saved to ${esc(data.envPath || 'the server')}.${pinNotice}<br>Opening the dashboard…</div>`;
       showToast('.env saved to server');
+      setTimeout(() => { window.location.href = '/'; }, 900);
     } else {
       res.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Unknown error'}</div>`;
     }

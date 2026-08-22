@@ -153,7 +153,8 @@ func (c adminNodeConfig) validate() error {
 // updateEnvFile changes only the node settings. Existing secrets and operator
 // comments remain intact, and the file stays owner-readable only.
 func updateEnvFile(updates map[string]string) error {
-	raw, err := os.ReadFile(".env")
+	envPath := envFilePath()
+	raw, err := os.ReadFile(envPath)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -178,15 +179,15 @@ func updateEnvFile(updates map[string]string) error {
 		}
 	}
 	content := strings.Join(lines, "\n") + "\n"
-	tmp := ".env.admin.tmp"
+	tmp := envPath + ".admin.tmp"
 	if err := os.WriteFile(tmp, []byte(content), 0600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, ".env"); err != nil {
+	if err := os.Rename(tmp, envPath); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
-	return os.Chmod(".env", 0600)
+	return os.Chmod(envPath, 0600)
 }
 
 // persistBootstrapNode keeps an operator-added peer across process restarts.
@@ -206,6 +207,26 @@ func persistBootstrapNode(addr string) error {
 	}
 
 	peers := append(append([]string(nil), cfg.P2PBootstrap...), addr)
+	if err := config.SaveBootstrapNodes(cfg.DataDir, peers); err != nil {
+		return err
+	}
+	return updateEnvFile(map[string]string{
+		"GYDS_BOOTSTRAP_NODES": strings.Join(peers, ","),
+	})
+}
+
+func removeBootstrapNode(addr string) error {
+	addr = p2p.NormalizeAddr(addr)
+	if addr == "" {
+		return fmt.Errorf("peer address is required")
+	}
+	cfg := config.FromEnv()
+	peers := make([]string, 0, len(cfg.P2PBootstrap))
+	for _, existing := range cfg.P2PBootstrap {
+		if p2p.NormalizeAddr(existing) != addr {
+			peers = append(peers, existing)
+		}
+	}
 	if err := config.SaveBootstrapNodes(cfg.DataDir, peers); err != nil {
 		return err
 	}
@@ -353,5 +374,28 @@ func (s *Server) handleAdminNodeSync(w http.ResponseWriter, r *http.Request) {
 		"ok":      true,
 		"message": "Sync/connect requested. Sync mode performs full catch-up after restart; connected peers are shown below.",
 		"peers":   s.p2p.Peers(),
+	})
+}
+
+func (s *Server) handleAdminNodeRemove(w http.ResponseWriter, r *http.Request) {
+	var action adminPeerAction
+	if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
+		jsonErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	action.Address = p2p.NormalizeAddr(action.Address)
+	if action.Address == "" {
+		jsonErr(w, http.StatusBadRequest, "peer address is required (host:port)")
+		return
+	}
+	if err := removeBootstrapNode(action.Address); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not remove peer: "+err.Error())
+		return
+	}
+	if s.p2p != nil {
+		s.p2p.Disconnect(action.Address)
+	}
+	jsonOK(w, map[string]interface{}{
+		"ok": true, "message": "Peer removed from the configured node list.",
 	})
 }

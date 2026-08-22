@@ -709,6 +709,25 @@ func (s *Server) ConnectTo(addr string) error {
 	return nil
 }
 
+// Disconnect closes a live peer matching addr. It is safe to call when the
+// peer is already offline; the configured bootstrap entry is managed by the
+// dashboard separately.
+func (s *Server) Disconnect(addr string) {
+	addr = NormalizeAddr(addr)
+	s.mu.RLock()
+	var target *Peer
+	for peerAddr, peer := range s.peers {
+		if NormalizeAddr(peerAddr) == addr {
+			target = peer
+			break
+		}
+	}
+	s.mu.RUnlock()
+	if target != nil {
+		target.Close()
+	}
+}
+
 // MaxPeerHeight returns the highest block height reported by any connected peer.
 func (s *Server) MaxPeerHeight() uint64 {
 	s.mu.RLock()

@@ -35,6 +35,7 @@ const (
 // P2PConnector is the minimal interface the RPC server needs from the P2P layer.
 type P2PConnector interface {
 	ConnectTo(addr string) error
+	Disconnect(addr string)
 	PeerCount() int
 	NodeID() string
 	Enode() string
@@ -308,6 +309,7 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/node/config/apply", s.requireAdminSession(s.handleAdminNodeConfigApply)).Methods("POST")
 	admin.HandleFunc("/node/connect", s.requireAdminSession(s.handleAdminNodeConnect)).Methods("POST")
 	admin.HandleFunc("/node/sync", s.requireAdminSession(s.handleAdminNodeSync)).Methods("POST")
+	admin.HandleFunc("/node/remove", s.requireAdminSession(s.handleAdminNodeRemove)).Methods("DELETE", "POST")
 	admin.HandleFunc("/node/status", s.requireAdminSession(s.handleAdminNodeStatus)).Methods("GET")
 	admin.HandleFunc("/db", s.handleAdminDBPage).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBTables)).Methods("GET")
@@ -476,8 +478,11 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 			"symbol":   "GYDS",
 			"decimals": 18,
 		},
-		"rpcUrls":           []string{canonicalRPCURL},
-		"wsUrls":            []string{websocketURL(canonicalRPCURL) + "/api/ws"},
+		// Use the same node origin for manual wallet setup as the one-click
+		// flow. A wallet can reject a canonical endpoint already registered under
+		// another chain ID, while this node-specific path remains unambiguous.
+		"rpcUrls":           []string{base + "/rpc"},
+		"wsUrls":            []string{websocketURL(base) + "/api/ws"},
 		"explorerUrls":      []string{canonicalExplorerURL},
 		"iconUrls":          []string{base + "/logo.png"},
 		"connectionInfoUrl": base + "/gyds-connection-info.json",

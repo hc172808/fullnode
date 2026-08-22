@@ -100,8 +100,41 @@ func setupMarkerPath(dataDir string) string {
 	return filepath.Join(dataDir, "admin", "setup.complete")
 }
 
+// envFilePath resolves the configuration file independently of the process
+// working directory. Production installs commonly keep the binary in
+// /opt/gyds-fullnode/bin while systemd may start it elsewhere.
+func envFilePath() string {
+	if configured := strings.TrimSpace(os.Getenv("GYDS_ENV_FILE")); configured != "" {
+		return configured
+	}
+	if _, err := os.Stat("/opt/gyds-fullnode"); err == nil {
+		return "/opt/gyds-fullnode/.env"
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, ".env")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	if executable, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(executable)
+		for _, candidate := range []string{
+			filepath.Join(exeDir, ".env"),
+			filepath.Join(filepath.Dir(exeDir), ".env"),
+		} {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		return filepath.Join(cwd, ".env")
+	}
+	return ".env"
+}
+
 func (s *Server) setupConfigured() bool {
-	if _, err := os.Stat(".env"); err == nil {
+	if _, err := os.Stat(envFilePath()); err == nil {
 		return true
 	}
 	marker := setupMarkerPath(s.dataDir)
@@ -253,11 +286,16 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	w1(envSetting("GYDS_LOG_FORMAT", cfg.LogFormat))
 
 	content := sb.String()
-
-	if err := os.WriteFile(".env", []byte(content), 0600); err != nil {
+	envPath := envFilePath()
+	if err := os.MkdirAll(filepath.Dir(envPath), 0700); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "failed to create .env directory: "+err.Error())
+		return
+	}
+	if err := os.WriteFile(envPath, []byte(content), 0600); err != nil {
 		jsonErr(w, http.StatusInternalServerError, "failed to write .env: "+err.Error())
 		return
 	}
+	_ = os.Chmod(envPath, 0600)
 
 	// Keep setup completion beside the configured data directory as well as the
 	// .env file. This prevents a service started with a different working
@@ -300,6 +338,7 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 		"ok":      true,
 		"message": ".env saved successfully",
 		"env":     content,
+		"envPath": envPath,
 	}
 	if pinMsg != "" {
 		resp["pinStatus"] = pinMsg
