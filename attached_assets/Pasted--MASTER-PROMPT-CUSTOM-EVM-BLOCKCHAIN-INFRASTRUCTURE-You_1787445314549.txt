@@ -1,0 +1,743 @@
+# MASTER PROMPT — CUSTOM EVM BLOCKCHAIN INFRASTRUCTURE
+
+You are working on my existing custom Ethereum/EVM-based blockchain project.
+
+## IMPORTANT RULE
+
+DO NOT immediately rebuild, replace, delete, reset, or overwrite anything.
+
+First inspect the entire existing project and determine exactly what already exists.
+
+My goal is to make the blockchain infrastructure complete, reliable, secure, testable, and production-ready.
+
+I already have an RPC node implementation that I have been testing. Preserve working components unless there is a documented reason to modify them.
+
+---
+
+# 1. FIRST: FULL PROJECT AUDIT
+
+Before making infrastructure changes:
+
+1. Inspect the complete repository.
+2. Identify the blockchain architecture.
+3. Identify the Ethereum/EVM execution client or custom implementation being used.
+4. Identify the consensus implementation.
+5. Confirm whether the network is Proof of Stake and determine exactly how validators participate.
+6. Inspect the genesis configuration.
+7. Identify the chain ID.
+8. Identify existing RPC implementation.
+9. Identify existing P2P implementation.
+10. Identify existing node configurations.
+11. Identify existing validator configuration.
+12. Identify existing wallet/account/key management.
+13. Identify existing monitoring.
+14. Identify existing admin dashboard.
+15. Identify existing explorer components.
+16. Identify Docker/container/service configuration.
+17. Identify environment variables and secrets management.
+18. Identify deployment configuration.
+19. Identify existing tests.
+20. Identify documentation.
+21. Identify existing TODO.md.
+
+DO NOT assume that something is missing just because you don't immediately see it. Search the entire repository first.
+
+---
+
+# 2. CREATE A COMPLETE INVENTORY
+
+Create a detailed inventory showing:
+
+* Component
+* Exists? YES/NO
+* Current location
+* Current implementation
+* Status
+* Dependencies
+* Problems found
+* Recommended action
+
+The inventory must cover at least:
+
+### Blockchain Core
+
+* Genesis configuration
+* Chain ID
+* Network configuration
+* EVM configuration
+* Execution client
+* Consensus mechanism
+* Block production
+* Transaction processing
+* Gas configuration
+* Native token configuration
+* Chain parameters
+
+### Nodes
+
+* Genesis/bootstrap node
+* Bootnode
+* Full node
+* RPC node
+* Validator node
+* Light node, if technically supported
+* Archive node, if needed
+* Backup RPC node
+* Monitoring node/service
+
+### Networking
+
+* P2P networking
+* Peer discovery
+* Bootnodes
+* Static peers
+* Node identity
+* Peer persistence
+* NAT configuration
+* Firewall requirements
+* RPC networking
+* WebSocket networking
+
+### Validator Infrastructure
+
+* Validator configuration
+* Validator keys
+* Consensus keys
+* Validator registration/deposit mechanism, if applicable
+* Block proposal
+* Attestation/voting/finality mechanism
+* Validator rewards
+* Validator monitoring
+* Validator backup/recovery
+
+### RPC
+
+Test and document:
+
+* eth_chainId
+* eth_blockNumber
+* eth_syncing
+* eth_getBlockByNumber
+* eth_getBalance
+* eth_getTransactionByHash
+* eth_getTransactionReceipt
+* eth_call
+* eth_estimateGas
+* eth_gasPrice
+* net_version
+* net_peerCount
+* web3_clientVersion
+
+Also identify which RPC methods should NOT be publicly exposed.
+
+### Security
+
+* Private key protection
+* Environment secrets
+* RPC authentication where appropriate
+* Admin RPC protection
+* Firewall
+* SSH security
+* Rate limiting
+* DDoS considerations
+* Log security
+* Access control
+* Dashboard authentication
+* API authentication
+
+### Monitoring
+
+Monitor at minimum:
+
+* Node online/offline
+* Current block height
+* Sync status
+* Sync percentage where available
+* Peer count
+* RPC response time
+* RPC availability
+* Validator status
+* Blocks produced
+* Missed blocks
+* Consensus/finality status
+* CPU
+* RAM
+* Disk usage
+* Network traffic
+* Errors
+* Service restarts
+
+---
+
+# 3. CHECK TODO.MD BEFORE IMPLEMENTATION
+
+If TODO.md already exists:
+
+READ IT FIRST.
+
+If it does not exist:
+
+CREATE TODO.md.
+
+Do not immediately implement missing components.
+
+Instead, add every missing or incomplete component to TODO.md first.
+
+Each TODO item must contain:
+
+* Component name
+* Why it is required
+* Current status
+* What already exists
+* What is missing
+* Dependencies
+* Security considerations
+* Testing requirements
+* Implementation priority
+
+Use priorities:
+
+P0 = Critical
+P1 = Required
+P2 = Important
+P3 = Optional/Future
+
+---
+
+# 4. DO NOT DUPLICATE COMPONENTS
+
+Before creating anything:
+
+SEARCH THE PROJECT.
+
+If a component already exists:
+
+* Do not create a duplicate.
+* Do not replace it unnecessarily.
+* Inspect it.
+* Test it.
+* Improve it only if necessary.
+
+If a component partially exists:
+
+* Document what exists.
+* Add the missing pieces.
+* Preserve working functionality.
+
+If a component does not exist:
+
+* Add it to TODO.md first.
+* Then implement it according to the architecture.
+
+---
+
+# 5. REQUIRED NODE ARCHITECTURE
+
+Determine whether the following components are required for this specific blockchain.
+
+Do NOT blindly create unnecessary nodes.
+
+Evaluate each one:
+
+## A. Genesis/Bootstrap Node
+
+Must preserve the existing genesis configuration if the network is already initialized.
+
+Do NOT regenerate the genesis configuration unless absolutely necessary.
+
+If regeneration is necessary, STOP and clearly explain the consequences before doing it.
+
+## B. Bootnodes
+
+Provide reliable peer discovery.
+
+Prefer multiple bootnodes for redundancy.
+
+## C. Full Nodes
+
+Provide complete blockchain data and P2P connectivity.
+
+Support:
+
+* Persistent peers
+* Static peers
+* Peer discovery
+* Sync
+* Recovery
+* Monitoring
+
+## D. RPC Nodes
+
+Provide secure JSON-RPC access.
+
+Support:
+
+* HTTP RPC
+* WebSocket RPC where required
+* HTTPS through a reverse proxy
+* Health checks
+* Rate limiting where appropriate
+* Restricted RPC namespaces
+
+Never expose private/admin/key-management APIs publicly.
+
+## E. Validator Nodes
+
+Because this is intended to be a Proof-of-Stake network, determine exactly how validators work in this implementation.
+
+DO NOT invent a validator protocol.
+
+Identify:
+
+* Validator client
+* Consensus client or consensus module
+* Validator key requirements
+* Validator registration
+* Block proposal
+* Voting/attestation
+* Finality
+* Slashing rules
+* Rewards
+* Validator lifecycle
+
+Keep validator private keys completely separate from public RPC services.
+
+## F. Light Nodes
+
+Determine whether the current protocol actually supports light nodes.
+
+If it does not, document that instead of creating a fake implementation.
+
+## G. Archive Node
+
+Determine whether an archive node is actually required.
+
+If not required, document why.
+
+## H. Backup RPC
+
+Determine whether a secondary RPC node should be deployed for redundancy.
+
+---
+
+# 6. RPC NODE REQUIREMENTS
+
+Audit my existing RPC node instead of replacing it.
+
+Verify:
+
+* Correct chain ID
+* Correct network ID
+* Correct genesis
+* Correct block height
+* Sync status
+* Peer count
+* RPC response
+* WebSocket response if enabled
+* Transaction submission
+* Contract calls
+* Gas estimation
+* Receipt retrieval
+
+Create automated RPC health tests.
+
+The RPC endpoint must not expose:
+
+* Private keys
+* Wallet passwords
+* Admin APIs
+* Debug APIs unless specifically protected
+* Personal/account-management APIs
+* Validator keys
+* Server management functions
+
+---
+
+# 7. VALIDATOR SECURITY
+
+Validator keys are extremely sensitive.
+
+Never:
+
+* Put validator private keys in source code.
+* Put validator private keys in public environment variables.
+* Send validator private keys through the RPC endpoint.
+* Display validator private keys in the dashboard.
+* Log validator private keys.
+* Commit keys to Git.
+* Expose keys through HTTP/WebSocket APIs.
+
+Use secure secret management appropriate for the deployment environment.
+
+Create a documented backup and recovery procedure.
+
+---
+
+# 8. ADMIN DASHBOARD
+
+Audit the existing dashboard.
+
+If it exists, improve it.
+
+If it does not exist, add it to TODO.md and implement it after the architecture is confirmed.
+
+The dashboard should show:
+
+### Network
+
+* Chain ID
+* Network name
+* Current block
+* Latest block timestamp
+* Peer count
+* Network health
+
+### RPC
+
+* RPC online/offline
+* RPC latency
+* RPC method health
+* HTTP/WebSocket status
+
+### Nodes
+
+* Genesis/bootstrap node
+* Bootnodes
+* Full nodes
+* RPC nodes
+* Validator nodes
+
+Show:
+
+* Online/offline
+* Sync status
+* Block height
+* Peer count
+* CPU
+* RAM
+* Disk
+* Network
+
+### Validators
+
+* Validator status
+* Active/inactive
+* Blocks proposed
+* Votes/attestations where applicable
+* Missed duties
+* Rewards
+* Slashing status
+* Last activity
+
+Do not display private keys or sensitive secrets.
+
+---
+
+# 9. MONITORING AND ALERTING
+
+Implement appropriate monitoring.
+
+At minimum detect:
+
+* Node offline
+* RPC unavailable
+* Node falling behind
+* Peer count dropping
+* Validator offline
+* Validator missing duties
+* Disk nearly full
+* High CPU
+* High RAM
+* Service crash
+* Repeated restart
+* P2P connectivity failure
+
+Use a monitoring architecture appropriate for this project.
+
+Prometheus/Grafana may be used if compatible with the environment.
+
+---
+
+# 10. AUTOMATIC RECOVERY
+
+Services should recover safely after crashes or restarts.
+
+Implement:
+
+* Automatic service restart
+* Health checks
+* Startup checks
+* Graceful shutdown
+* Log rotation
+* Persistent blockchain data
+* Persistent configuration
+* Safe recovery after reboot
+
+Do not automatically delete blockchain data to fix a sync problem.
+
+---
+
+# 11. SECURITY ARCHITECTURE
+
+Design the system so that:
+
+PUBLIC INTERNET
+|
+v
+PUBLIC RPC / REVERSE PROXY
+|
+v
+RPC SERVICE
+|
+v
+EXECUTION NODE
+
+Validator infrastructure must be isolated from public RPC access.
+
+Administrative interfaces must not be publicly exposed without authentication and access controls.
+
+Document all required network ports.
+
+Use the minimum necessary exposed ports.
+
+---
+
+# 12. NO ASSUMPTIONS ABOUT CLOUD PROVIDERS
+
+Do not design this specifically around Cloudflare.
+
+The infrastructure must work independently with:
+
+* Direct VPS/public IP
+* Nginx or another reverse proxy
+* HTTPS
+* DNS
+* Firewall
+
+If Cloudflare is used later, it should be optional rather than required.
+
+Do not make Cloudflare a dependency of the blockchain itself.
+
+---
+
+# 13. TESTING
+
+Create automated tests for:
+
+### Blockchain
+
+* Genesis
+* Chain ID
+* Block production
+* Transaction processing
+* EVM execution
+
+### RPC
+
+* eth_chainId
+* eth_blockNumber
+* eth_syncing
+* eth_getBlockByNumber
+* eth_getBalance
+* eth_call
+* eth_estimateGas
+* eth_sendRawTransaction
+* eth_getTransactionReceipt
+
+### P2P
+
+* Peer discovery
+* Peer connection
+* Static peers
+* Bootnodes
+* Node synchronization
+
+### Validators
+
+* Validator startup
+* Key loading
+* Block proposal
+* Voting/attestation
+* Finality
+* Recovery after restart
+
+### Security
+
+* Unauthorized RPC methods
+* Authentication
+* Secret exposure
+* Key exposure
+* Dashboard access
+* API access
+
+### Failure testing
+
+Test what happens when:
+
+* RPC node stops
+* Full node stops
+* Validator stops
+* Bootnode stops
+* Network connection is interrupted
+* Server restarts
+* Disk becomes nearly full
+* RPC becomes unavailable
+
+---
+
+# 14. DOCUMENTATION
+
+Create/update documentation covering:
+
+* Architecture
+* Node types
+* Installation
+* Configuration
+* Environment variables
+* Genesis
+* P2P
+* RPC
+* Validator setup
+* Validator security
+* Monitoring
+* Backup
+* Recovery
+* Upgrades
+* Troubleshooting
+* Security
+* Disaster recovery
+
+---
+
+# 15. IMPLEMENTATION ORDER
+
+Follow this order:
+
+PHASE 1:
+Audit existing infrastructure.
+
+PHASE 2:
+Update TODO.md with every missing/incomplete component.
+
+PHASE 3:
+Produce an architecture report.
+
+PHASE 4:
+Validate the execution client and PoS implementation.
+
+PHASE 5:
+Secure and repair the existing RPC node.
+
+PHASE 6:
+Implement missing P2P/bootnode/full-node infrastructure.
+
+PHASE 7:
+Implement validator infrastructure according to the actual PoS implementation.
+
+PHASE 8:
+Implement monitoring and dashboard improvements.
+
+PHASE 9:
+Implement automated tests.
+
+PHASE 10:
+Perform security audit.
+
+PHASE 11:
+Perform failure/recovery testing.
+
+PHASE 12:
+Produce final production-readiness report.
+
+---
+
+# 16. VERY IMPORTANT — PROTECT THE EXISTING CHAIN
+
+If the chain already has:
+
+* Existing blocks
+* Existing transactions
+* Existing contracts
+* Existing validators
+* Existing users
+* Existing wallets
+* Existing genesis configuration
+
+DO NOT reset or regenerate the chain.
+
+Do not delete blockchain databases.
+
+Do not change chain ID.
+
+Do not change genesis parameters.
+
+Do not change consensus parameters.
+
+Do not migrate data.
+
+Do not generate a new genesis file.
+
+Do not replace working node software.
+
+Unless you first identify the reason, explain the consequence, and receive explicit approval.
+
+---
+
+# 17. TODO.MD REQUIREMENT
+
+Before implementing every new component:
+
+1. Confirm whether it already exists.
+2. If missing, add it to TODO.md.
+3. Mark its priority.
+4. List dependencies.
+5. Implement it.
+6. Test it.
+7. Update TODO.md with its status.
+8. Document any remaining issues.
+
+TODO.md must remain the single source of truth for outstanding infrastructure work.
+
+Use statuses:
+
+* NOT STARTED
+* IN PROGRESS
+* TESTING
+* COMPLETE
+* BLOCKED
+
+---
+
+# 18. FINAL REQUIREMENT
+
+At the end, provide a final report containing:
+
+1. What already existed.
+2. What was missing.
+3. What was added.
+4. What was changed.
+5. What was intentionally left unchanged.
+6. Current node architecture.
+7. Current validator architecture.
+8. RPC health results.
+9. P2P health results.
+10. Validator health results.
+11. Security findings.
+12. Test results.
+13. Remaining TODO.md items.
+14. Production-readiness rating.
+15. Any risks that still require human review.
+
+Do not claim something is working unless it has actually been tested.
+
+Do not invent test results.
+
+Do not invent blockchain components.
+
+Do not invent validator behavior.
+
+When uncertain about the underlying Ethereum/PoS implementation, inspect the code and configuration and explain what you found before making architectural changes.
+
+The priority is:
+
+SAFETY → PRESERVE EXISTING CHAIN → AUDIT → TODO.MD → IMPLEMENT → TEST → SECURE → DOCUMENT → PRODUCTION READINESS.
