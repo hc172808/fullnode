@@ -46,12 +46,6 @@ func envSetting(key, value string) string {
 
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 	if s.setupConfigured() {
-		if !s.auth.PinIsSet() {
-			// Setup was completed with PIN protection skipped. The node remains
-			// server-configured and unlocked; avoid a setup/login redirect loop.
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
 		// Configuration is intentionally managed from the authenticated Admin
 		// dashboard after the first setup. Do not leave a second, unauthenticated
 		// configuration surface available.
@@ -204,17 +198,6 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	cfg.LogLevel = def(cfg.LogLevel, "info")
 	cfg.LogFormat = def(cfg.LogFormat, "json")
 
-	pin := strings.TrimSpace(cfg.DashboardPin)
-	if pin == "" {
-		jsonErr(w, http.StatusBadRequest, "dashboard PIN is required during node setup")
-		return
-	}
-	if len(pin) < pinMinLen || len(pin) > pinMaxLen {
-		jsonErr(w, http.StatusBadRequest,
-			fmt.Sprintf("dashboard PIN must be %d–%d characters", pinMinLen, pinMaxLen))
-		return
-	}
-
 	ts := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
 	var sb strings.Builder
@@ -265,13 +248,7 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	w1(envSetting("GYDS_STORAGE_LIMIT_GB", cfg.StorageLimitGB))
 	w1("")
 	w1("# ── Firewall & Security ────────────────────────────────────────")
-	if pin != "" {
-		w1("# Dashboard PIN is also stored here for easy node reconfiguration.")
-		w1("# Keep this file mode 0600 and remove the value after the node is initialized if desired.")
-		w1(envSetting("GYDS_DASHBOARD_PIN", pin))
-	} else {
-		w1("# GYDS_DASHBOARD_PIN=")
-	}
+	w1("# Dashboard access uses Web3 wallet signature authentication; no PIN is required.")
 	w1(envSetting("GYDS_ENABLE_FIREWALL", cfg.EnableFirewall))
 	w1(envSetting("GYDS_ENABLE_FAIL2BAN", cfg.EnableFail2ban))
 	w1(envSetting("GYDS_SSH_PORT", cfg.SSHPort))
@@ -312,36 +289,12 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If a dashboard PIN was provided during setup, set it in the directory
-	// that the wizard is configuring. The running server may still be using a
-	// previous data directory, so using s.auth here would make the PIN
-	// disappear after the configured node restarts.
-	pinMsg := ""
-	if pin != "" {
-		setupAuth := NewAuthStore(cfg.DataDir)
-		if !setupAuth.PinIsSet() {
-			if err := setupAuth.SetPin(pin); err != nil {
-				// Non-fatal: .env was saved; report PIN error in response.
-				pinMsg = "Warning: PIN not set — " + err.Error()
-			} else {
-				// Keep the running process aligned with the configuration so
-				// the new PIN works before the operator restarts the node.
-				s.auth = setupAuth
-				pinMsg = "Dashboard PIN set successfully"
-			}
-		} else {
-			pinMsg = "Dashboard PIN already set (skipped)"
-		}
-	}
-
 	resp := map[string]interface{}{
 		"ok":      true,
 		"message": ".env saved successfully",
 		"env":     content,
 		"envPath": envPath,
 	}
-	if pinMsg != "" {
-		resp["pinStatus"] = pinMsg
-	}
+	resp["authStatus"] = "Web3 wallet authentication enabled; no PIN required"
 	jsonOK(w, resp)
 }

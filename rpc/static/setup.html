@@ -551,43 +551,25 @@
     </div>
   </div>
 
-  <!-- ═══════════════  STEP 6 — Dashboard PIN  ════════════════════ -->
+  <!-- ═══════════════  STEP 6 — Web3 Admin Access  ═══════════════ -->
   <div class="step-card hidden" id="step6">
     <div class="step-header">
       <div class="step-num">Step 6 of 8</div>
-      <div class="step-title">Dashboard PIN</div>
-      <div class="step-desc">Set a PIN to lock your dashboard and private keys from unauthorised viewers. You'll be asked for it each time the dashboard opens or after 5 minutes of inactivity.</div>
+      <div class="step-title">Web3 Admin Access</div>
+      <div class="step-desc">Admin access uses the authorized Web3 wallet only. No PIN is stored or required.</div>
     </div>
     <div class="step-body">
       <div class="alert alert-info" style="margin-bottom:18px">
-         🔒 The PIN is hashed (SHA-256) and stored only on your server. It cannot be recovered — choose something you won't forget.
+         🔐 After setup, administrators connect the authorized wallet and sign a one-time challenge to access the dashboard.
       </div>
-      <div class="field-row">
-        <div class="field">
-          <label>New PIN (4–16 characters)</label>
-          <div class="input-wrap">
-            <input type="password" id="setupPin" placeholder="Enter PIN" autocomplete="new-password" oninput="validatePinMatch()" />
-            <button class="eye-btn" onclick="toggleVis('setupPin',this)">👁</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>Confirm PIN</label>
-          <div class="input-wrap">
-            <input type="password" id="setupPinConfirm" placeholder="Repeat PIN" autocomplete="new-password" oninput="validatePinMatch()" />
-            <button class="eye-btn" onclick="toggleVis('setupPinConfirm',this)">👁</button>
-          </div>
-        </div>
-      </div>
-      <div id="pinMatchHint" style="font-size:12px;margin-top:6px;min-height:18px"></div>
-
       <div class="alert alert-warn" style="margin-top:16px">
-        PIN setup is required before this node configuration can be saved. Store it securely; it cannot be recovered from the node.
+        Only the authorized administrator wallet can enter the Admin dashboard.
       </div>
     </div>
     <div class="step-footer">
       <button class="btn btn-outline" onclick="goStep(5)">← Back</button>
       <div class="step-footer-right">
-        <button class="btn btn-primary" id="pinNextBtn" onclick="commitPin()">Next: Logging →</button>
+        <button class="btn btn-primary" onclick="commitPin()">Next: Logging →</button>
       </div>
     </div>
   </div>
@@ -943,12 +925,7 @@ function toggleSkipPin() {
 }
 
 function commitPin() {
-  const pin = document.getElementById('setupPin').value;
-  const confirm = document.getElementById('setupPinConfirm').value;
-  if (!pin) { showToast('Enter a PIN or enable Skip'); return; }
-  if (pin.length < 4 || pin.length > 16) { showToast('PIN must be 4–16 characters'); return; }
-  if (pin !== confirm) { showToast('PINs do not match'); return; }
-  dashboardPin = pin;
+  dashboardPin = '';
   goStep(7);
 }
 

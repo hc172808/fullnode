@@ -299,6 +299,7 @@ func (s *Server) setupDashboardRoutes() {
 
 	admin := r.PathPrefix("/admin").Subrouter()
 	admin.HandleFunc("/login", s.handleAdminLoginPage).Methods("GET")
+	admin.HandleFunc("/challenge", s.handleAdminChallenge).Methods("GET")
 	admin.HandleFunc("/login", s.handleAdminLoginSubmit).Methods("POST")
 	admin.HandleFunc("/logout", s.handleAdminLogout).Methods("GET")
 	admin.HandleFunc("/set-pin", s.handleAdminSetPinPage).Methods("GET")

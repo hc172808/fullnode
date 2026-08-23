@@ -109,36 +109,7 @@
       color: var(--muted);
       margin-bottom: 8px;
     }
-    .pin-wrap {
-      position: relative;
-      margin-bottom: 20px;
-    }
-    .pin-wrap input {
-      width: 100%;
-      padding: 12px 44px 12px 16px;
-      background: var(--card2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text);
-      font-size: 20px;
-      letter-spacing: 8px;
-      outline: none;
-      transition: border-color .2s;
-    }
-    .pin-wrap input:focus { border-color: var(--accent); }
-    .eye-btn {
-      position: absolute;
-      right: 12px; top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 18px;
-      opacity: .6;
-      color: var(--text);
-      padding: 4px;
-    }
-    .eye-btn:hover { opacity: 1; }
+    .wallet-note { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
 
     /* ── Error ── */
     .error-box {
@@ -190,17 +161,6 @@
       color: var(--muted);
       margin-top: 20px;
     }
-    .attempts-row {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 16px;
-    }
-    .attempt-pip {
-      flex: 1; height: 4px; border-radius: 2px;
-      background: var(--border);
-      transition: background .3s;
-    }
-    .attempt-pip.used { background: var(--danger); }
   </style>
 </head>
 <body>
@@ -213,7 +173,7 @@
 
   <div class="card">
     <div class="card-title">🔐 Admin Dashboard</div>
-    <div class="card-sub">Enter your PIN to continue</div>
+    <div class="card-sub">Connect the authorized wallet and sign in with Web3</div>
 
     <div class="wallet-badge">
       <div class="wallet-dot"></div>
@@ -223,53 +183,24 @@
       </div>
     </div>
 
-    <label for="pin">PIN</label>
-    <div class="pin-wrap">
-      <input type="password" id="pin" autocomplete="current-password"
-             placeholder="••••" maxlength="16"
-             onkeydown="if(event.key==='Enter') doLogin()"/>
-      <button class="eye-btn" onclick="togglePin(this)" type="button">👁</button>
-    </div>
-
-    <div class="attempts-row" id="pips"></div>
+    <div class="wallet-note">No PIN is required. Your wallet proves control of the authorized administrator address by signing a one-time challenge. Your signature never leaves the browser.</div>
     <div class="error-box"   id="errBox"></div>
     <div class="lockout-box" id="lockBox"></div>
 
-    <button class="btn" id="loginBtn" onclick="doLogin()">Unlock Dashboard</button>
+    <button class="btn" id="loginBtn" onclick="doLogin()">Connect Wallet &amp; Sign In</button>
 
     <div class="footer-note">
-      🛡 5 failed attempts = 15-minute IP lockout &nbsp;·&nbsp; All access is logged
+      🛡 Web3 authentication &nbsp;·&nbsp; All access is logged
     </div>
   </div>
 </div>
 
 <script>
-const MAX_ATTEMPTS = 5;
-let usedAttempts = 0;
-
 // ── Load admin wallet from server ─────────────────────────────────────────────
 fetch('/admin/wallet')
   .then(r => r.json())
   .then(d => { document.getElementById('adminAddr').textContent = d.adminWallet || '—'; })
   .catch(() => { document.getElementById('adminAddr').textContent = '0x6422d12b…09017b1'; });
-
-// ── Render attempt pips ───────────────────────────────────────────────────────
-function renderPips() {
-  const row = document.getElementById('pips');
-  row.innerHTML = '';
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    const d = document.createElement('div');
-    d.className = 'attempt-pip' + (i < usedAttempts ? ' used' : '');
-    row.appendChild(d);
-  }
-}
-renderPips();
-
-function togglePin(btn) {
-  const el = document.getElementById('pin');
-  el.type = el.type === 'password' ? 'text' : 'password';
-  btn.textContent = el.type === 'password' ? '👁' : '🙈';
-}
 
 function showError(msg) {
   const b = document.getElementById('errBox');
@@ -283,24 +214,29 @@ function showLockout(msg) {
   b.textContent = msg;
   b.classList.add('show');
   document.getElementById('loginBtn').disabled = true;
-  document.getElementById('pin').disabled = true;
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 async function doLogin() {
-  const pin = document.getElementById('pin').value.trim();
-  if (!pin) { showError('Please enter your PIN.'); return; }
-
   const btn = document.getElementById('loginBtn');
   btn.disabled = true;
   btn.textContent = 'Verifying…';
   hideError();
 
   try {
+    if (!window.ethereum) throw new Error('No Web3 wallet detected. Install MetaMask or another EVM wallet.');
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const address = accounts && accounts[0];
+    if (!address) throw new Error('No wallet account was selected.');
+    const challenge = await fetch('/admin/challenge', { cache: 'no-store' }).then(r => r.json());
+    const signature = await window.ethereum.request({
+      method: 'personal_sign',
+      params: [challenge.message, address]
+    });
     const res = await fetch('/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin })
+      body: JSON.stringify({ address, nonce: challenge.nonce, signature })
     });
     const data = await res.json();
 
@@ -309,15 +245,7 @@ async function doLogin() {
       return;
     }
     if (!res.ok) {
-      usedAttempts++;
-      renderPips();
       showError('❌ ' + (data.error || 'Login failed.'));
-      document.getElementById('pin').value = '';
-      document.getElementById('pin').focus();
-      if (usedAttempts >= MAX_ATTEMPTS) {
-        showLockout('⚠️ Maximum attempts reached. IP is now locked for 15 minutes.');
-        return;
-      }
     } else {
       window.location.href = data.redirect || '/';
       return;
@@ -326,13 +254,12 @@ async function doLogin() {
     showError('Network error — please retry.');
   } finally {
     if (btn.textContent === 'Verifying…') {
-      btn.textContent = 'Unlock Dashboard';
+      btn.textContent = 'Connect Wallet & Sign In';
       btn.disabled = false;
     }
   }
 }
 
-document.getElementById('pin').focus();
 </script>
 </body>
 </html>

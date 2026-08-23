@@ -12,17 +12,13 @@ import (
 // ── GET /admin/login ──────────────────────────────────────────────────────────
 
 func (s *Server) handleAdminLoginPage(w http.ResponseWriter, r *http.Request) {
-	if !s.auth.PinIsSet() {
-		if s.setupConfigured() {
-			// A configured node with no PIN is intentionally unlocked. Do not send
-			// users back through setup just because they opened the admin URL.
-			http.Redirect(w, r, "/", http.StatusFound)
-		} else {
-			http.Redirect(w, r, "/setup?step=6", http.StatusFound)
-		}
-		return
-	}
 	serveStaticPage(w, "static/admin-login.html")
+}
+
+// GET /admin/challenge issues a short-lived, one-time message for Web3 signing.
+func (s *Server) handleAdminChallenge(w http.ResponseWriter, r *http.Request) {
+	nonce, message := s.auth.NewChallenge()
+	jsonOK(w, map[string]string{"nonce": nonce, "message": message, "address": AdminWallet})
 }
 
 // ── POST /admin/login ─────────────────────────────────────────────────────────
@@ -38,29 +34,44 @@ func (s *Server) handleAdminLoginSubmit(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	pin := extractField(r, "pin")
-	if pin == "" {
-		jsonErr(w, http.StatusBadRequest, "PIN is required")
+	fields := extractFields(r, "address", "nonce", "signature")
+	address := strings.ToLower(strings.TrimSpace(fields["address"]))
+	if address != strings.ToLower(AdminWallet) {
+		s.auth.RecordFailure(ip)
+		s.auth.writeAudit(ip, "FAIL")
+		jsonErr(w, http.StatusUnauthorized, "Connected wallet is not the authorized admin wallet")
 		return
 	}
-
-	if !s.auth.CheckPin(pin) {
+	message, ok := s.auth.ConsumeChallenge(strings.TrimSpace(fields["nonce"]))
+	if !ok {
 		attempts := s.auth.RecordFailure(ip)
 		left := maxLoginAttempts - attempts
 		s.auth.writeAudit(ip, "FAIL")
 		if left <= 0 {
 			jsonErr(w, http.StatusUnauthorized,
-				fmt.Sprintf("Incorrect PIN. IP locked for %d minutes.", int(lockoutDuration.Minutes())))
+				fmt.Sprintf("Invalid or expired signature. IP locked for %d minutes.", int(lockoutDuration.Minutes())))
 		} else {
 			jsonErr(w, http.StatusUnauthorized,
-				fmt.Sprintf("Incorrect PIN. %d attempt(s) remaining before lockout.", left))
+				fmt.Sprintf("Invalid or expired signature. %d attempt(s) remaining before lockout.", left))
+		}
+		return
+	}
+	recovered, err := recoverEthereumAddress(message, fields["signature"])
+	if err != nil || !strings.EqualFold(recovered, AdminWallet) {
+		attempts := s.auth.RecordFailure(ip)
+		left := maxLoginAttempts - attempts
+		s.auth.writeAudit(ip, "FAIL")
+		if left <= 0 {
+			jsonErr(w, http.StatusUnauthorized, fmt.Sprintf("Invalid signature. IP locked for %d minutes.", int(lockoutDuration.Minutes())))
+		} else {
+			jsonErr(w, http.StatusUnauthorized, fmt.Sprintf("Invalid signature. %d attempt(s) remaining before lockout.", left))
 		}
 		return
 	}
 
 	s.auth.ResetFailures(ip)
 	token := s.auth.NewSession()
-	s.auth.writeAudit(ip, "LOGIN")
+	s.auth.writeAudit(ip, "WEB3LOGIN")
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,

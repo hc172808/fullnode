@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -11,6 +10,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	secpECDSA "github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
+
+	"github.com/gydschain/fullnode/internal/keccak"
 )
 
 // AdminWallet is the sole authorised administrator address.
@@ -44,17 +47,24 @@ type ipRecord struct {
 // ── AuthStore ─────────────────────────────────────────────────────────────────
 
 type AuthStore struct {
-	mu       sync.Mutex
-	sessions map[string]*adminSession
-	ipMap    map[string]*ipRecord
-	dataDir  string
+	mu         sync.Mutex
+	sessions   map[string]*adminSession
+	ipMap      map[string]*ipRecord
+	dataDir    string
+	challenges map[string]adminChallenge
+}
+
+type adminChallenge struct {
+	message string
+	expires time.Time
 }
 
 func NewAuthStore(dataDir string) *AuthStore {
 	return &AuthStore{
-		sessions: make(map[string]*adminSession),
-		ipMap:    make(map[string]*ipRecord),
-		dataDir:  dataDir,
+		sessions:   make(map[string]*adminSession),
+		ipMap:      make(map[string]*ipRecord),
+		dataDir:    dataDir,
+		challenges: make(map[string]adminChallenge),
 	}
 }
 
@@ -94,8 +104,60 @@ func (a *AuthStore) CheckPin(raw string) bool {
 }
 
 func hashPin(raw string) string {
-	sum := sha256.Sum256([]byte("gyds-admin-pin:" + raw))
+	sum := keccak.Sum256([]byte("gyds-admin-pin:" + raw))
 	return hex.EncodeToString(sum[:])
+}
+
+func (a *AuthStore) NewChallenge() (string, string) {
+	buf := make([]byte, 32)
+	_, _ = rand.Read(buf)
+	nonce := hex.EncodeToString(buf)
+	message := "GYDS Chain Admin Login\n\nSign this one-time message to authenticate.\nNonce: " + nonce
+	a.mu.Lock()
+	a.challenges[nonce] = adminChallenge{message: message, expires: time.Now().Add(5 * time.Minute)}
+	a.mu.Unlock()
+	return nonce, message
+}
+
+func (a *AuthStore) ConsumeChallenge(nonce string) (string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	challenge, ok := a.challenges[nonce]
+	if ok {
+		delete(a.challenges, nonce)
+	}
+	if !ok || time.Now().After(challenge.expires) {
+		return "", false
+	}
+	return challenge.message, true
+}
+
+func recoverEthereumAddress(message, signature string) (string, error) {
+	raw, err := hex.DecodeString(strings.TrimPrefix(strings.TrimPrefix(signature, "0x"), "0X"))
+	if err != nil || len(raw) != 65 {
+		return "", fmt.Errorf("signature must be 65-byte hex")
+	}
+	v := raw[64]
+	if v >= 31 {
+		v -= 31
+	} else if v >= 27 {
+		v -= 27
+	}
+	if v > 3 {
+		return "", fmt.Errorf("invalid signature recovery id")
+	}
+	digestInput := []byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(message), message))
+	digest := keccak.Sum256(digestInput)
+	compact := make([]byte, 65)
+	compact[0] = 27 + v + 4
+	copy(compact[1:], raw[:64])
+	pub, _, err := secpECDSA.RecoverCompact(compact, digest[:])
+	if err != nil {
+		return "", fmt.Errorf("invalid signature")
+	}
+	pubBytes := pub.SerializeUncompressed()
+	addressHash := keccak.Sum256(pubBytes[1:])
+	return "0x" + hex.EncodeToString(addressHash[12:]), nil
 }
 
 // ── Audit log ─────────────────────────────────────────────────────────────────
