@@ -27,12 +27,16 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "if [ -f .env ]; then set -a; . ./.env; set +a; fi; GOTOOLCHAIN=local go run . start"
+args = "if [ -f .env ]; then set -a; . ./.env; set +a; fi; GYDS_DASHBOARD_PORT=5000 GOTOOLCHAIN=local go run . start"
 waitForPort = 5000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 5040
+externalPort = 8081
 
 [[ports]]
 localPort = 8080
@@ -41,6 +45,10 @@ externalPort = 8080
 [[ports]]
 localPort = 8545
 externalPort = 3002
+
+[[ports]]
+localPort = 8585
+externalPort = 8099
 
 [[ports]]
 localPort = 15001
@@ -77,6 +85,10 @@ externalPort = 6800
 [[ports]]
 localPort = 30303
 externalPort = 3000
+
+[[ports]]
+localPort = 30343
+externalPort = 3003
 
 [deployment]
 deploymentTarget = "vm"
