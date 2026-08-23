@@ -305,7 +305,7 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/set-pin", s.handleAdminSetPinSubmit).Methods("POST")
 	admin.HandleFunc("/wallet", s.handleAdminWallet).Methods("GET")
 	admin.HandleFunc("/node", s.handleAdminNodePage).Methods("GET")
-admin.HandleFunc("/guides", s.requireAdminSession(s.handleGuidesPage)).Methods("GET")
+	admin.HandleFunc("/guides", s.auth.RequireAdmin(s.handleGuidesPage)).Methods("GET")
 	admin.HandleFunc("/node/config", s.requireAdminSession(s.handleAdminNodeConfig)).Methods("GET")
 	admin.HandleFunc("/node/config/apply", s.requireAdminSession(s.handleAdminNodeConfigApply)).Methods("POST")
 	admin.HandleFunc("/node/connect", s.requireAdminSession(s.handleAdminNodeConnect)).Methods("POST")
