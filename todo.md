@@ -29,6 +29,32 @@ or fresh data directories; silent propagation would risk a split-brain chain.
 This checklist records the work still needed for production wallet support and
 the deployment failure shown in the uploaded screenshot.
 
+## Master prompt audit — remaining engineering work
+
+- [ ] P1 — Add automated RPC compatibility tests for chain ID, syncing, blocks,
+  balances, calls, gas estimation, raw transactions, receipts, and WebSocket
+  behavior; required because health alone does not prove RPC compatibility.
+- [ ] P1 — Add comprehensive P2P and recovery tests for peer discovery,
+  multiple bootnodes, static peers, reconnect, sync, and bootnode failure;
+  required to validate multi-node operation rather than only startup.
+- [ ] P1 — Add production monitoring and alerting for node/RPC availability,
+  sync lag, peer count, validator duties, disk, CPU, RAM, network, and
+  repeated restarts; current dashboard health is not external alerting.
+- [ ] P1 — Document and test encrypted backup/recovery for chain data, node
+  identity, wallet material, and validator keys without exposing secrets.
+- [ ] P1 — Put public RPC behind HTTPS/reverse proxy with authentication and
+  method restrictions; the built-in RPC is not a substitute for an internet
+  edge.
+- [ ] P2 — Decide whether a separate archive node, backup RPC node, monitoring
+  node, and redundant bootnode are required for the expected traffic and
+  availability target.
+- [ ] P2 — Complete an independent validator review covering registration,
+  voting/attestation, finality, slashing, rewards, lifecycle, and missed-duty
+  behavior; document only behavior actually implemented by this PoS engine.
+- [ ] P2 — Add an explicit, reviewed genesis-import/migration procedure only if
+  external Genesis JSON loading is required; never make JSON replacement
+  automatic for an existing chain.
+
 ## Current requested work
 
 - [x] Keep exactly two operational scripts: one safe reset script and one Git

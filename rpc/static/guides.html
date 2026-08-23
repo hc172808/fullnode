@@ -166,6 +166,35 @@
     <button class="mode-tab" onclick="showGuide('testnode',this)">🧪 Test Node</button>
   </div>
 
+  <div class="guide" id="guide-readiness" style="display:block;margin-bottom:28px">
+    <div class="guide-hero">
+      <div class="guide-icon">🛡</div>
+      <div>
+        <h2>Production Readiness Checklist</h2>
+        <p>Before exposing a node publicly, confirm chain identity, least-privilege access, key isolation, monitoring, backups, recovery, and failure testing.</p>
+      </div>
+    </div>
+    <div class="steps">
+      <div class="step-card"><div class="step-card-header"><div class="step-num">1</div><div class="step-title">Network identity</div></div><div class="step-body"><ul>
+        <li>Live network uses chain ID <code>198282</code>; the isolated test node uses <code>31337</code>.</li>
+        <li>Every node must use the approved Genesis JSON/hash and compatible genesis parameters.</li>
+        <li>Never change chain ID, genesis, consensus parameters, or existing chain data without coordinated approval.</li>
+      </ul></div></div>
+      <div class="step-card"><div class="step-card-header"><div class="step-num">2</div><div class="step-title">Public exposure</div></div><div class="step-body"><ul>
+        <li>Expose only the selected P2P port. Keep dashboard and RPC behind HTTPS/reverse proxy or a private network.</li>
+        <li>Never expose keys, admin routes, wallet management, validator management, debug, or personal/account RPC methods publicly.</li>
+        <li>Use UFW, fail2ban, SSH hardening, rate limits, and access logs.</li>
+      </ul></div></div>
+      <div class="step-card"><div class="step-card-header"><div class="step-num">3</div><div class="step-title">Keys and operations</div></div><div class="step-body"><ul>
+        <li>Generate a unique node identity for every machine; never copy <code>node.key</code>.</li>
+        <li>Keep validator and wallet keys on secured nodes only. Never commit, display, log, or send them through RPC.</li>
+        <li>Monitor uptime, height, sync lag, peers, RPC availability, validator activity, CPU, RAM, disk, network, errors, and restarts.</li>
+        <li>Back up encrypted configuration, identities, keys, and chain data. Test recovery without automatically deleting chain data.</li>
+      </ul></div></div>
+      <div class="step-card"><div class="step-card-header"><div class="step-num">4</div><div class="step-title">What still needs engineering review</div></div><div class="step-body"><p>This build provides node health, peer status, update checks, firewall/fail2ban deployment, and admin controls. External alerting, backup verification, comprehensive RPC/P2P/failure test suites, HTTPS edge authentication, redundant bootnodes, backup RPC/archive capacity, and a full validator review remain separate production work.</p></div></div>
+    </div>
+  </div>
+
   <!-- ══════════════════  BUY / TRADE  ═══════════════════════════════ -->
   <div class="guide" id="guide-buy-trade">
     <div class="guide-hero">
@@ -660,7 +689,39 @@ sudo sysctl -p</span></div>
       </div>
 
       <div class="step-card">
-        <div class="step-card-header"><div class="step-num">4</div><div class="step-title">Monitor and maintain</div></div>
+        <div class="step-card-header"><div class="step-num">4</div><div class="step-title">Copy and verify the Genesis JSON on joining nodes</div></div>
+        <div class="step-body">
+          <p>Download the exact file from the genesis node at <code>https://&lt;genesis-host&gt;:&lt;dashboard-port&gt;/gyds-genesis.json</code>. Do not edit it or use a file from another network.</p>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="cmd">curl -fsS https://&lt;genesis-host&gt;:&lt;dashboard-port&gt;/gyds-genesis.json -o /tmp/gyds-genesis.json
+jq '{chainId,networkName,genesisHash}' /tmp/gyds-genesis.json</span></div>
+          <p><strong>Important for this build:</strong> the node uses the compiled <code>core.GydsGenesis</code> configuration at startup; it does not automatically import an arbitrary JSON file from disk. Use this JSON as the canonical identity and parameter reference, then deploy the same approved source and binary configuration to every joining node. Do not put the file in the data directory expecting it to override the chain.</p>
+          <div class="alert alert-warn">⚠️ Copying JSON alone is not enough. The joining node also needs chain ID <code>198282</code>, matching genesis parameters/hash, a unique node identity, compatible software, the genesis bootstrap address, and correct firewall rules. An external genesis-import feature would require explicit engineering review because it could reset or fork an existing chain.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">5</div><div class="step-title">Complete joining-node configuration</div></div>
+        <div class="step-body">
+          <ul>
+            <li>Generate a new node identity; never copy the genesis node's <code>node.key</code>.</li>
+            <li>Set <code>GYDS_CHAIN_ID=198282</code> and <code>GYDS_BOOTSTRAP_NODES=tcp://&lt;genesis-public-ip&gt;:30303</code>.</li>
+            <li>Allow the selected P2P port and protect dashboard/RPC with HTTPS, UFW, and fail2ban.</li>
+            <li>If peer authorization is enabled, exchange node IDs in the allowed-node lists.</li>
+            <li>Never copy validator keys, wallet keys, or other private material from the genesis node.</li>
+          </ul>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="key">GYDS_NODE_MODE</span>=<span class="val">full</span>
+<span class="key">GYDS_CHAIN_ID</span>=<span class="val">198282</span>
+<span class="key">GYDS_BOOTSTRAP_NODES</span>=<span class="val">tcp://&lt;genesis-public-ip&gt;:30303</span>
+<span class="key">GYDS_DATA_DIR</span>=<span class="val">/var/lib/gyds-fullnode</span></div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-card-header"><div class="step-num">6</div><div class="step-title">Monitor and maintain</div></div>
         <div class="step-body">
           <p>Because all new nodes connect to the genesis node first, its uptime directly affects network health. Set up monitoring and alerting:</p>
           <div class="code-block">
