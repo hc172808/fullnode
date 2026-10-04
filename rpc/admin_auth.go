@@ -69,6 +69,8 @@ func NewAuthStore(dataDir string) *AuthStore {
 }
 
 // ── PIN storage ───────────────────────────────────────────────────────────────
+// PINs are initialized during setup and can be replaced by a Web3-authenticated
+// Admin session.
 
 func (a *AuthStore) pinFile() string {
 	return filepath.Join(a.dataDir, "admin", ".pin_hash")

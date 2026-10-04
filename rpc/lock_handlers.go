@@ -13,11 +13,11 @@ func (s *Server) handleLockStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── POST /api/lock/set ─────────────────────────────────────────────────────
-// PINs are created by the setup wizard only. This endpoint is retained so
-// older clients receive an explicit error instead of silently changing policy.
+// PINs are created during setup or changed in the Web3-authenticated Admin
+// area. This public legacy endpoint remains disabled.
 
 func (s *Server) handleLockSet(w http.ResponseWriter, r *http.Request) {
-	jsonErr(w, http.StatusForbidden, "PIN can only be set during the setup wizard")
+	jsonErr(w, http.StatusForbidden, "PIN changes require an authenticated Admin session")
 }
 
 // ── POST /api/lock/verify ──────────────────────────────────────────────────

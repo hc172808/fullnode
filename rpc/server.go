@@ -317,6 +317,7 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/node/sync", s.requireAdminSession(s.handleAdminNodeSync)).Methods("POST")
 	admin.HandleFunc("/node/remove", s.requireAdminSession(s.handleAdminNodeRemove)).Methods("DELETE", "POST")
 	admin.HandleFunc("/node/status", s.requireAdminSession(s.handleAdminNodeStatus)).Methods("GET")
+	admin.HandleFunc("/security/pin", s.requireAdminSession(s.handleAdminPinReset)).Methods("POST")
 	admin.HandleFunc("/db", s.handleAdminDBPage).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBTables)).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBCreateTable)).Methods("POST")

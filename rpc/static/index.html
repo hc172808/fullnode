@@ -370,7 +370,7 @@
     </div>
     <div class="lock-timeout-label" id="lockTimerLabel"></div>
     <button class="btn btn-outline btn-sm" style="margin-top:18px;font-size:11px;opacity:.6"
-            onclick="confirmClearPin()">Forgot PIN? Reset (clears saved wallet)</button>
+            onclick="window.location.href='/admin/login'">Forgot PIN? Sign in to Admin to reset</button>
   </div>
 
 </div>
@@ -1878,13 +1878,6 @@ async function doUnlock() {
     document.getElementById('enterPin').value = '';
     document.getElementById('enterPin').focus();
   }
-}
-
-// ── Forgot PIN ─────────────────────────────────────────────────────────────
-function confirmClearPin() {
-  if (!confirm('Reset?\n\nThis clears your saved wallet from this browser (funds are safe on-chain). To create the node PIN, use the Dashboard PIN step in /setup.')) return;
-  clearUnlocked();
-  window.location.reload();
 }
 
 // ── Inactivity auto-lock ───────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 - [Deploy & setup wizard](deploy-setup.md) — deploy.sh + /setup 7-step web wizard + /api/setup/* endpoints built; .env written server-side
 - [Peer authorization system](peer-auth-system.md) — ed25519 node keypairs, challenge-response handshake, whitelist; GYDS_PEER_AUTH + GYDS_ALLOWED_NODES env vars
 - [Dashboard deployment ports](dashboard-ports.md) — dashboard defaults to 5000; installers must publish/open it and support explicit 8080 configuration
-- [PIN setup policy](pin-setup-policy.md) — dashboard PIN creation is only available in setup; an unset PIN leaves the dashboard unlocked
+- [Dashboard PIN recovery](pin-setup-policy.md) — setup creates PINs; replacing one later requires an authenticated Web3 Admin session
 - [Setup data directory alignment](setup-data-directory.md) — PIN and node identity must persist under the same data directory used after restart
 - [Production boot and updates](production-boot-updates.md) — exactly one node runtime starts at boot; Git updates must build, back up, health-check, and roll back safely
 - [HTTP upgrade middleware](http-upgrade-middleware.md) — response-writer middleware must preserve optional server interfaces such as Hijacker for WebSocket upgrades

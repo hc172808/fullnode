@@ -26,7 +26,7 @@
   </style>
 </head>
 <body>
-  <header class="top"><div class="logo">GY</div><div class="brand">GYDS <span>Chain</span></div><span class="pill">Admin Control</span><div class="grow"></div><a href="/">← Dashboard</a><a href="/admin/guides">Operator Guide</a><a href="/admin/db">Database</a><a href="/admin/logout" style="color:#ef8888">Logout</a></header>
+  <header class="top"><div class="logo">GY</div><div class="brand">GYDS <span>Chain</span></div><span class="pill">Admin Control</span><div class="grow"></div><a href="/">← Dashboard</a><a href="/admin/guides">Operator Guide</a><a href="/admin/db">Database</a><a href="#dashboard-pin">Dashboard PIN</a><a href="/admin/logout" style="color:#ef8888">Logout</a></header>
   <main>
     <div class="heading"><h1>Node Control</h1><p>Change the node role, network, wallet/peer settings, then apply to restart.</p></div>
     <div class="grid">
@@ -73,6 +73,16 @@
         <div id="peerNotice" class="notice"></div>
       </aside>
     </div>
+    <section class="card" id="dashboard-pin" style="margin-top:18px">
+      <h2>Dashboard PIN <span id="pinStatus" class="pill" style="margin-left:8px">Checking…</span></h2>
+      <div class="sub">Set or replace the dashboard PIN after signing in with the authorized Web3 admin wallet. This does not change or erase the wallet saved in this browser.</div>
+      <div class="fields">
+        <div class="field"><label for="newDashboardPin">New PIN</label><input id="newDashboardPin" type="password" minlength="4" maxlength="16" autocomplete="new-password" placeholder="4–16 characters"/></div>
+        <div class="field"><label for="confirmDashboardPin">Confirm new PIN</label><input id="confirmDashboardPin" type="password" minlength="4" maxlength="16" autocomplete="new-password" placeholder="Enter it again"/></div>
+      </div>
+      <div class="actions"><button class="btn green" id="pinResetBtn" onclick="resetDashboardPin()">Set new dashboard PIN</button><span class="hint">The old PIN is not required; your authenticated Admin session authorizes this change.</span></div>
+      <div id="pinNotice" class="notice"></div>
+    </section>
   </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -102,6 +112,20 @@ async function loadConfig(){try{const r=await fetch('/admin/node/config');const 
   activeNetworkProfile=d.network==='testnet'?'testnet':'mainnet';$('networkProfile').value=activeNetworkProfile;setNetworkProfile(false);
   $('peerAuth').checked=!!d.peerAuth;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
  }catch(e){show('configNotice',e.message,'err')}}
+ async function loadPinStatus(){try{const r=await fetch('/api/lock/status');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not check PIN status');$('pinStatus').textContent=d.pinSet?'PIN enabled':'No PIN set';}catch(e){$('pinStatus').textContent='Status unavailable';show('pinNotice',e.message,'err')}}
+ async function resetDashboardPin(){
+   const pin=$('newDashboardPin').value,confirmPin=$('confirmDashboardPin').value,b=$('pinResetBtn');
+   if(pin.length<4||pin.length>16){show('pinNotice','PIN must be 4–16 characters.','err');return}
+   if(pin!==confirmPin){show('pinNotice','PIN entries do not match.','err');return}
+   b.disabled=true;show('pinNotice','Updating dashboard PIN…','warn');
+   try{
+     const r=await fetch('/admin/security/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,confirmPin})});
+     const d=await r.json();if(!r.ok)throw Error(d.error||'Could not update PIN');
+     $('newDashboardPin').value='';$('confirmDashboardPin').value='';
+     show('pinNotice',d.message||'Dashboard PIN updated.','ok');await loadPinStatus();
+   }catch(e){show('pinNotice',e.message,'err')}
+   finally{b.disabled=false}
+ }
 async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configNotice','Saving configuration and restarting…','warn');
   const body={network:$('networkProfile').value};for(const id of ['nodeMode','networkName','dataDir','p2pAdvertiseHost','bootstrapNodes','allowedNodes','logLevel','logFormat'])body[id]=$(id).value;
  for(const id of ['chainId','blockTime','rpcPort','wsPort','p2pPort','maxPeers'])body[id]=Number($(id).value);body.peerAuth=$('peerAuth').checked;
@@ -147,7 +171,7 @@ async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configN
  function stagePeer(){const address=cleanPeerAddress($('peerAddress').value);if(!address){show('peerNotice','Enter a peer host:port first.','err');return}const peers=readBootstrapPeers();if(peers.some(peer=>peer.toLowerCase()===address.toLowerCase())){show('peerNotice','That peer is already in the pending list. Click Apply & Restart Node to save any pending changes.','warn');return}peers.push(address);writeBootstrapPeers(peers);$('peerAddress').value='';show('peerNotice','Peer added to pending changes. Click Apply & Restart Node to save and connect it.','ok')}
  function removePeer(encoded){const address=cleanPeerAddress(decodeURIComponent(encoded));if(!confirm('Stage removal of '+address+'? It will remain connected until you click Apply & Restart Node.'))return;const peers=readBootstrapPeers().filter(peer=>peer.toLowerCase()!==address.toLowerCase());writeBootstrapPeers(peers);show('peerNotice','Peer removal staged. Click Apply & Restart Node to save the change and disconnect it.','ok')}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-loadConfig();refreshPeers();setInterval(refreshPeers,5000);
+ loadConfig();loadPinStatus();refreshPeers();setInterval(refreshPeers,5000);
 </script>
 </body>
 </html>

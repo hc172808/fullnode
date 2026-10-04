@@ -101,16 +101,14 @@ func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/login", http.StatusFound)
 }
 
-// ── GET /admin/set-pin ────────────────────────────────────────────────────────
+// ── Legacy /admin/set-pin routes ──────────────────────────────────────────────
 
 func (s *Server) handleAdminSetPinPage(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/setup?step=6", http.StatusFound)
+	http.Redirect(w, r, "/admin/node#dashboard-pin", http.StatusFound)
 }
 
-// ── POST /admin/set-pin ───────────────────────────────────────────────────────
-
 func (s *Server) handleAdminSetPinSubmit(w http.ResponseWriter, r *http.Request) {
-	jsonErr(w, http.StatusForbidden, "PIN can only be set during the setup wizard")
+	jsonErr(w, http.StatusForbidden, "PIN changes require an authenticated Admin session")
 }
 
 // ── GET /admin/wallet ─────────────────────────────────────────────────────────

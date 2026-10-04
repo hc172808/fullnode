@@ -3,8 +3,8 @@ name: PIN setup policy
 description: Where dashboard PINs may be created and how an unset PIN behaves
 ---
 
-Dashboard PIN creation is intentionally limited to the setup wizard. The dashboard must not show a first-visit PIN creation prompt, and alternate admin/API set-PIN routes must not create a PIN. If no PIN exists, the dashboard remains unlocked; if setup created one, the dashboard asks for it.
+Dashboard PINs are initially created in the setup wizard. After setup, an authenticated Admin session established by the authorized Web3 wallet may replace a forgotten PIN. Public/legacy PIN-setting routes stay disabled. If no PIN exists, the dashboard remains unlocked; if a PIN exists, the dashboard asks for it.
 
-**Why:** The operator requested PIN setup only while configuring the node, not during normal dashboard access.
+**Why:** The operator chose an Admin-only recovery flow so a forgotten PIN can be replaced without deleting wallet data, while keeping dashboard access protected by the authorized Web3 wallet.
 
-**How to apply:** Preserve the setup wizard's PIN field and its server-side apply behavior. When changing dashboard lock UI or auth routes, keep the unset-PIN path open and the existing-PIN verification path protected.
+**How to apply:** Preserve setup-time PIN creation and the unlocked path when no PIN is set. PIN recovery/change must require a valid Web3 Admin session, never the old PIN alone, and must not clear wallet data stored in the browser.
