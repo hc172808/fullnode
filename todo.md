@@ -646,6 +646,42 @@ custom `/api/tokens/{address}` endpoint.
 - [ ] Publish the stablecoin reserve, issuer, redemption, audit, legal, and
   risk information before representing GYD as a 1:1 stablecoin.
 
+## Future — User-created tokens and token-management website
+
+The Go `gpl/token` package has standalone token operations, including creation,
+minting, burning, allowances, account freezing, and mint-authority changes.
+However, no current Go call sites connect those operations to chain
+transactions, consensus, or the RPC API. The current token RPC endpoints expose
+genesis-token data only. The custom VM is not yet a production EVM contract
+runtime, so the package alone is not enough to issue wallet-compatible tokens.
+
+- [ ] Choose the token format for user-created assets: native GYDS-20 tokens or
+  standard EVM ERC-20 contracts. Define wallet compatibility, token IDs or
+  contract addresses, metadata, decimals, and supply limits. Coordinate this
+  choice with the existing GYD ERC-20 migration plan above.
+- [ ] Connect token creation and every state-changing operation to signed,
+  chain-ID-bound transactions that are validated and replayed identically by
+  every node. Use deterministic block data rather than wall-clock values, and
+  include nonce/replay protection, fees, persisted state, and transaction
+  receipts/events.
+- [ ] Define the authority model before implementation: creator/owner,
+  minting, burning, freezing/unfreezing, optional pausing, authority transfer
+  or renunciation, and any maximum-supply rules. The current module has mint
+  and freeze authorities but no freeze-authority transfer or pause operation;
+  authority changes and freezes also need complete event history.
+- [ ] Enforce each authority in consensus execution using the transaction
+  signer, not a web-server admin session or an unsigned API request. Make
+  irreversible actions such as revoking an authority explicit in the UI.
+- [ ] Add RPC/API reads for token metadata, supply, balances, authorities,
+  status, and operation history. If ERC-20 is selected, implement standard ABI
+  behavior and logs only after the production EVM path is ready.
+- [ ] Build the wallet-connected website to create tokens and manage only the
+  authorities assigned to the connected wallet. Have wallets sign transactions
+  locally; never send private keys to the website or node.
+- [ ] Test unauthorized operations, invalid signatures, replay protection,
+  deterministic state across multiple nodes, restart/sync recovery, supply
+  accounting, and wallet compatibility for the selected token format.
+
 ## Deployment error from the uploaded screenshot
 
 The screenshot shows `gyds-fullnode.service` repeatedly failing while systemd
