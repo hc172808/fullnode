@@ -1,0 +1,1 @@
+how to switch from test to main and from developer mode to real production mode
