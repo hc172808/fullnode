@@ -655,10 +655,14 @@ transactions, consensus, or the RPC API. The current token RPC endpoints expose
 genesis-token data only. The custom VM is not yet a production EVM contract
 runtime, so the package alone is not enough to issue wallet-compatible tokens.
 
-- [ ] Choose the token format for user-created assets: native GYDS-20 tokens or
-  standard EVM ERC-20 contracts. Define wallet compatibility, token IDs or
-  contract addresses, metadata, decimals, and supply limits. Coordinate this
-  choice with the existing GYD ERC-20 migration plan above.
+- [x] Product decision: user-created assets will use standard EVM ERC-20
+  contracts.
+- [ ] Define target wallet compatibility, contract-address/deployment rules,
+  metadata, decimals, and supply limits. Coordinate the EVM work with the
+  existing GYD ERC-20 migration plan above.
+- [x] Make `eth_sendRawTransaction` fail closed rather than return fabricated
+  transaction hashes and pending records. It remains unavailable until signed
+  transaction decoding, mempool admission, and consensus execution exist.
 - [ ] Connect token creation and every state-changing operation to signed,
   chain-ID-bound transactions that are validated and replayed identically by
   every node. Use deterministic block data rather than wall-clock values, and

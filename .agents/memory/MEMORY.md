@@ -11,3 +11,4 @@
 - [Persistent peer onboarding](persistent-peer-onboarding.md) — admin-added P2P connections must also update bootstrap configuration or they disappear after restart
 - [Canonical explorer](canonical-explorer.md) — all GYDS nodes and wallet metadata use explorer.netlifegy.com
 - [Admin Web3 authentication](admin-web3-auth.md) — admin access uses a one-time Ethereum personal-sign challenge; PIN authentication is intentionally disabled
+- [User-created token standard](user-created-token-standard.md) — new user-created assets should be standard EVM ERC-20 contracts, not native GYDS-20 tokens

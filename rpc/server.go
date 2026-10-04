@@ -3,13 +3,10 @@ package rpc
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -62,9 +59,6 @@ type Server struct {
 	bindHost    string // host to bind listeners on ("" / "0.0.0.0" = all interfaces, "127.0.0.1" = loopback only)
 	nodeMode    string
 	dataDir     string
-
-	pendingTx   map[string]*core.Transaction
-	pendingTxMu sync.RWMutex
 
 	auth    *AuthStore
 	adminDB *AdminDB
@@ -122,7 +116,6 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 		subs:          make(map[string]*subscriber),
-		pendingTx:     make(map[string]*core.Transaction),
 		auth:          auth,
 		adminDB:       adminDB,
 		updates:       updater,
@@ -1040,37 +1033,24 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 	// ── Transactions ─────────────────────────────────────────────────────────
 	case "eth_sendRawTransaction":
 		raw := paramStr(req.Params, 0)
-		txHash := hashRawTx(raw)
-
-		s.pendingTxMu.Lock()
-		s.pendingTx[txHash] = &core.Transaction{
-			Hash:      txHash,
-			From:      "0x0000000000000000000000000000000000000000",
-			To:        "0x0000000000000000000000000000000000000000",
-			Value:     big.NewInt(0),
-			GasLimit:  21000,
-			GasPrice:  big.NewInt(1_000_000_000),
-			GasUsed:   21000,
-			Status:    "pending",
-			Timestamp: time.Now().Unix(),
+		if raw == "" {
+			resp.Error = map[string]interface{}{
+				"code":    -32602,
+				"message": "missing raw transaction",
+			}
+			break
 		}
-		s.pendingTxMu.Unlock()
-
-		resp.Result = txHash
+		resp.Error = map[string]interface{}{
+			"code":    -32000,
+			"message": "raw transaction submission is unavailable: signed transaction decoding, mempool admission, and consensus execution are not implemented",
+		}
 
 	case "eth_getTransactionByHash":
 		hash := paramStr(req.Params, 0)
 		if tx, ok := s.chain.GetTransaction(hash); ok {
 			resp.Result = txToRPC(tx)
 		} else {
-			s.pendingTxMu.RLock()
-			pending, found := s.pendingTx[hash]
-			s.pendingTxMu.RUnlock()
-			if found {
-				resp.Result = txToRPC(pending)
-			} else {
-				resp.Result = nil
-			}
+			resp.Result = nil
 		}
 
 	case "eth_getTransactionReceipt":
@@ -1078,15 +1058,7 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 		if tx, ok := s.chain.GetTransaction(hash); ok {
 			resp.Result = txReceiptRPC(tx, s.chain)
 		} else {
-			s.pendingTxMu.RLock()
-			_, found := s.pendingTx[hash]
-			s.pendingTxMu.RUnlock()
-			if found {
-				// Pending — no receipt yet
-				resp.Result = nil
-			} else {
-				resp.Result = nil
-			}
+			resp.Result = nil
 		}
 
 	// ── Calls ────────────────────────────────────────────────────────────────
@@ -1292,15 +1264,4 @@ func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
 		"connected": 0,
 		"results":   results,
 	})
-}
-
-// hashRawTx creates a deterministic tx hash from raw hex bytes.
-func hashRawTx(raw string) string {
-	raw = strings.TrimPrefix(raw, "0x")
-	bytes, _ := hex.DecodeString(raw)
-	if len(bytes) == 0 {
-		bytes = []byte(raw)
-	}
-	sum := sha256.Sum256(bytes)
-	return "0x" + hex.EncodeToString(sum[:])
 }
