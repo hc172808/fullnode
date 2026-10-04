@@ -31,7 +31,7 @@
     <div class="heading"><h1>Node Control</h1><p>Change the node role, network, wallet/peer settings, then apply to restart.</p></div>
     <div class="grid">
       <section class="card">
-        <h2>Runtime configuration</h2><div class="sub">The setup wizard is locked after first use. Changes here are written to the server's protected <code>.env</code> and loaded on restart.</div>
+        <h2>Runtime configuration</h2><div class="sub">The setup wizard is locked after first use. Changes stay pending in this form until Apply &amp; Restart Node writes them to the server and restarts.</div>
         <div class="fields">
           <div class="field"><label>Node role</label><select id="nodeMode">
             <option value="full">Full Node</option><option value="lite">Lite Node</option><option value="rpc">RPC Node</option><option value="boost">Boost Node</option><option value="genesis">Genesis Node</option><option value="sync">Sync Node</option><option value="validator">Validator Node</option><option value="testnode">Test Node</option>
@@ -49,7 +49,7 @@
           <div class="field"><label>P2P port</label><input id="p2pPort" type="number" min="1" max="65535"/></div>
           <div class="field"><label>Maximum peers</label><input id="maxPeers" type="number" min="1" max="10000"/></div>
           <div class="field wide"><label>Advertised P2P host</label><input id="p2pAdvertiseHost" placeholder="public-ip-or-dns (never 0.0.0.0)"/><span class="hint">The listener still binds all interfaces; this is the reachable host shared with peers.</span></div>
-           <div class="field wide"><label>Bootstrap peers</label><textarea id="bootstrapNodes" placeholder="genesis.example.com:30303, 203.0.113.10:30303"></textarea><span class="hint">Persisted on the server and retried after restart. The Connected nodes panel shows live connections only.</span></div>
+           <div class="field wide"><label>Bootstrap peers</label><textarea id="bootstrapNodes" placeholder="genesis.example.com:30303, 203.0.113.10:30303"></textarea><span class="hint">Edits remain pending until you click Apply &amp; Restart Node. The Connected nodes panel shows live connections only.</span></div>
           <div class="field wide"><label>Allowed node IDs</label><textarea id="allowedNodes" placeholder="One or more ed25519 node IDs, comma-separated"></textarea></div>
           <div class="field"><label>Log level</label><select id="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option></select></div>
           <div class="field"><label>Log format</label><select id="logFormat"><option>json</option><option>pretty</option></select></div>
@@ -69,7 +69,7 @@
         <div style="height:14px"></div>
         <div id="peerList" class="peer-list"><div class="empty">Loading connected nodes…</div></div>
         <div class="identity" id="identity">Loading node identity…</div>
-        <div class="quick"><input id="peerAddress" placeholder="host:30303 or tcp://host:30303"/><button class="btn blue" onclick="peerAction('/admin/node/connect')">Connect</button><button class="btn ghost" onclick="peerAction('/admin/node/sync')">Sync / Connect</button></div>
+        <div class="quick"><input id="peerAddress" placeholder="host:30303 or tcp://host:30303"/><button class="btn blue" onclick="stagePeer()">Add peer</button><button class="btn ghost" onclick="$('bootstrapNodes').focus()">Edit peer list</button></div>
         <div id="peerNotice" class="notice"></div>
       </aside>
     </div>
@@ -107,9 +107,45 @@ async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configN
  for(const id of ['chainId','blockTime','rpcPort','wsPort','p2pPort','maxPeers'])body[id]=Number($(id).value);body.peerAuth=$('peerAuth').checked;
  const key=$('validatorKey').value.trim();if(key)body.validatorKey=key;const walletKey=$('walletPrivateKey').value.trim();if(walletKey)body.walletPrivateKey=walletKey;body.walletAddress=$('walletAddress').value.trim();
  try{const r=await fetch('/admin/node/config/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not apply');show('configNotice',d.message,'ok');setTimeout(()=>location.reload(),2500)}catch(e){b.disabled=false;show('configNotice',e.message,'err')}}
- async function refreshPeers(){try{const [p,n,status,cfg]=await Promise.all([fetch('/api/peers').then(r=>r.json()),fetch('/api/node-id').then(r=>r.json()),fetch('/admin/node/status').then(r=>r.json()),fetch('/admin/node/config').then(r=>r.json())]);const peers=p.peers||[];$('peerCount').textContent=peers.length+' connected';$('connectedTotal').textContent=Number(status.connected||0).toLocaleString();$('localHeight').textContent=Number(status.localHeight||0).toLocaleString();const sync=String(status.syncStatus||'unknown');$('syncStatus').textContent=sync==='syncing'?'Syncing':sync==='synced'?'Synced':'No peers';$('syncStatus').className='metric-value '+(sync==='synced'?'good':sync==='syncing'?'warn':'');const behind=Number(status.blocksBehind||0);$('syncDetail').textContent=sync==='syncing'?behind.toLocaleString()+' blocks behind highest connected peer':(sync==='synced'?'At the highest connected peer height':'Connect a peer to compare chain height');const types=status.nodeTypes||{};$('nodeTypes').innerHTML=Object.keys(types).length?Object.entries(types).sort().map(([type,count])=>`<span class="type">${esc(type)}: ${Number(count).toLocaleString()}</span>`).join(''):'<span class="hint">No connected node types</span>';if(n.enode||n.nodeId){$('identity').textContent=n.enode?'Enode: '+n.enode:'Node ID: '+n.nodeId}else{$('identity').textContent=String(cfg.nodeMode||'').toLowerCase()==='rpc'?'Node ID unavailable — RPC mode has P2P disabled. Choose Full, Lite, Sync, Boost, Genesis, or Validator to enable P2P.':'Node ID unavailable — start a P2P-enabled node and configure its data directory.'}$('peerList').innerHTML=peers.length?peers.map(x=>`<div class="peer"><div class="peer-top"><span class="peer-id">${esc(x.nodeId||x.addr)}</span><span class="peer-mode">${esc(x.nodeMode||'unknown')}</span><button class="btn ghost" style="padding:4px 8px;font-size:10px" onclick="removePeer('${encodeURIComponent(x.addr)}')">Remove</button></div><div class="peer-meta">${esc(x.addr)} · height ${Number(x.height||0).toLocaleString()} · ${x.authorized?'authorized':'pending'}</div></div>`).join(''):'<div class="empty">No connected nodes yet. Add a bootstrap address and use Connect.</div>'}catch(e){$('peerList').innerHTML='<div class="empty">Unable to load peer status.</div>';$('syncStatus').textContent='Unavailable'}}
-async function peerAction(path){const address=$('peerAddress').value.trim();if(!address){show('peerNotice','Enter a peer host:port first.','err');return}try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address})});const d=await r.json();if(!r.ok)throw Error(d.error||'Peer action failed');show('peerNotice',d.message||'Request sent.','ok');setTimeout(refreshPeers,700)}catch(e){show('peerNotice',e.message,'err')}}
- async function removePeer(encoded){const address=decodeURIComponent(encoded);if(!confirm('Remove '+address+' from this node? This disconnects it and prevents automatic reconnects.'))return;try{const r=await fetch('/admin/node/remove',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({address})});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not remove peer');show('peerNotice',d.message||'Peer removed.','ok');refreshPeers()}catch(e){show('peerNotice',e.message,'err')}}
+  async function refreshPeers(){
+    try{
+      const [p,n,status,cfg]=await Promise.all([
+        fetch('/api/peers').then(r=>r.json()),
+        fetch('/api/node-id').then(r=>r.json()),
+        fetch('/admin/node/status').then(r=>r.json()),
+        fetch('/admin/node/config').then(r=>r.json())
+      ]);
+      const peers=p.peers||[];
+      $('peerCount').textContent=peers.length+' connected';
+      $('connectedTotal').textContent=Number(status.connected||0).toLocaleString();
+      $('localHeight').textContent=Number(status.localHeight||0).toLocaleString();
+      const sync=String(status.syncStatus||'unknown');
+      $('syncStatus').textContent=sync==='syncing'?'Syncing':sync==='synced'?'Synced':'No peers';
+      $('syncStatus').className='metric-value '+(sync==='synced'?'good':sync==='syncing'?'warn':'');
+      const behind=Number(status.blocksBehind||0);
+      $('syncDetail').textContent=sync==='syncing'?behind.toLocaleString()+' blocks behind highest connected peer':(sync==='synced'?'At the highest connected peer height':'Connect a peer to compare chain height');
+      const types=status.nodeTypes||{};
+      $('nodeTypes').innerHTML=Object.keys(types).length?Object.entries(types).sort().map(([type,count])=>`<span class="type">${esc(type)}: ${Number(count).toLocaleString()}</span>`).join(''):'<span class="hint">No connected node types</span>';
+      if(n.enode||n.nodeId){
+        $('identity').textContent=n.enode?'Enode: '+n.enode:'Node ID: '+n.nodeId;
+      }else{
+        $('identity').textContent=String(cfg.nodeMode||'').toLowerCase()==='rpc'
+          ?'Node ID unavailable — RPC mode has P2P disabled. Choose Full, Lite, Sync, Boost, Genesis, or Validator to enable P2P.'
+          :'Node ID unavailable — start a P2P-enabled node and configure its data directory.';
+      }
+      $('peerList').innerHTML=peers.length
+        ?peers.map(x=>`<div class="peer"><div class="peer-top"><span class="peer-id">${esc(x.nodeId||x.addr)}</span><span class="peer-mode">${esc(x.nodeMode||'unknown')}</span><button class="btn ghost" style="padding:4px 8px;font-size:10px" onclick="removePeer('${encodeURIComponent(x.addr)}')">Remove</button></div><div class="peer-meta">${esc(x.addr)} · height ${Number(x.height||0).toLocaleString()} · ${x.authorized?'authorized':'pending'}</div></div>`).join('')
+        :'<div class="empty">No connected nodes yet. Add a peer above, then click Apply &amp; Restart Node.</div>';
+    }catch(e){
+      $('peerList').innerHTML='<div class="empty">Unable to load peer status.</div>';
+      $('syncStatus').textContent='Unavailable';
+    }
+  }
+ function cleanPeerAddress(value){return String(value??'').trim().replace(/^tcp:\/\//i,'')}
+ function readBootstrapPeers(){return $('bootstrapNodes').value.split(/[,\n\r]+/).map(cleanPeerAddress).filter(Boolean)}
+ function writeBootstrapPeers(peers){$('bootstrapNodes').value=peers.join(',\n')}
+ function stagePeer(){const address=cleanPeerAddress($('peerAddress').value);if(!address){show('peerNotice','Enter a peer host:port first.','err');return}const peers=readBootstrapPeers();if(peers.some(peer=>peer.toLowerCase()===address.toLowerCase())){show('peerNotice','That peer is already in the pending list. Click Apply & Restart Node to save any pending changes.','warn');return}peers.push(address);writeBootstrapPeers(peers);$('peerAddress').value='';show('peerNotice','Peer added to pending changes. Click Apply & Restart Node to save and connect it.','ok')}
+ function removePeer(encoded){const address=cleanPeerAddress(decodeURIComponent(encoded));if(!confirm('Stage removal of '+address+'? It will remain connected until you click Apply & Restart Node.'))return;const peers=readBootstrapPeers().filter(peer=>peer.toLowerCase()!==address.toLowerCase());writeBootstrapPeers(peers);show('peerNotice','Peer removal staged. Click Apply & Restart Node to save the change and disconnect it.','ok')}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 loadConfig();refreshPeers();setInterval(refreshPeers,5000);
 </script>

@@ -3,6 +3,7 @@ package rpc
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -54,11 +55,12 @@ func (s *Server) handleAdminNodePage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAdminNodeConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := config.FromEnv()
+	bootstrapPeers := applyStagedBootstrapChanges(cfg.P2PBootstrap, s.pendingBootstrapChanges(cfg.Network))
 	jsonOK(w, adminNodeConfig{
 		Network: cfg.Network, ChainID: cfg.ChainID, NetworkName: cfg.NetworkName, NodeMode: cfg.NodeMode,
 		BlockTime: int(cfg.BlockTime.Seconds()), RPCPort: cfg.RPCPort, WSPort: cfg.WSPort,
 		P2PPort: cfg.P2PPort, P2PAdvertiseHost: cfg.P2PAdvertiseHost, MaxPeers: cfg.MaxPeers,
-		BootstrapNodes: strings.Join(cfg.P2PBootstrap, ", "), DataDir: cfg.DataDir,
+		BootstrapNodes: strings.Join(bootstrapPeers, ", "), DataDir: cfg.DataDir,
 		LogLevel: cfg.LogLevel, LogFormat: cfg.LogFormat, PeerAuth: cfg.PeerAuth,
 		AllowedNodes:     strings.Join(cfg.AllowedNodes, ", "),
 		ValidatorKeySet:  strings.TrimSpace(os.Getenv("GYDS_VALIDATOR_KEY")) != "",
@@ -122,7 +124,11 @@ func (c adminNodeConfig) validate() error {
 	if !validNodeModes[c.NodeMode] {
 		return fmt.Errorf("unsupported node mode %q", c.NodeMode)
 	}
-	if c.NodeMode == "sync" && strings.TrimSpace(c.BootstrapNodes) == "" {
+	bootstrapPeers, err := parseBootstrapPeers(c.BootstrapNodes)
+	if err != nil {
+		return err
+	}
+	if c.NodeMode == "sync" && len(bootstrapPeers) == 0 {
 		return fmt.Errorf("sync mode requires at least one bootstrap node in host:port form")
 	}
 	if c.ChainID <= 0 {
@@ -149,6 +155,158 @@ func (c adminNodeConfig) validate() error {
 		return fmt.Errorf("data directory must be a non-empty single-line path")
 	}
 	return nil
+}
+
+type stagedBootstrapChanges struct {
+	Added   []string
+	Removed []string
+}
+
+func bootstrapProfile(network string) string {
+	if strings.EqualFold(strings.TrimSpace(network), "testnet") {
+		return "testnet"
+	}
+	return "mainnet"
+}
+
+func normalizeBootstrapPeer(addr string) (string, error) {
+	addr = strings.TrimSpace(addr)
+	addr = p2p.NormalizeAddr(addr)
+	host, rawPort, err := net.SplitHostPort(addr)
+	if err != nil || strings.TrimSpace(host) == "" {
+		return "", fmt.Errorf("peer address %q must be host:port", addr)
+	}
+	port, err := strconv.Atoi(rawPort)
+	if err != nil || port < 1 || port > 65535 {
+		return "", fmt.Errorf("peer address %q must use a port from 1 to 65535", addr)
+	}
+	return net.JoinHostPort(strings.TrimSpace(host), strconv.Itoa(port)), nil
+}
+
+func parseBootstrapPeers(raw string) ([]string, error) {
+	peers := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, value := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r'
+	}) {
+		peer, err := normalizeBootstrapPeer(value)
+		if err != nil {
+			return nil, err
+		}
+		key := strings.ToLower(peer)
+		if !seen[key] {
+			seen[key] = true
+			peers = append(peers, peer)
+		}
+	}
+	return peers, nil
+}
+
+func mergeBootstrapPeers(base, additions []string) []string {
+	out := make([]string, 0, len(base)+len(additions))
+	seen := make(map[string]bool)
+	for _, peer := range append(append([]string(nil), base...), additions...) {
+		peer = p2p.NormalizeAddr(peer)
+		if peer == "" {
+			continue
+		}
+		key := strings.ToLower(peer)
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, peer)
+		}
+	}
+	return out
+}
+
+func applyStagedBootstrapChanges(base []string, changes stagedBootstrapChanges) []string {
+	removed := make(map[string]bool, len(changes.Removed))
+	for _, peer := range changes.Removed {
+		removed[strings.ToLower(p2p.NormalizeAddr(peer))] = true
+	}
+	kept := make([]string, 0, len(base))
+	for _, peer := range base {
+		if !removed[strings.ToLower(p2p.NormalizeAddr(peer))] {
+			kept = append(kept, peer)
+		}
+	}
+	return mergeBootstrapPeers(kept, changes.Added)
+}
+
+func (s *Server) pendingBootstrapChanges(network string) stagedBootstrapChanges {
+	profile := bootstrapProfile(network)
+	s.pendingBootstrapMu.Lock()
+	defer s.pendingBootstrapMu.Unlock()
+	change := s.pendingBootstrap[profile]
+	return stagedBootstrapChanges{
+		Added:   append([]string(nil), change.Added...),
+		Removed: append([]string(nil), change.Removed...),
+	}
+}
+
+func (s *Server) stageBootstrapPeer(network, rawAddress string) error {
+	address, err := normalizeBootstrapPeer(rawAddress)
+	if err != nil {
+		return err
+	}
+	profile := bootstrapProfile(network)
+	s.pendingBootstrapMu.Lock()
+	defer s.pendingBootstrapMu.Unlock()
+	if s.pendingBootstrap == nil {
+		s.pendingBootstrap = make(map[string]stagedBootstrapChanges)
+	}
+	change := s.pendingBootstrap[profile]
+	addressKey := strings.ToLower(address)
+	for i, peer := range change.Removed {
+		if strings.ToLower(p2p.NormalizeAddr(peer)) == addressKey {
+			change.Removed = append(change.Removed[:i], change.Removed[i+1:]...)
+			break
+		}
+	}
+	for _, peer := range change.Added {
+		if strings.ToLower(p2p.NormalizeAddr(peer)) == addressKey {
+			s.pendingBootstrap[profile] = change
+			return nil
+		}
+	}
+	change.Added = append(change.Added, address)
+	s.pendingBootstrap[profile] = change
+	return nil
+}
+
+func (s *Server) stageBootstrapRemoval(network, rawAddress string) error {
+	address, err := normalizeBootstrapPeer(rawAddress)
+	if err != nil {
+		return err
+	}
+	profile := bootstrapProfile(network)
+	s.pendingBootstrapMu.Lock()
+	defer s.pendingBootstrapMu.Unlock()
+	if s.pendingBootstrap == nil {
+		s.pendingBootstrap = make(map[string]stagedBootstrapChanges)
+	}
+	change := s.pendingBootstrap[profile]
+	addressKey := strings.ToLower(address)
+	for i, peer := range change.Added {
+		if strings.ToLower(p2p.NormalizeAddr(peer)) == addressKey {
+			change.Added = append(change.Added[:i], change.Added[i+1:]...)
+			break
+		}
+	}
+	for _, peer := range change.Removed {
+		if strings.ToLower(p2p.NormalizeAddr(peer)) == addressKey {
+			return nil
+		}
+	}
+	change.Removed = append(change.Removed, address)
+	s.pendingBootstrap[profile] = change
+	return nil
+}
+
+func (s *Server) clearPendingBootstrapChanges(network string) {
+	s.pendingBootstrapMu.Lock()
+	defer s.pendingBootstrapMu.Unlock()
+	delete(s.pendingBootstrap, bootstrapProfile(network))
 }
 
 // updateEnvFile changes only the node settings. Existing secrets and operator
@@ -191,51 +349,6 @@ func updateEnvFile(updates map[string]string) error {
 	return os.Chmod(envPath, 0600)
 }
 
-// persistBootstrapNode keeps an operator-added peer across process restarts.
-// The live P2P connection alone is not enough because the process rebuilds its
-// peer list from GYDS_BOOTSTRAP_NODES on startup.
-func persistBootstrapNode(addr string) error {
-	addr = p2p.NormalizeAddr(addr)
-	if addr == "" {
-		return fmt.Errorf("peer address is required")
-	}
-
-	cfg := config.FromEnv()
-	for _, existing := range cfg.P2PBootstrap {
-		if p2p.NormalizeAddr(existing) == addr {
-			return nil
-		}
-	}
-
-	peers := append(append([]string(nil), cfg.P2PBootstrap...), addr)
-	if err := config.SaveBootstrapNodes(cfg.DataDir, peers); err != nil {
-		return err
-	}
-	return updateEnvFile(map[string]string{
-		"GYDS_BOOTSTRAP_NODES": strings.Join(peers, ","),
-	})
-}
-
-func removeBootstrapNode(addr string) error {
-	addr = p2p.NormalizeAddr(addr)
-	if addr == "" {
-		return fmt.Errorf("peer address is required")
-	}
-	cfg := config.FromEnv()
-	peers := make([]string, 0, len(cfg.P2PBootstrap))
-	for _, existing := range cfg.P2PBootstrap {
-		if p2p.NormalizeAddr(existing) != addr {
-			peers = append(peers, existing)
-		}
-	}
-	if err := config.SaveBootstrapNodes(cfg.DataDir, peers); err != nil {
-		return err
-	}
-	return updateEnvFile(map[string]string{
-		"GYDS_BOOTSTRAP_NODES": strings.Join(peers, ","),
-	})
-}
-
 func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Request) {
 	var c adminNodeConfig
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
@@ -265,6 +378,11 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 		jsonErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	bootstrapPeers, err := parseBootstrapPeers(c.BootstrapNodes)
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	updates := map[string]string{
 		"GYDS_NETWORK":            c.Network,
@@ -277,7 +395,7 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 		"GYDS_P2P_PORT":           strconv.Itoa(c.P2PPort),
 		"GYDS_P2P_ADVERTISE_HOST": c.P2PAdvertiseHost,
 		"GYDS_MAX_PEERS":          strconv.Itoa(c.MaxPeers),
-		"GYDS_BOOTSTRAP_NODES":    c.BootstrapNodes,
+		"GYDS_BOOTSTRAP_NODES":    strings.Join(bootstrapPeers, ","),
 		"GYDS_DATA_DIR":           c.DataDir,
 		"GYDS_LOG_LEVEL":          c.LogLevel,
 		"GYDS_LOG_FORMAT":         c.LogFormat,
@@ -297,10 +415,11 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 		jsonErr(w, http.StatusInternalServerError, "could not save node configuration: "+err.Error())
 		return
 	}
-	if err := config.SaveBootstrapNodes(c.DataDir, strings.Split(c.BootstrapNodes, ",")); err != nil {
+	if err := config.SaveBootstrapNodes(c.DataDir, bootstrapPeers); err != nil {
 		jsonErr(w, http.StatusInternalServerError, "could not persist bootstrap peers: "+err.Error())
 		return
 	}
+	s.clearPendingBootstrapChanges(c.Network)
 
 	// The process is replaced after the response is flushed. Passing the
 	// changed values explicitly is important because the Replit launcher
@@ -343,55 +462,31 @@ type adminPeerAction struct {
 }
 
 func (s *Server) handleAdminNodeConnect(w http.ResponseWriter, r *http.Request) {
-	if s.p2p == nil {
-		jsonErr(w, http.StatusConflict, "this node mode does not run P2P")
-		return
-	}
 	var action adminPeerAction
 	if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
 		jsonErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 	action.Address = p2p.NormalizeAddr(action.Address)
-	if action.Address == "" {
-		jsonErr(w, http.StatusBadRequest, "peer address is required (host:port)")
+	if err := s.stageBootstrapPeer(config.FromEnv().Network, action.Address); err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Save first. A peer may be restarting or temporarily offline; it must
-	// still be retried automatically after this node restarts.
-	if err := persistBootstrapNode(action.Address); err != nil {
-		jsonErr(w, http.StatusInternalServerError, "could not persist peer: "+err.Error())
-		return
-	}
-	if err := s.p2p.ConnectTo(action.Address); err != nil {
-		jsonErr(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	jsonOK(w, map[string]interface{}{"ok": true, "message": "Connection attempt started", "peers": s.p2p.Peers()})
+	jsonOK(w, map[string]interface{}{"ok": true, "message": "Peer staged. Click Apply & Restart Node to save and connect it."})
 }
 
 func (s *Server) handleAdminNodeSync(w http.ResponseWriter, r *http.Request) {
-	if s.p2p == nil {
-		jsonErr(w, http.StatusConflict, "this node mode does not run P2P; choose full, lite, sync, boost, genesis, or validator")
-		return
-	}
 	var action adminPeerAction
 	_ = json.NewDecoder(r.Body).Decode(&action)
 	if strings.TrimSpace(action.Address) != "" {
-		action.Address = p2p.NormalizeAddr(action.Address)
-		if err := persistBootstrapNode(action.Address); err != nil {
-			jsonErr(w, http.StatusInternalServerError, "could not persist peer: "+err.Error())
-			return
-		}
-		if err := s.p2p.ConnectTo(action.Address); err != nil {
-			jsonErr(w, http.StatusBadGateway, err.Error())
+		if err := s.stageBootstrapPeer(config.FromEnv().Network, action.Address); err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
 	jsonOK(w, map[string]interface{}{
 		"ok":      true,
-		"message": "Sync/connect requested. Sync mode performs full catch-up after restart; connected peers are shown below.",
-		"peers":   s.p2p.Peers(),
+		"message": "Peer changes are staged. Click Apply & Restart Node to save them and reconnect.",
 	})
 }
 
@@ -401,19 +496,11 @@ func (s *Server) handleAdminNodeRemove(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	action.Address = p2p.NormalizeAddr(action.Address)
-	if action.Address == "" {
-		jsonErr(w, http.StatusBadRequest, "peer address is required (host:port)")
+	if err := s.stageBootstrapRemoval(config.FromEnv().Network, action.Address); err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
 		return
-	}
-	if err := removeBootstrapNode(action.Address); err != nil {
-		jsonErr(w, http.StatusInternalServerError, "could not remove peer: "+err.Error())
-		return
-	}
-	if s.p2p != nil {
-		s.p2p.Disconnect(action.Address)
 	}
 	jsonOK(w, map[string]interface{}{
-		"ok": true, "message": "Peer removed from the configured node list.",
+		"ok": true, "message": "Peer removal staged. Click Apply & Restart Node to save the change.",
 	})
 }

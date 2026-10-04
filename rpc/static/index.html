@@ -597,7 +597,7 @@
       <div class="tab-body">
         <div style="padding:4px 0 16px">
           <div style="font-size:16px;font-weight:700;margin-bottom:6px">Import Nodes Config</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Paste the content of your <code style="background:rgba(255,255,255,.07);padding:1px 5px;border-radius:4px">gyds-nodes.json</code> file to connect this node to peers.</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Paste your <code style="background:rgba(255,255,255,.07);padding:1px 5px;border-radius:4px">gyds-nodes.json</code> file to stage its peers. They will not be saved or connected until you click Apply in Admin Control.</div>
           <div class="field">
             <label>gyds-nodes.json content</label>
             <textarea id="nodesConfigInput" rows="7" placeholder='{"version":"1.1","nodes":[{"type":"full","name":"Node 1","address":"1.2.3.4:30303"}]}' style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
@@ -606,7 +606,7 @@
           <div id="nodesImportResults" style="display:none;margin-top:12px"></div>
           <div style="display:flex;gap:10px;margin-top:16px">
             <button class="btn btn-outline" onclick="hideImportNodes()">Cancel</button>
-            <button class="btn btn-primary" id="nodesImportBtn" onclick="doImportNodes()">⬡ Import &amp; Connect</button>
+            <button class="btn btn-primary" id="nodesImportBtn" onclick="doImportNodes()">⬡ Stage Peers for Apply</button>
           </div>
         </div>
       </div>
@@ -872,7 +872,6 @@ let mnemonic = null;
 let nodeBlockTimeSecs = 120;
 let lastBlockTs       = 0;
 let lastKnownHeight   = -1;
-let currentNodeMode   = '';
 let currentNodeMode   = '';
 
 // ── Init ────────────────────────────────────────────────────────────────────
@@ -1211,7 +1210,7 @@ async function doImportNodes() {
   }
 
   btn.disabled = true;
-  btn.textContent = 'Connecting…';
+  btn.textContent = 'Staging peers…';
 
   try {
     const res = await fetch('/api/nodes/import', {
@@ -1226,8 +1225,8 @@ async function doImportNodes() {
       return;
     }
 
-    const statusColor = { connected: 'var(--accent)', queued: 'var(--accent2)', failed: 'var(--danger)', skipped: 'var(--muted)' };
-    const statusIcon  = { connected: '✓', queued: '⏳', failed: '✗', skipped: '—' };
+    const statusColor = { 'pending-apply': 'var(--accent2)', skipped: 'var(--muted)' };
+    const statusIcon  = { 'pending-apply': '⏳', skipped: '—' };
 
     const rows = (data.results || []).map(r => {
       const col = statusColor[r.status] || 'var(--muted)';
@@ -1243,9 +1242,9 @@ async function doImportNodes() {
       </div>`;
     }).join('');
 
-    const summary = data.connected > 0
-      ? `<div class="alert" style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:var(--accent);border-radius:8px;padding:10px 14px;margin-bottom:12px">✅ Connected to ${data.connected} of ${data.total} node(s)</div>`
-      : `<div class="alert alert-warn" style="margin-bottom:12px">⚠️ No nodes connected — check addresses and that peers are reachable.</div>`;
+    const summary = data.staged > 0
+      ? `<div class="alert alert-warn" style="margin-bottom:12px">⏳ Staged ${data.staged} peer(s). Open or reload Admin Control, then click Apply &amp; Restart Node to save and connect them.</div>`
+      : `<div class="alert alert-warn" style="margin-bottom:12px">⚠️ No valid peers were staged. Check the addresses in the imported file.</div>`;
 
     resultsEl.innerHTML = summary + `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Results (${data.total} nodes, config v${data.version||'?'})</div><div style="max-height:220px;overflow-y:auto">${rows}</div>`;
     resultsEl.style.display = 'block';
@@ -1253,7 +1252,7 @@ async function doImportNodes() {
     alertEl.innerHTML = '<div class="alert alert-danger">❌ Request failed: ' + e.message + '</div>';
   } finally {
     btn.disabled = false;
-    btn.textContent = '⬡ Import & Connect';
+    btn.textContent = '⬡ Stage Peers for Apply';
   }
 }
 

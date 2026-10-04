@@ -23,6 +23,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 
+	"github.com/gydschain/fullnode/config"
 	"github.com/gydschain/fullnode/core"
 	"github.com/gydschain/fullnode/p2p"
 )
@@ -69,6 +70,9 @@ type Server struct {
 	adminDB *AdminDB
 	p2p     P2PConnector
 	updates *UpdateChecker
+
+	pendingBootstrapMu sync.Mutex
+	pendingBootstrap   map[string]stagedBootstrapChanges
 
 	accessLogFile *os.File
 }
@@ -518,7 +522,7 @@ func (s *Server) handleGYDMetadata(w http.ResponseWriter, r *http.Request) {
 		"contractAddress":  nil,
 		"logoUrl":          base + "/logo.png",
 		"description":      "GYD is a node-managed genesis token on " + networkName + ". It is not currently an ERC-20 contract.",
-		"networkName":       networkName,
+		"networkName":      networkName,
 		"networkMetadata":  base + "/gyds-network.json",
 		"balanceApi":       base + "/api/tokens/{address}",
 		"walletImportable": false,
@@ -1245,7 +1249,7 @@ func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := make([]result, 0, len(cfg.Nodes))
-	connected := 0
+	staged := 0
 
 	for _, node := range cfg.Nodes {
 		addr := node.p2pAddr()
@@ -1259,32 +1263,23 @@ func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
 
 		res := result{Address: addr, Name: name}
 
-		if addr == "" {
+		addr, err := normalizeBootstrapPeer(addr)
+		if err != nil {
 			res.Status = "skipped"
-			res.Error = "no address or host/port provided"
-			results = append(results, res)
-			continue
-		}
-
-		// Persist before dialing. The remote node may be temporarily offline,
-		// but this peer must still be retried on the next startup.
-		if err := persistBootstrapNode(addr); err != nil {
-			res.Status = "not-persisted"
 			res.Error = err.Error()
 			results = append(results, res)
 			continue
 		}
-		if s.p2p != nil {
-			if err := s.p2p.ConnectTo(addr); err != nil {
-				res.Status = "failed"
-				res.Error = err.Error()
-			} else {
-				res.Status = "connected"
-				connected++
-			}
-		} else {
-			res.Status = "queued"
+
+		if err := s.stageBootstrapPeer(config.FromEnv().Network, addr); err != nil {
+			res.Status = "skipped"
+			res.Error = err.Error()
+			results = append(results, res)
+			continue
 		}
+		res.Address = addr
+		res.Status = "pending-apply"
+		staged++
 		results = append(results, res)
 	}
 
@@ -1292,7 +1287,8 @@ func (s *Server) handleNodesImport(w http.ResponseWriter, r *http.Request) {
 		"ok":        true,
 		"version":   cfg.Version,
 		"total":     len(cfg.Nodes),
-		"connected": connected,
+		"staged":    staged,
+		"connected": 0,
 		"results":   results,
 	})
 }
