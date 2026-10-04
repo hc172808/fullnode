@@ -849,17 +849,19 @@
 
 <script>
 // ── Config ──────────────────────────────────────────────────────────────────
-const CHAIN_ID   = 198282;
+let CHAIN_ID     = 198282;
+let NETWORK_NAME = 'GYDS Chain';
 const SYMBOL     = 'GYDS';
 const GAS_LIMIT  = 21000;
 const GAS_PRICE  = ethers.utils.parseUnits('1', 'gwei');
-  const RPC_URL    = 'https://rpc.netlifegy.com';
+let RPC_URL       = 'https://rpc.netlifegy.com';
 const PUBLIC_BASE_URL = window.location.origin;
 // The public RPC node is exposed through Cloudflare on its dedicated RPC
 // port. Other/local nodes keep the same-origin fallback for development.
-const WALLET_RPC_URL = window.location.hostname === 'rpc.netlifegy.com'
+let WALLET_RPC_URL = window.location.hostname === 'rpc.netlifegy.com'
   ? window.location.protocol + '//rpc.netlifegy.com:8545'
   : window.location.origin + '/rpc';
+let networkConfigLoaded = false;
 
 // ── State ───────────────────────────────────────────────────────────────────
 let provider = null;
@@ -870,6 +872,8 @@ let mnemonic = null;
 let nodeBlockTimeSecs = 120;
 let lastBlockTs       = 0;
 let lastKnownHeight   = -1;
+let currentNodeMode   = '';
+let currentNodeMode   = '';
 
 // ── Init ────────────────────────────────────────────────────────────────────
 // Stats panel fires on DOMContentLoaded — independent of ethers.js
@@ -922,16 +926,49 @@ function showToast(msg) {
   t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2400);
 }
 
-window.addEventListener('load', () => {
+async function loadNetworkConfiguration() {
+  try {
+    const response = await fetch('/gyds-network.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`network metadata returned HTTP ${response.status}`);
+    const metadata = await response.json();
+    const chainId = Number(metadata.chainIdDec);
+    const rpcUrl = Array.isArray(metadata.rpcUrls) ? metadata.rpcUrls[0] : '';
+    if (!Number.isSafeInteger(chainId) || chainId <= 0 || !rpcUrl) {
+      throw new Error('network metadata is missing a valid chain ID or RPC URL');
+    }
+    CHAIN_ID = chainId;
+    NETWORK_NAME = String(metadata.name || 'GYDS Chain');
+    RPC_URL = rpcUrl;
+    WALLET_RPC_URL = rpcUrl;
+    GYDS_CHAIN_PARAMS = {
+      chainId: metadata.chainIdHex || `0x${chainId.toString(16)}`,
+      chainName: NETWORK_NAME,
+      nativeCurrency: { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
+      rpcUrls: [WALLET_RPC_URL],
+      blockExplorerUrls: metadata.explorerUrls || ['https://explorer.netlifegy.com'],
+      iconUrls: metadata.iconUrls || [PUBLIC_BASE_URL + '/logo.png'],
+    };
+    networkConfigLoaded = true;
+    return true;
+  } catch (error) {
+    console.error('Could not load active GYDS network metadata:', error);
+    setText('balanceSub', 'Network metadata unavailable; wallet actions are disabled');
+    return false;
+  }
+}
+
+window.addEventListener('load', async () => {
   if (typeof ethers === 'undefined') return;
 
-  provider = new ethers.providers.JsonRpcProvider(RPC_URL, {
-    chainId: CHAIN_ID,
-    name: 'GYDS Chain'
-  });
+  if (await loadNetworkConfiguration()) {
+    provider = new ethers.providers.JsonRpcProvider(RPC_URL, {
+      chainId: CHAIN_ID,
+      name: NETWORK_NAME
+    });
+  }
 
   // Populate manual network config fields in the Connect pane.
-  const rpcUrl = 'https://rpc.netlifegy.com';
+  const rpcUrl = WALLET_RPC_URL;
   const explorerUrl = 'https://explorer.netlifegy.com';
   const rpcEl = document.getElementById('netConfigRpc');
   const expEl = document.getElementById('netConfigExplorer');
@@ -988,6 +1025,7 @@ async function pollNode() {
     lastKnownHeight   = h;
     lastBlockTs       = Number(data.lastBlockTimestamp ?? 0);
     nodeBlockTimeSecs = Number(data.blockTimeSecs ?? nodeBlockTimeSecs);
+    currentNodeMode   = String(data.nodeMode ?? '');
 
     document.getElementById('netHeight').textContent = 'Block #' + h.toLocaleString();
     document.getElementById('netDot').className = 'dot';
@@ -1053,6 +1091,13 @@ function renderBlocksFeed(blocks) {
 }
 
 function tickCountdown() {
+  const producerModes = new Set(['full', 'boost', 'genesis', 'sync', 'validator', 'testnode']);
+  if (!producerModes.has(currentNodeMode)) {
+    setText('sCountdown', '—');
+    const countdown = document.getElementById('sCountdown');
+    if (countdown) countdown.title = 'This node mode does not produce blocks locally.';
+    return;
+  }
   if (!lastBlockTs || !nodeBlockTimeSecs) return;
   const now    = Math.floor(Date.now() / 1000);
   const remain = nodeBlockTimeSecs - ((now - lastBlockTs) % nodeBlockTimeSecs);
@@ -1329,7 +1374,7 @@ async function refreshBalance() {
     const bal = await provider.getBalance(addr);
     const fmt = parseFloat(ethers.utils.formatEther(bal));
     document.getElementById('walletBalance').textContent = fmt.toLocaleString(undefined, {maximumFractionDigits: 6});
-    document.getElementById('balanceSub').textContent = 'Chain ID ' + CHAIN_ID + ' · GYDS Chain';
+    document.getElementById('balanceSub').textContent = 'Chain ID ' + CHAIN_ID + ' · ' + NETWORK_NAME;
     refreshTokenBalances(addr);
   } catch {
     document.getElementById('balanceSub').textContent = 'Could not load balance';
@@ -1451,8 +1496,8 @@ function drawQR(address) {
 }
 
 // ── Add GYDS Chain to external wallet (EIP-3085) ──────────────────────────────
-const GYDS_CHAIN_PARAMS = {
-  chainId:           '0x3068a', // 198282
+let GYDS_CHAIN_PARAMS = {
+  chainId:           '0x3068a',
   chainName:         'GYDS Chain',
   nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
   rpcUrls:           [WALLET_RPC_URL],
@@ -1475,8 +1520,8 @@ async function addChainToWallet(label, btn) {
     const switched = await ensureGydsNetwork();
     alertEl.className = 'alert alert-success';
     alertEl.innerHTML = switched
-      ? `✅ GYDS Chain is ready in ${label}.`
-      : `✅ GYDS Chain added to ${label} successfully!`;
+      ? `✅ ${NETWORK_NAME} is ready in ${label}.`
+      : `✅ ${NETWORK_NAME} added to ${label} successfully!`;
     alertEl.style.display = 'block';
   } catch(e) {
     if (e.code === 4001) {
@@ -1496,6 +1541,9 @@ async function addChainToWallet(label, btn) {
 
 // Switch first when chain 198282 is already present; otherwise add it.
 async function ensureGydsNetwork() {
+  if (!networkConfigLoaded) {
+    throw new Error('Active network metadata is unavailable. Wallet connection was stopped to avoid using the wrong chain.');
+  }
   try {
     await window.ethereum.request({
       method: 'wallet_switchEthereumChain',
@@ -1535,7 +1583,7 @@ async function syncBrowserWallet() {
     await ensureGydsNetwork();
 
     const web3Provider = new ethers.providers.Web3Provider(window.ethereum, {
-      chainId: CHAIN_ID, name: 'GYDS Chain'
+      chainId: CHAIN_ID, name: NETWORK_NAME
     });
     const signer  = web3Provider.getSigner();
     const address = await signer.getAddress();
@@ -1905,16 +1953,9 @@ async function quickAddChain(label, btn) {
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>';
-  const params = {
-    chainId:           '0x3068a',
-    chainName:         'GYDS Chain',
-    nativeCurrency:    { name: 'GYDS', symbol: 'GYDS', decimals: 18 },
-    rpcUrls:           [WALLET_RPC_URL],
-    blockExplorerUrls: ['https://explorer.netlifegy.com'],
-    iconUrls:          [PUBLIC_BASE_URL + '/logo.png'],
-  };
   try {
-    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [params] });
+    if (!networkConfigLoaded) throw new Error('Active network metadata is unavailable.');
+    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [GYDS_CHAIN_PARAMS] });
     alertEl.className = 'alert alert-success';
     alertEl.innerHTML = `✅ GYDS Chain added to ${label}!`;
     alertEl.style.display = 'block';

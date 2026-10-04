@@ -173,6 +173,41 @@ GYDS_LOG_FORMAT="${GYDS_LOG_FORMAT:-json}"
 GYDS_SSH_PORT="${GYDS_SSH_PORT:-22}"
 GYDS_STORAGE_LIMIT_GB="${GYDS_STORAGE_LIMIT_GB:-50}"
 
+GYDS_NETWORK_CONFIGURED="${GYDS_NETWORK:-}"
+if [[ -n "$GYDS_NETWORK_CONFIGURED" ]]; then
+  case "${GYDS_NETWORK,,}" in
+    mainnet)
+      GYDS_NETWORK="mainnet"
+      GYDS_CHAIN_ID="198282"
+      GYDS_NETWORK_NAME="GYDS Chain"
+      if [[ "$GYDS_DATA_DIR" == "/var/lib/gyds-fullnode-testnet" || "$GYDS_DATA_DIR" == "./data/testnet" ]]; then
+        GYDS_DATA_DIR="/var/lib/gyds-fullnode"
+      fi
+      ;;
+    testnet)
+      GYDS_NETWORK="testnet"
+      GYDS_CHAIN_ID="198281"
+      GYDS_NETWORK_NAME="GYDS Testnet"
+      case "$GYDS_DATA_DIR" in
+        /var/lib/gyds-fullnode) GYDS_DATA_DIR="/var/lib/gyds-fullnode-testnet" ;;
+        ./data|./data/testnet) GYDS_DATA_DIR="/var/lib/gyds-fullnode-testnet" ;;
+        */testnet|*-testnet) ;;
+        *) GYDS_DATA_DIR="${GYDS_DATA_DIR%/}/testnet" ;;
+      esac
+      ;;
+    *)
+      die "GYDS_NETWORK='${GYDS_NETWORK}' is not recognized (use mainnet or testnet)."
+      ;;
+  esac
+  if [[ "$GYDS_NETWORK" == "mainnet" ]]; then
+    case "$GYDS_DATA_DIR" in
+      /var/lib/gyds-fullnode-testnet) GYDS_DATA_DIR="/var/lib/gyds-fullnode" ;;
+      */testnet) GYDS_DATA_DIR="${GYDS_DATA_DIR%/testnet}" ;;
+      *-testnet) GYDS_DATA_DIR="${GYDS_DATA_DIR%-testnet}" ;;
+    esac
+  fi
+fi
+
 if [[ -n "$DASHBOARD_PORT_OVERRIDE" ]]; then
   GYDS_DASHBOARD_PORT="$DASHBOARD_PORT_OVERRIDE"
 fi
@@ -487,8 +522,12 @@ step "Configuring Storage"
 
 if ! mkdir -p "$GYDS_DATA_DIR" 2>/dev/null; then
   if [[ $EUID -ne 0 ]]; then
-    warn "Cannot create ${GYDS_DATA_DIR} (requires root). Falling back to ./data"
-    GYDS_DATA_DIR="${SCRIPT_DIR}/data"
+      warn "Cannot create ${GYDS_DATA_DIR} (requires root). Falling back to a local data directory"
+      if [[ "${GYDS_NETWORK:-mainnet}" == "testnet" ]]; then
+        GYDS_DATA_DIR="${SCRIPT_DIR}/data/testnet"
+      else
+        GYDS_DATA_DIR="${SCRIPT_DIR}/data"
+      fi
     mkdir -p "$GYDS_DATA_DIR" \
       || die "Failed to create fallback data directory: ${GYDS_DATA_DIR}"
   else
@@ -570,6 +609,17 @@ if [[ $EUID -eq 0 ]]; then
     sed -i "s|^GYDS_DATA_DIR=.*|GYDS_DATA_DIR=${GYDS_DATA_DIR}|" "${INSTALL_DIR}/.env"
   else
     printf 'GYDS_DATA_DIR=%s\n' "$GYDS_DATA_DIR" >> "${INSTALL_DIR}/.env"
+  fi
+
+  if [[ -n "$GYDS_NETWORK_CONFIGURED" ]]; then
+    for _setting in GYDS_NETWORK GYDS_CHAIN_ID GYDS_NETWORK_NAME; do
+      _value="${!_setting}"
+      if grep -q "^${_setting}=" "${INSTALL_DIR}/.env"; then
+        sed -i "s|^${_setting}=.*|${_setting}='${_value}'|" "${INSTALL_DIR}/.env"
+      else
+        printf "%s='%s'\n" "$_setting" "$_value" >> "${INSTALL_DIR}/.env"
+      fi
+    done
   fi
 
   # Node mode is a deployment choice, not chain state or a secret. Keep the

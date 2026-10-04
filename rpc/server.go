@@ -424,13 +424,14 @@ func (s *Server) handleGenesisInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="gyds-genesis.json"`)
 
-	genesis := core.GenesisBlock(core.GydsGenesis)
+	genesisConfig := s.chain.GenesisConfig()
+	genesis := core.GenesisBlock(genesisConfig)
 	payload := map[string]interface{}{
 		"format":      "gyds-genesis-v1",
-		"chainId":     core.GydsGenesis.ChainID,
-		"networkName": core.GydsGenesis.NetworkName,
+		"chainId":     genesisConfig.ChainID,
+		"networkName": genesisConfig.NetworkName,
 		"genesisHash": genesis.Hash,
-		"config":      core.GydsGenesis,
+		"config":      genesisConfig,
 		"block":       genesis,
 	}
 
@@ -469,22 +470,24 @@ func websocketURL(base string) string {
 // also useful for registries and operators that need one canonical definition.
 func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 	base := s.publicBaseURL(r)
+	genesis := s.chain.GenesisConfig()
+	chainID := genesis.ChainID
 	rpcURL := base + "/rpc"
 	requestHost := strings.ToLower(r.Host)
 	if host, _, err := net.SplitHostPort(requestHost); err == nil {
 		requestHost = host
 	}
-	if requestHost == "rpc.netlifegy.com" || strings.Contains(strings.ToLower(base), "rpc.netlifegy.com") {
+	if chainID == 198282 && (requestHost == "rpc.netlifegy.com" || strings.Contains(strings.ToLower(base), "rpc.netlifegy.com")) {
 		rpcURL = strings.TrimRight(base, "/") + ":" + strconv.Itoa(s.rpcPort)
 		if requestHost == "rpc.netlifegy.com" {
 			rpcURL = "https://rpc.netlifegy.com:" + strconv.Itoa(s.rpcPort)
 		}
 	}
 	jsonOK(w, map[string]interface{}{
-		"name":       "GYDS Chain",
-		"chainId":    "0x3068a",
-		"chainIdHex": "0x3068a",
-		"chainIdDec": 198282,
+		"name":       genesis.NetworkName,
+		"chainId":    fmt.Sprintf("0x%x", chainID),
+		"chainIdHex": fmt.Sprintf("0x%x", chainID),
+		"chainIdDec": chainID,
 		"nativeCurrency": map[string]interface{}{
 			"name":     "GYDS",
 			"symbol":   "GYDS",
@@ -504,6 +507,7 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 // or misleading token information.
 func (s *Server) handleGYDMetadata(w http.ResponseWriter, r *http.Request) {
 	base := s.publicBaseURL(r)
+	networkName := s.chain.GenesisConfig().NetworkName
 	jsonOK(w, map[string]interface{}{
 		"name":             "GYD Stablecoin",
 		"symbol":           "GYD",
@@ -513,7 +517,8 @@ func (s *Server) handleGYDMetadata(w http.ResponseWriter, r *http.Request) {
 		"tokenType":        "node-managed-genesis-token",
 		"contractAddress":  nil,
 		"logoUrl":          base + "/logo.png",
-		"description":      "GYD is a node-managed genesis token on GYDS Chain. It is not currently an ERC-20 contract.",
+		"description":      "GYD is a node-managed genesis token on " + networkName + ". It is not currently an ERC-20 contract.",
+		"networkName":       networkName,
 		"networkMetadata":  base + "/gyds-network.json",
 		"balanceApi":       base + "/api/tokens/{address}",
 		"walletImportable": false,
@@ -531,10 +536,21 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 			chainID = int64(cv)
 		}
 	}
+	networkName := "GYDS Chain"
+	if v, ok := stats["networkName"].(string); ok && v != "" {
+		networkName = v
+	}
 
 	extBase := strings.TrimRight(s.externalURL, "/")
 	rpcURL := canonicalRPCURL
-	wsURL := websocketURL(canonicalRPCURL) + "/api/ws"
+	if chainID != 198282 {
+		if extBase != "" {
+			rpcURL = extBase + "/rpc"
+		} else {
+			rpcURL = fmt.Sprintf("http://127.0.0.1:%d/rpc", s.rpcPort)
+		}
+	}
+	wsURL := websocketURL(rpcURL) + "/api/ws"
 	dashURL := fmt.Sprintf("http://0.0.0.0:%d", s.dashPort)
 	p2pPort := 30303
 	enode := ""
@@ -552,7 +568,7 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"network_name":  "GYDS Chain",
+		"network_name":  networkName,
 		"chain_id":      chainID,
 		"chain_id_hex":  fmt.Sprintf("0x%x", chainID),
 		"symbol":        "GYDS",
@@ -568,7 +584,7 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 			"p2p":       p2pPort,
 		},
 		"metamask": map[string]interface{}{
-			"networkName":    "GYDS Chain",
+			"networkName":    networkName,
 			"rpcUrl":         rpcURL,
 			"chainId":        chainID,
 			"chainIdHex":     fmt.Sprintf("0x%x", chainID),

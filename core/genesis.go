@@ -1,7 +1,9 @@
 package core
 
 import (
+	"fmt"
 	"math/big"
+	"strings"
 	"time"
 )
 
@@ -126,6 +128,24 @@ var GydsTestGenesis = &GenesisConfig{
 			},
 		},
 	},
+}
+
+// GenesisForNetwork returns the immutable genesis profile selected by the
+// operator. The existing mainnet genesis remains unchanged; the persistent
+// testnet receives its own chain ID and timestamp so its genesis hash differs.
+func GenesisForNetwork(network string) (*GenesisConfig, error) {
+	switch strings.ToLower(strings.TrimSpace(network)) {
+	case "mainnet":
+		return GydsGenesis, nil
+	case "testnet":
+		testnet := *GydsTestGenesis
+		testnet.ChainID = 198281
+		testnet.NetworkName = "GYDS Testnet"
+		testnet.Timestamp = GydsGenesis.Timestamp + 1
+		return &testnet, nil
+	default:
+		return nil, fmt.Errorf("unsupported GYDS_NETWORK %q (expected mainnet or testnet)", network)
+	}
 }
 
 func GenesisBlock(cfg *GenesisConfig) *Block {

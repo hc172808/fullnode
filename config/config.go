@@ -2,12 +2,14 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Config struct {
+	Network     string
 	ChainID     int64
 	NetworkName string
 	NodeMode    string
@@ -44,6 +46,7 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
+		Network:          "mainnet",
 		ChainID:          198282,
 		NetworkName:      "GYDS Chain",
 		NodeMode:         "full",
@@ -69,7 +72,19 @@ func DefaultConfig() *Config {
 func FromEnv() *Config {
 	cfg := DefaultConfig()
 
-	if v := os.Getenv("GYDS_CHAIN_ID"); v != "" {
+	networkConfigured := strings.TrimSpace(os.Getenv("GYDS_NETWORK")) != ""
+	if networkConfigured {
+		cfg.Network = strings.ToLower(strings.TrimSpace(os.Getenv("GYDS_NETWORK")))
+		switch cfg.Network {
+		case "mainnet":
+			cfg.ChainID = 198282
+			cfg.NetworkName = "GYDS Chain"
+		case "testnet":
+			cfg.ChainID = 198281
+			cfg.NetworkName = "GYDS Testnet"
+			cfg.DataDir = "./data/testnet"
+		}
+	} else if v := os.Getenv("GYDS_CHAIN_ID"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			cfg.ChainID = id
 		}
@@ -85,7 +100,7 @@ func FromEnv() *Config {
 		cfg.WSPort = 18546
 		cfg.P2PPort = 31337
 	}
-	if v := os.Getenv("GYDS_NETWORK_NAME"); v != "" {
+	if v := os.Getenv("GYDS_NETWORK_NAME"); v != "" && !networkConfigured {
 		cfg.NetworkName = v
 	}
 	if v := os.Getenv("GYDS_P2P_PORT"); v != "" {
@@ -120,7 +135,12 @@ func FromEnv() *Config {
 		cfg.RPCHost = v
 	}
 	if v := os.Getenv("GYDS_DATA_DIR"); v != "" {
-		cfg.DataDir = v
+		dataDir := strings.TrimSpace(v)
+		if networkConfigured {
+			cfg.DataDir = ProfileDataDir(cfg.Network, dataDir)
+		} else {
+			cfg.DataDir = dataDir
+		}
 	}
 	if v := os.Getenv("GYDS_LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
@@ -179,4 +199,36 @@ func FromEnv() *Config {
 	}
 
 	return cfg
+}
+
+// ProfileDataDir maps a configured base directory to an isolated profile
+// directory, and maps the testnet suffix back when returning to mainnet.
+func ProfileDataDir(network, configuredDir string) string {
+	cleanDir := filepath.Clean(strings.TrimSpace(configuredDir))
+	switch network {
+	case "testnet":
+		switch cleanDir {
+		case ".", "data", "/var/lib/gyds-fullnode":
+			if filepath.IsAbs(cleanDir) {
+				return "/var/lib/gyds-fullnode-testnet"
+			}
+			return "./data/testnet"
+		}
+		if strings.HasSuffix(cleanDir, "/testnet") || strings.HasSuffix(cleanDir, "-testnet") {
+			return cleanDir
+		}
+		return filepath.Join(cleanDir, "testnet")
+	case "mainnet":
+		if strings.HasSuffix(cleanDir, "/testnet") {
+			mainnetDir := strings.TrimSuffix(cleanDir, "/testnet")
+			if mainnetDir == "data" {
+				return "./data"
+			}
+			return mainnetDir
+		}
+		if strings.HasSuffix(cleanDir, "-testnet") {
+			return strings.TrimSuffix(cleanDir, "-testnet")
+		}
+	}
+	return configuredDir
 }

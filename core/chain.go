@@ -96,6 +96,14 @@ func NewChain(genesis *GenesisConfig, dataDir string) *Chain {
         return c
 }
 
+// GenesisConfig returns the immutable genesis profile this chain was created
+// with. Callers must not mutate the returned configuration.
+func (c *Chain) GenesisConfig() *GenesisConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.genesis
+}
+
 func (c *Chain) addBlock(b *Block) {
         c.blocks = append(c.blocks, b)
         c.byHash[b.Hash] = b

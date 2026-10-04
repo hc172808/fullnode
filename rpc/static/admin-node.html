@@ -36,8 +36,9 @@
           <div class="field"><label>Node role</label><select id="nodeMode">
             <option value="full">Full Node</option><option value="lite">Lite Node</option><option value="rpc">RPC Node</option><option value="boost">Boost Node</option><option value="genesis">Genesis Node</option><option value="sync">Sync Node</option><option value="validator">Validator Node</option><option value="testnode">Test Node</option>
           </select><span class="hint">RPC mode serves APIs without producing blocks, while P2P remains available for identity and syncing. Sync catches up after restart.</span></div>
-          <div class="field"><label>Chain ID</label><input id="chainId" type="number" min="1"/></div>
-          <div class="field"><label>Network name</label><input id="networkName"/></div>
+          <div class="field"><label>Network profile</label><select id="networkProfile" onchange="setNetworkProfile(true)"><option value="mainnet">GYDS Mainnet</option><option value="testnet">GYDS Testnet</option></select><span class="hint">Switching profiles restarts the node. Mainnet stays in its existing data directory; testnet uses a separate directory. The disposable Test Node remains chain ID 31337.</span></div>
+          <div class="field"><label>Chain ID</label><input id="chainId" type="number" min="1" readonly/></div>
+          <div class="field"><label>Network name</label><input id="networkName" readonly/></div>
           <div class="field"><label>Block time (seconds)</label><input id="blockTime" type="number" min="1"/></div>
           <div class="field"><label>Data directory</label><input id="dataDir"/><span class="hint">Do not copy another node's node.key into this directory.</span></div>
           <div class="field"><label>Wallet address</label><input id="walletAddress" placeholder="Optional server wallet address"/></div>
@@ -75,13 +76,34 @@
   </main>
 <script>
 const $=id=>document.getElementById(id);
+let activeNetworkProfile='mainnet';
 function show(id,msg,type){const e=$(id);e.textContent=msg;e.className='notice show '+type}
+function setNetworkProfile(changing){
+  const next=$('networkProfile').value;
+  const dataDir=$('dataDir');
+  let path=dataDir.value.trim().replace(/\/+$/,'');
+  if(changing && next!==activeNetworkProfile){
+    if(next==='testnet'){
+      if(!path||path==='.'||path==='data'||path==='/var/lib/gyds-fullnode') path=path.startsWith('/')?'/var/lib/gyds-fullnode-testnet':'./data/testnet';
+      else if(!path.endsWith('/testnet')&&!path.endsWith('-testnet')) path+='/testnet';
+    }else{
+      if(path.endsWith('/testnet')) path=path.slice(0,-8)||'./data';
+      else if(path.endsWith('-testnet')) path=path.slice(0,-8)||'./data';
+    }
+    dataDir.value=path;
+  }
+  activeNetworkProfile=next;
+  const selected=next==='testnet'?{id:198281,name:'GYDS Testnet'}:{id:198282,name:'GYDS Chain'};
+  $('chainId').value=selected.id;
+  $('networkName').value=selected.name;
+}
 async function loadConfig(){try{const r=await fetch('/admin/node/config');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load config');
   for(const [id,key] of Object.entries({nodeMode:'nodeMode',chainId:'chainId',networkName:'networkName',blockTime:'blockTime',dataDir:'dataDir',walletAddress:'walletAddress',rpcPort:'rpcPort',wsPort:'wsPort',p2pPort:'p2pPort',maxPeers:'maxPeers',p2pAdvertiseHost:'p2pAdvertiseHost',bootstrapNodes:'bootstrapNodes',allowedNodes:'allowedNodes',logLevel:'logLevel',logFormat:'logFormat'}))$(id).value=d[key]??'';
+  activeNetworkProfile=d.network==='testnet'?'testnet':'mainnet';$('networkProfile').value=activeNetworkProfile;setNetworkProfile(false);
   $('peerAuth').checked=!!d.peerAuth;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
  }catch(e){show('configNotice',e.message,'err')}}
 async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configNotice','Saving configuration and restarting…','warn');
- const body={};for(const id of ['nodeMode','networkName','dataDir','p2pAdvertiseHost','bootstrapNodes','allowedNodes','logLevel','logFormat'])body[id]=$(id).value;
+  const body={network:$('networkProfile').value};for(const id of ['nodeMode','networkName','dataDir','p2pAdvertiseHost','bootstrapNodes','allowedNodes','logLevel','logFormat'])body[id]=$(id).value;
  for(const id of ['chainId','blockTime','rpcPort','wsPort','p2pPort','maxPeers'])body[id]=Number($(id).value);body.peerAuth=$('peerAuth').checked;
  const key=$('validatorKey').value.trim();if(key)body.validatorKey=key;const walletKey=$('walletPrivateKey').value.trim();if(walletKey)body.walletPrivateKey=walletKey;body.walletAddress=$('walletAddress').value.trim();
  try{const r=await fetch('/admin/node/config/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not apply');show('configNotice',d.message,'ok');setTimeout(()=>location.reload(),2500)}catch(e){b.disabled=false;show('configNotice',e.message,'err')}}

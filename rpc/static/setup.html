@@ -206,13 +206,21 @@
     <div class="step-body">
       <div class="field-row">
         <div class="field">
+          <label for="networkProfile">Network Profile</label>
+          <select id="networkProfile" onchange="selectNetwork(this.value)">
+            <option value="mainnet">GYDS Mainnet</option>
+            <option value="testnet">GYDS Testnet — isolated</option>
+          </select>
+          <div class="field-hint">Mainnet uses chain ID 198282 and keeps its current data. Testnet uses 198281 with a separate data directory.</div>
+        </div>
+        <div class="field">
           <label>Chain ID</label>
-          <input type="number" id="chainId" value="198282" min="1" />
-          <div class="field-hint">Unique identifier for this blockchain network (default: 198282)</div>
+          <input type="number" id="chainId" value="198282" readonly />
+          <div class="field-hint">Set by the selected network profile.</div>
         </div>
         <div class="field">
           <label>Network Name</label>
-          <input type="text" id="networkName" value="GYDS Chain" />
+          <input type="text" id="networkName" value="GYDS Chain" readonly />
         </div>
       </div>
       <div class="field-row" style="margin-top:18px">
@@ -674,6 +682,7 @@ const TOTAL_STEPS = 8;
 let currentStep = 1;
 let walletTab = 'generate';
 let nodeMode = 'full';
+let networkProfile = 'mainnet';
 
 // Wallet state
 let walletAddr = '';
@@ -687,6 +696,7 @@ const STEP_NAMES = [
 // ── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
   buildStepsRow();
+  selectNetwork('mainnet');
   doGenerateWallet();
   const requestedStep = parseInt(new URLSearchParams(window.location.search).get('step') || '', 10);
   if (requestedStep >= 1 && requestedStep <= TOTAL_STEPS) goStep(requestedStep);
@@ -735,6 +745,23 @@ function goStep(n) {
   document.getElementById('step' + currentStep).classList.remove('hidden');
   updateProgress();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function selectNetwork(profile) {
+  const profiles = {
+    mainnet: { chainId: '198282', name: 'GYDS Chain', dataDir: './data' },
+    testnet: { chainId: '198281', name: 'GYDS Testnet', dataDir: './data/testnet' }
+  };
+  if (!profiles[profile]) return;
+  const previousDefault = networkProfile === 'testnet' ? './data/testnet' : './data';
+  const dataDir = document.getElementById('dataDir');
+  networkProfile = profile;
+  document.getElementById('networkProfile').value = profile;
+  document.getElementById('chainId').value = profiles[profile].chainId;
+  document.getElementById('networkName').value = profiles[profile].name;
+  if (dataDir && (!dataDir.value.trim() || dataDir.value === previousDefault)) {
+    dataDir.value = profiles[profile].dataDir;
+  }
 }
 
 // ── Step 1: Node mode ─────────────────────────────────────────────────────────
@@ -947,6 +974,7 @@ function collectConfig() {
     : '';
 
   return {
+    network:        networkProfile,
     chainId:        document.getElementById('chainId').value,
     networkName:    document.getElementById('networkName').value,
     nodeMode:       nodeMode,
@@ -981,6 +1009,7 @@ function buildReview() {
   // Summary cards
   const summaryGrid = document.getElementById('summaryGrid');
   const items = [
+    ['Network Profile', cfg.network],
     ['Chain ID',       cfg.chainId],
     ['Network',        cfg.networkName],
     ['Node Mode',      cfg.nodeMode],
@@ -1054,6 +1083,7 @@ function buildEnvText(cfg) {
     `# ══════════════════════════════════════════════════════════════════`,
     ``,
     `# ── Chain Identity ─────────────────────────────────────────────`,
+    `GYDS_NETWORK=${cfg.network}`,
     `GYDS_CHAIN_ID=${cfg.chainId}`,
     `GYDS_NETWORK_NAME=${cfg.networkName}`,
     `GYDS_NODE_MODE=${cfg.nodeMode}`,

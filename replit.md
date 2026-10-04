@@ -27,6 +27,7 @@ Or use the "Start application" workflow (already configured).
 
 ## Key environment variables
 ```
+GYDS_NETWORK=mainnet         # mainnet=198282, testnet=198281
 GYDS_CHAIN_ID=198282
 GYDS_NODE_MODE=full
 GYDS_DASHBOARD_PORT=5000
@@ -42,6 +43,19 @@ GYDS_LOG_LEVEL=info
 GYDS_LOG_FORMAT=json
 ```
 Sensitive values (wallet key, validator key) are stored in `.env` (mode 0600).
+
+`GYDS_NETWORK=testnet` selects the persistent isolated testnet profile, forces
+chain ID 198281, and uses a separate `testnet` data directory. Switching back
+to `mainnet` restores the original mainnet directory and chain ID 198282. The
+existing `testnode` mode is a separate disposable local developer chain using
+ID 31337; it is not the persistent testnet. Change the profile in Admin →
+Node Control and apply the restart, or set `GYDS_NETWORK` in `.env` before
+starting the node.
+
+The dashboard and wallet metadata publish the GYDS network logo through
+`/logo.png` and `iconUrls`. Wallets decide whether to display network icons;
+ERC-20 contract execution and token-list registry support are not implemented
+yet, so this does not guarantee logos for user-created tokens.
 
 The launcher loads `.env` before starting, so the selected `GYDS_NODE_MODE` is
 used after restart. For a genesis node, set `GYDS_NODE_MODE=genesis` and leave

@@ -20,6 +20,7 @@ var validNodeModes = map[string]bool{
 }
 
 type adminNodeConfig struct {
+	Network          string `json:"network"`
 	ChainID          int64  `json:"chainId"`
 	NetworkName      string `json:"networkName"`
 	NodeMode         string `json:"nodeMode"`
@@ -54,7 +55,7 @@ func (s *Server) handleAdminNodePage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminNodeConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := config.FromEnv()
 	jsonOK(w, adminNodeConfig{
-		ChainID: cfg.ChainID, NetworkName: cfg.NetworkName, NodeMode: cfg.NodeMode,
+		Network: cfg.Network, ChainID: cfg.ChainID, NetworkName: cfg.NetworkName, NodeMode: cfg.NodeMode,
 		BlockTime: int(cfg.BlockTime.Seconds()), RPCPort: cfg.RPCPort, WSPort: cfg.WSPort,
 		P2PPort: cfg.P2PPort, P2PAdvertiseHost: cfg.P2PAdvertiseHost, MaxPeers: cfg.MaxPeers,
 		BootstrapNodes: strings.Join(cfg.P2PBootstrap, ", "), DataDir: cfg.DataDir,
@@ -242,14 +243,31 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	c.NodeMode = strings.ToLower(strings.TrimSpace(c.NodeMode))
-	c.NetworkName = strings.TrimSpace(c.NetworkName)
+	c.Network = strings.ToLower(strings.TrimSpace(c.Network))
 	c.DataDir = strings.TrimSpace(c.DataDir)
+	switch c.Network {
+	case "mainnet":
+		c.ChainID = 198282
+		c.NetworkName = "GYDS Chain"
+	case "testnet":
+		if c.NodeMode == "testnode" {
+			jsonErr(w, http.StatusBadRequest, "the disposable Test Node always uses chain ID 31337; select another node mode for the persistent testnet")
+			return
+		}
+		c.ChainID = 198281
+		c.NetworkName = "GYDS Testnet"
+	default:
+		jsonErr(w, http.StatusBadRequest, "network must be mainnet or testnet")
+		return
+	}
+	c.DataDir = config.ProfileDataDir(c.Network, c.DataDir)
 	if err := c.validate(); err != nil {
 		jsonErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	updates := map[string]string{
+		"GYDS_NETWORK":            c.Network,
 		"GYDS_CHAIN_ID":           strconv.FormatInt(c.ChainID, 10),
 		"GYDS_NETWORK_NAME":       c.NetworkName,
 		"GYDS_NODE_MODE":          c.NodeMode,

@@ -62,6 +62,7 @@ func wireBlockProvider(srv *p2p.Server, chain *core.Chain) {
 }
 
 var version = "1.0.0"
+var activeGenesis = core.GydsGenesis
 
 func main() {
 	root := &cobra.Command{
@@ -105,11 +106,15 @@ func genesisCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "genesis",
 		Short: "Print genesis block as JSON",
-		Run: func(cmd *cobra.Command, args []string) {
-			b := core.GenesisBlock(core.GydsGenesis)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			genesis, err := core.GenesisForNetwork(config.FromEnv().Network)
+			if err != nil {
+				return err
+			}
+			b := core.GenesisBlock(genesis)
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(b.ToMap())
+			return enc.Encode(b.ToMap())
 		},
 	}
 }
@@ -126,6 +131,12 @@ func versionCmd() *cobra.Command {
 
 func runNode() error {
 	cfg := config.FromEnv()
+	genesis, err := core.GenesisForNetwork(cfg.Network)
+	if err != nil {
+		return err
+	}
+	activeGenesis = genesis
+	cfg.ChainID = genesis.ChainID
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	if cfg.LogFormat == "pretty" {
@@ -169,10 +180,10 @@ func runNode() error {
 func runFullNode(cfg *config.Config) error {
 	log.Info().Msg("Mode: Full Node — complete chain history, P2P, PoS, RPC")
 
-	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
+	chain := core.NewChain(activeGenesis, cfg.DataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Chain initialised from genesis")
 
-	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
+	vs := consensus.NewValidatorSet(activeGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
@@ -188,7 +199,7 @@ func runFullNode(cfg *config.Config) error {
 	})
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -216,7 +227,7 @@ func runLiteNode(cfg *config.Config) error {
 
 	// Lite nodes use a separate data directory to keep the footprint small.
 	liteDataDir := cfg.DataDir + "/lite"
-	chain := core.NewChain(core.GydsGenesis, liteDataDir)
+	chain := core.NewChain(activeGenesis, liteDataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Lite chain initialised")
 
 	// Lite nodes serve RPC and dashboard but do NOT produce blocks.
@@ -226,7 +237,7 @@ func runLiteNode(cfg *config.Config) error {
 	// Connect to bootstrap peers for header sync only.
 	if len(cfg.P2PBootstrap) > 0 {
 		p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-		p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
+		p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
 		p2pSrv.SetMaxPeers(cfg.MaxPeers)
 		p2pSrv.SetNodeMode(cfg.NodeMode)
 		p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -256,14 +267,14 @@ func runLiteNode(cfg *config.Config) error {
 func runRPCNode(cfg *config.Config) error {
 	log.Info().Msg("Mode: RPC Node — API-only, P2P enabled, no block production")
 
-	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
+	chain := core.NewChain(activeGenesis, cfg.DataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Chain loaded for RPC serving")
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -294,10 +305,10 @@ func runRPCNode(cfg *config.Config) error {
 func runBoostNode(cfg *config.Config) error {
 	log.Info().Msg("Mode: Boost Node — high-performance validator with extended peer limits")
 
-	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
+	chain := core.NewChain(activeGenesis, cfg.DataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Chain initialised (boost mode)")
 
-	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
+	vs := consensus.NewValidatorSet(activeGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
@@ -314,7 +325,7 @@ func runBoostNode(cfg *config.Config) error {
 
 	// Boost: connect to ALL configured peers simultaneously.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -350,16 +361,16 @@ func runGenesisNode(cfg *config.Config) error {
 	log.Info().Msg("Mode: Genesis Node — network bootstrapper and initial validator")
 
 	// Print genesis block for reference.
-	gb := core.GenesisBlock(core.GydsGenesis)
+	gb := core.GenesisBlock(activeGenesis)
 	log.Info().
 		Str("genesisHash", gb.Hash).
 		Int64("chainId", cfg.ChainID).
 		Msg("Genesis block identity")
 
-	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
+	chain := core.NewChain(activeGenesis, cfg.DataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Genesis chain initialised")
 
-	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
+	vs := consensus.NewValidatorSet(activeGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
@@ -374,7 +385,7 @@ func runGenesisNode(cfg *config.Config) error {
 
 	// Genesis node listens for incoming peer connections and serves blocks to them.
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -425,12 +436,12 @@ func runSyncNode(cfg *config.Config) error {
 		return fmt.Errorf("sync requires GYDS_BOOTSTRAP_NODES=<public-host>:<p2p-port>; no bootstrap peers are configured")
 	}
 
-	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
+	chain := core.NewChain(activeGenesis, cfg.DataDir)
 	log.Info().Uint64("localHeight", chain.Height()).Msg("Local chain state loaded")
 
 	// ── Phase 1: Connect to peers ──────────────────────────────────────────────
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
@@ -561,7 +572,7 @@ func runSyncNode(cfg *config.Config) error {
 	}
 
 	// ── Phase 3: Steady-state full-node operation ──────────────────────────────
-	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
+	vs := consensus.NewValidatorSet(activeGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
@@ -637,10 +648,10 @@ func runValidatorNode(cfg *config.Config) error {
 			Msg("Validator signing key loaded")
 	}
 
-	chain := core.NewChain(core.GydsGenesis, cfg.DataDir)
+	chain := core.NewChain(activeGenesis, cfg.DataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Validator chain initialised")
 
-	vs := consensus.NewValidatorSet(core.GydsGenesis.Validators)
+	vs := consensus.NewValidatorSet(activeGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
@@ -655,7 +666,7 @@ func runValidatorNode(cfg *config.Config) error {
 	})
 
 	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-	p2pSrv.SetGenesisHash(core.GenesisBlock(core.GydsGenesis).Hash)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
 	p2pSrv.SetMaxPeers(cfg.MaxPeers)
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
