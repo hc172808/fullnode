@@ -213,7 +213,32 @@ function showLockout(msg) {
   const b = document.getElementById('lockBox');
   b.textContent = msg;
   b.classList.add('show');
-  document.getElementById('loginBtn').disabled = true;
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'Locked';
+}
+
+async function requestJSON(path, options, label) {
+  let response;
+  try {
+    response = await fetch(path, options);
+  } catch (error) {
+    throw new Error(`${label} could not reach the dashboard. Check the connection and retry.`);
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw new Error(`${label} returned an invalid response (HTTP ${response.status}).`);
+  }
+
+  if (!response.ok) {
+    const failure = new Error(data.error || `${label} failed (HTTP ${response.status}).`);
+    failure.status = response.status;
+    throw failure;
+  }
+  return data;
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -228,30 +253,35 @@ async function doLogin() {
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
     const address = accounts && accounts[0];
     if (!address) throw new Error('No wallet account was selected.');
-    const challenge = await fetch('/admin/challenge', { cache: 'no-store' }).then(r => r.json());
+
+    const wallet = await requestJSON('/admin/wallet', { cache: 'no-store' }, 'Admin wallet lookup');
+    if (!wallet.adminWallet) throw new Error('The server did not provide the authorized admin wallet.');
+    if (address.toLowerCase() !== wallet.adminWallet.toLowerCase()) {
+      throw new Error(`Connected wallet is not the authorized admin wallet (${wallet.adminWallet}).`);
+    }
+
+    const challenge = await requestJSON('/admin/challenge', { cache: 'no-store' }, 'Login challenge');
+    if (!challenge.nonce || !challenge.message) {
+      throw new Error('The server returned an incomplete login challenge. Reload and retry.');
+    }
     const signature = await window.ethereum.request({
       method: 'personal_sign',
       params: [challenge.message, address]
     });
-    const res = await fetch('/admin/login', {
+    const data = await requestJSON('/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, nonce: challenge.nonce, signature })
-    });
-    const data = await res.json();
-
-    if (res.status === 429) {
-      showLockout('⚠️ ' + (data.error || 'IP locked.'));
-      return;
-    }
-    if (!res.ok) {
-      showError('❌ ' + (data.error || 'Login failed.'));
-    } else {
-      window.location.href = data.redirect || '/';
-      return;
-    }
+    }, 'Admin login');
+    window.location.href = data.redirect || '/admin/node';
   } catch(e) {
-    showError('Network error — please retry.');
+    if (e.status === 429) {
+      showLockout('⚠️ ' + e.message);
+    } else if (e.code === 4001) {
+      showError('Wallet request was rejected. Approve account access and message signing to continue.');
+    } else {
+      showError(e.message || 'Admin login failed. Please retry.');
+    }
   } finally {
     if (btn.textContent === 'Verifying…') {
       btn.textContent = 'Connect Wallet & Sign In';
