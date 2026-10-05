@@ -122,6 +122,15 @@ func (p *Peer) Close() {
 	})
 }
 
+func (p *Peer) isClosed() bool {
+	select {
+	case <-p.quit:
+		return true
+	default:
+		return false
+	}
+}
+
 func (p *Peer) RemoteAddr() string {
 	return p.conn.RemoteAddr().String()
 }
@@ -443,7 +452,15 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 		s.mu.RLock()
 		localGenesis := s.genesisHash
 		s.mu.RUnlock()
-		if localGenesis != "" && info.GenesisHash != "" && info.GenesisHash != localGenesis {
+		if localGenesis != "" && info.GenesisHash == "" {
+			log.Warn().
+				Str("peer", peer.RemoteAddr()).
+				Str("localGenesis", localGenesis).
+				Msg("peer rejected — genesis hash missing from handshake")
+			peer.Close()
+			return
+		}
+		if localGenesis != "" && info.GenesisHash != localGenesis {
 			log.Warn().
 				Str("peer", peer.RemoteAddr()).
 				Str("localGenesis", localGenesis).
@@ -549,10 +566,8 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 		_ = json.Unmarshal(msg.Payload, &dp)
 		log.Warn().Str("peer", peer.RemoteAddr()).Str("reason", dp.Reason).
 			Msg("connection denied by remote node — disconnecting")
-		// Remove from peer map before closing.
-		s.mu.Lock()
-		delete(s.peers, peer.RemoteAddr())
-		s.mu.Unlock()
+		// Close invokes the identity-checked onClose callback registered by
+		// onNewConn, avoiding deletion of a newer connection at the same addr.
 		peer.Close()
 
 	case MsgGetBlocks:
@@ -595,9 +610,8 @@ func (s *Server) denyPeer(peer *Peer, reason string) {
 	peer.Send(Message{Type: MsgAuthDenied, Payload: payload})
 	// Small delay so the message is flushed before close.
 	time.AfterFunc(200*time.Millisecond, func() {
-		s.mu.Lock()
-		delete(s.peers, peer.RemoteAddr())
-		s.mu.Unlock()
+		// Close invokes the identity-checked onClose callback registered by
+		// onNewConn, avoiding deletion of a newer connection at the same addr.
 		peer.Close()
 	})
 }
@@ -621,7 +635,7 @@ func (s *Server) PeerCount() int {
 	count := 0
 	for _, p := range s.peers {
 		p.mu.Lock()
-		authorized := p.authorized
+		authorized := p.authorized && !p.isClosed()
 		p.mu.Unlock()
 		if authorized {
 			count++
@@ -668,7 +682,7 @@ func (s *Server) Peers() []PeerStatus {
 	out := make([]PeerStatus, 0, len(s.peers))
 	for addr, p := range s.peers {
 		p.mu.Lock()
-		if !p.authorized {
+		if !p.authorized || p.isClosed() {
 			p.mu.Unlock()
 			continue
 		}
@@ -697,14 +711,36 @@ func NormalizeAddr(addr string) string {
 
 // ConnectTo dials a bootstrap peer. addr must be in host:port form (no scheme).
 func (s *Server) ConnectTo(addr string) error {
+	configuredAddr := addr
 	addr = NormalizeAddr(addr)
 	if addr == "" {
 		return fmt.Errorf("empty peer address")
 	}
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	localNodeID := s.NodeID()
+	resolvedAddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
+		log.Warn().
+			Str("configuredAddr", configuredAddr).
+			Str("localNodeId", localNodeID).
+			Err(err).
+			Msg("bootstrap address resolution failed")
+		return fmt.Errorf("resolve %s: %w", addr, err)
+	}
+	conn, err := net.DialTimeout("tcp", resolvedAddr.String(), 10*time.Second)
+	if err != nil {
+		log.Warn().
+			Str("configuredAddr", configuredAddr).
+			Str("resolvedAddr", resolvedAddr.String()).
+			Str("localNodeId", localNodeID).
+			Err(err).
+			Msg("bootstrap dial failed")
 		return fmt.Errorf("dial %s: %w", addr, err)
 	}
+	log.Info().
+		Str("configuredAddr", configuredAddr).
+		Str("resolvedAddr", conn.RemoteAddr().String()).
+		Str("localNodeId", localNodeID).
+		Msg("bootstrap TCP connection established")
 	go s.onNewConn(conn, true)
 	return nil
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gorilla/websocket"
 	"github.com/gydschain/fullnode/core"
+	"github.com/gydschain/fullnode/p2p"
 )
 
 const rpcTestRecipient = "0x0000000000000000000000000000000000000100"
@@ -76,6 +77,27 @@ func requireRPCError(t *testing.T, response map[string]interface{}, code int) {
 	err, ok := response["error"].(map[string]interface{})
 	if !ok || err["code"] != float64(code) || err["message"] == "" {
 		t.Fatalf("want error %d with message, got %#v", code, response)
+	}
+}
+
+func TestRPCNetEnodeRequiresAdvertisedHostAndReturnsStableEndpoint(t *testing.T) {
+	s := compatibilityServer(t, core.GydsGenesis)
+	requireRPCError(t, rpcRequest(t, s, "net_enode"), -32001)
+
+	key, err := p2p.LoadOrCreateNodeKey(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2pServer := p2p.NewServer(30303, 198282, nil)
+	p2pServer.SetAuth(key, false, nil)
+	p2pServer.SetAdvertiseHost("node.example.net")
+	s.SetP2P(p2pServer)
+
+	want := "enode://" + key.ID() + "@node.example.net:30303"
+	for range 2 {
+		if got := rpcResult(t, s, "net_enode"); got != want {
+			t.Fatalf("net_enode = %#v, want %q", got, want)
+		}
 	}
 }
 

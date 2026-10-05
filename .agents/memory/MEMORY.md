@@ -9,6 +9,7 @@
 - [Node mode reporting](node-mode-reporting.md) — runtime, dashboard, peer handshakes, and systemd must all use the selected node role
 - [Non-root runtime deployment](non-root-runtime.md) — native and Docker node processes run as dedicated gyds without Docker-daemon privileges
 - [Persistent peer onboarding](persistent-peer-onboarding.md) — admin-added P2P connections must also update bootstrap configuration or they disappear after restart
+- [P2P genesis compatibility](p2p-genesis-compatibility.md) — configured nodes reject handshakes that omit or disagree on genesis identity
 - [Canonical explorer](canonical-explorer.md) — all GYDS nodes and wallet metadata use explorer.netlifegy.com
 - [Admin Web3 authentication](admin-web3-auth.md) — admin access uses a one-time Ethereum personal-sign challenge; PIN authentication is intentionally disabled
 - [User-created token standard](user-created-token-standard.md) — new user-created assets should be standard EVM ERC-20 contracts, not native GYDS-20 tokens

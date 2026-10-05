@@ -824,6 +824,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		s.subsMu.Lock()
 		delete(s.subs, id)
+		close(sub.ch)
 		s.subsMu.Unlock()
 		conn.Close()
 	}()
@@ -853,6 +854,21 @@ type jsonRPCResponse struct {
 	Result  interface{} `json:"result,omitempty"`
 	Error   interface{} `json:"error,omitempty"`
 	ID      interface{} `json:"id"`
+}
+
+func (r jsonRPCResponse) MarshalJSON() ([]byte, error) {
+	if r.Error != nil {
+		return json.Marshal(struct {
+			JSONRPC string      `json:"jsonrpc"`
+			Error   interface{} `json:"error"`
+			ID      interface{} `json:"id"`
+		}{JSONRPC: r.JSONRPC, Error: r.Error, ID: r.ID})
+	}
+	return json.Marshal(struct {
+		JSONRPC string      `json:"jsonrpc"`
+		Result  interface{} `json:"result"`
+		ID      interface{} `json:"id"`
+	}{JSONRPC: r.JSONRPC, Result: r.Result, ID: r.ID})
 }
 
 func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
@@ -897,6 +913,20 @@ func paramStr(params []interface{}, idx int) string {
 		}
 	}
 	return ""
+}
+
+func parseBlockNumberTag(tag string, latest uint64) (uint64, bool) {
+	switch tag {
+	case "latest", "":
+		return latest, true
+	case "earliest":
+		return 0, true
+	}
+	if !strings.HasPrefix(tag, "0x") || len(tag) == 2 {
+		return 0, false
+	}
+	num, err := strconv.ParseUint(tag[2:], 16, 64)
+	return num, err == nil
 }
 
 func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
@@ -980,16 +1010,10 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 			head := s.chain.Head()
 			if head != nil {
 				resp.Result = blockToRPC(head)
-			} else {
-				resp.Result = nil
 			}
-		} else {
-			var num uint64
-			fmt.Sscanf(numStr, "0x%x", &num)
+		} else if num, ok := parseBlockNumberTag(numStr, s.chain.Height()); ok {
 			if b, err := s.chain.GetByNumber(num); err == nil {
 				resp.Result = blockToRPC(b)
-			} else {
-				resp.Result = nil
 			}
 		}
 
@@ -1003,24 +1027,16 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 
 	case "eth_getBlockTransactionCountByNumber":
 		numStr := paramStr(req.Params, 0)
-		var num uint64
-		if numStr == "latest" {
-			num = s.chain.Height()
-		} else {
-			fmt.Sscanf(numStr, "0x%x", &num)
-		}
-		if b, err := s.chain.GetByNumber(num); err == nil {
-			resp.Result = fmt.Sprintf("0x%x", len(b.Transactions))
-		} else {
-			resp.Result = "0x0"
+		if num, ok := parseBlockNumberTag(numStr, s.chain.Height()); ok {
+			if b, err := s.chain.GetByNumber(num); err == nil {
+				resp.Result = fmt.Sprintf("0x%x", len(b.Transactions))
+			}
 		}
 
 	case "eth_getBlockTransactionCountByHash":
 		hashStr := paramStr(req.Params, 0)
 		if b, err := s.chain.GetByHash(hashStr); err == nil {
 			resp.Result = fmt.Sprintf("0x%x", len(b.Transactions))
-		} else {
-			resp.Result = "0x0"
 		}
 
 	// ── Accounts ─────────────────────────────────────────────────────────────
@@ -1312,6 +1328,16 @@ func txReceiptRPC(tx *core.Transaction, chain *core.Chain) map[string]interface{
 	if len(tx.Receipt) > 0 {
 		var receipt map[string]interface{}
 		if json.Unmarshal(tx.Receipt, &receipt) == nil {
+			receipt["transactionHash"] = tx.Hash
+			receipt["from"] = tx.From
+			if tx.To == "" {
+				receipt["to"] = nil
+			} else {
+				receipt["to"] = tx.To
+			}
+			if _, ok := receipt["transactionIndex"]; !ok {
+				receipt["transactionIndex"] = "0x0"
+			}
 			return receipt
 		}
 	}

@@ -453,14 +453,28 @@ func runSyncNode(cfg *config.Config) error {
 		return fmt.Errorf("sync P2P listener failed: %w", err)
 	}
 
-	connected := 0
+	type bootstrapResult struct {
+		addr string
+		err  error
+	}
+	results := make(chan bootstrapResult, len(cfg.P2PBootstrap))
 	for _, addr := range cfg.P2PBootstrap {
-		if err := connectBootstrapWithRetry(p2pSrv, addr); err != nil {
-			log.Warn().Err(err).Str("addr", addr).Msg("Bootstrap peer unavailable after retries")
-		} else {
-			connected++
-			log.Info().Str("addr", addr).Msg("Connected to sync peer")
+		go func(addr string) {
+			results <- bootstrapResult{addr: addr, err: connectBootstrapWithRetry(p2pSrv, addr)}
+		}(addr)
+	}
+
+	connected := 0
+	remaining := len(cfg.P2PBootstrap)
+	for connected == 0 && remaining > 0 {
+		result := <-results
+		remaining--
+		if result.err != nil {
+			log.Warn().Err(result.err).Str("addr", result.addr).Msg("Bootstrap peer unavailable after retries")
+			continue
 		}
+		connected++
+		log.Info().Str("addr", result.addr).Msg("Connected to sync peer")
 	}
 	if connected == 0 {
 		return fmt.Errorf("sync could not connect to any bootstrap peer; verify GYDS_BOOTSTRAP_NODES uses a public host:port and TCP %d is open", cfg.P2PPort)

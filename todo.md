@@ -257,16 +257,19 @@ Acceptance criteria:
 - [x] Add `net_peerCount` from the actual P2P server. It now excludes pending
   and unauthorized connections.
 - [x] Add a retry loop with backoff for `GYDS_BOOTSTRAP_NODES`.
-- [ ] Start the P2P listener before outbound bootstrap dialing, then perform
-  dialing asynchronously after the listener is ready.
-- [ ] Log the configured bootstrap address, resolved address, dial error, local
+- [x] Start the P2P listener before outbound bootstrap dialing; the sync role
+  fans bootstrap attempts out concurrently after the listener is ready.
+- [x] Log the configured bootstrap address, resolved address, dial error, local
   node ID, remote node ID, chain ID mismatch, and successful handshake.
-- [ ] Reject or clearly report a peer when chain IDs or genesis hashes differ.
-- [ ] Ensure P2P peers are removed from the peer map on every disconnect and
-  that `/api/peers` reports only live, authorized connections.
-- [ ] Add tests for inbound connection, outbound connection, retry behavior,
-  duplicate node keys, chain mismatch, peer authorization, and disconnect
-  cleanup.
+- [x] Reject peers with a different chain ID or genesis hash. When the local
+  genesis hash is configured, peers that omit it are rejected as unverifiable.
+- [x] Remove peers through identity-checked disconnect cleanup; peer counts and
+  `/api/peers` omit unauthorized or closed connections.
+- [x] Add focused tests for `net_enode`, advertised-host validation, chain and
+  genesis mismatch, live authorized peer counts, and disconnect cleanup.
+- [ ] Complete P2P integration tests for inbound/outbound dialing, retry and
+  reconnect behavior, duplicate node keys, peer authorization, and multi-node
+  block synchronization.
 
 ### Port matrix and node-linking guide
 

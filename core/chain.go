@@ -325,12 +325,12 @@ func (c *Chain) SubmitRawTransaction(raw []byte) (string, error) {
 	_, confirmed := c.txIndex[hash]
 	c.txMu.RUnlock()
 	if confirmed {
-		return hash, nil
+		return "", errors.New("transaction already known")
 	}
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
 	if _, exists := c.pending[hash]; exists {
-		return hash, nil
+		return "", errors.New("transaction already known")
 	}
 	if len(c.pending) >= 4096 {
 		return "", errors.New("pending transaction pool is full")
