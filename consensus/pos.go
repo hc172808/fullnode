@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"math/rand"
 	"sync"
 	"time"
 
@@ -51,12 +50,11 @@ func (vs *ValidatorSet) Validators() []string {
 }
 
 type PoSEngine struct {
-	vs          *ValidatorSet
-	chain       *core.Chain
-	blockTime   time.Duration
-	quit        chan struct{}
-	newBlockFn  func(*core.Block)
-	rng         *rand.Rand
+	vs         *ValidatorSet
+	chain      *core.Chain
+	blockTime  time.Duration
+	quit       chan struct{}
+	newBlockFn func(*core.Block)
 }
 
 func NewPoSEngine(chain *core.Chain, vs *ValidatorSet, blockTime time.Duration) *PoSEngine {
@@ -65,7 +63,6 @@ func NewPoSEngine(chain *core.Chain, vs *ValidatorSet, blockTime time.Duration) 
 		chain:     chain,
 		blockTime: blockTime,
 		quit:      make(chan struct{}),
-		rng:       rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -102,16 +99,7 @@ func (e *PoSEngine) produceBlock() {
 	nextNum := head.Header.Number + 1
 	proposer := e.vs.SelectProposer(nextNum)
 
-	txCount := e.rng.Intn(8)
-	txs := make([]*core.Transaction, txCount)
-	for i := range txs {
-		from := proposer
-		to := e.vs.SelectProposer(nextNum + uint64(i+1))
-		txs[i] = core.NewTransaction(from, to, nil, uint64(i), nil)
-		txs[i].Status = "success"
-		txs[i].BlockNum = nextNum
-	}
-
+	txs := e.chain.PendingTransactions(256)
 	blk := core.NewBlock(head.Header, proposer, txs)
 	if err := e.chain.InsertBlock(blk); err != nil {
 		return

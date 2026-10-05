@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
@@ -958,7 +961,17 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 		}
 
 	case "eth_estimateGas":
-		resp.Result = "0x5208" // 21000
+		args, err := parseCallArgs(req.Params)
+		if err != nil {
+			resp.Error = rpcError(-32602, err.Error())
+			break
+		}
+		gas, err := s.chain.EVMEstimateGas(args.from, args.to, args.value, args.data, args.gas)
+		if err != nil {
+			resp.Error = rpcError(-32000, err.Error())
+		} else {
+			resp.Result = fmt.Sprintf("0x%x", gas)
+		}
 
 	// ── Blocks ───────────────────────────────────────────────────────────────
 	case "eth_getBlockByNumber":
@@ -1022,13 +1035,36 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 	case "eth_getTransactionCount":
 		addr := paramStr(req.Params, 0)
 		nonce := s.chain.GetNonce(addr)
+		if len(req.Params) > 1 && paramStr(req.Params, 1) == "pending" {
+			nonce = s.chain.PendingNonce(addr)
+		}
 		resp.Result = fmt.Sprintf("0x%x", nonce)
 
 	case "eth_getCode":
-		resp.Result = "0x"
+		addr := paramStr(req.Params, 0)
+		if _, err := s.chain.EVMExecutionAvailable(); err != nil {
+			resp.Result = "0x"
+		} else if code, err := s.chain.EVMCode(addr); err != nil {
+			resp.Error = rpcError(-32602, err.Error())
+		} else {
+			resp.Result = hexutil.Encode(code)
+		}
 
 	case "eth_getStorageAt":
-		resp.Result = "0x0000000000000000000000000000000000000000000000000000000000000000"
+		addr := paramStr(req.Params, 0)
+		slot := paramStr(req.Params, 1)
+		if _, err := s.chain.EVMExecutionAvailable(); err != nil {
+			resp.Result = common.Hash{}.Hex()
+		} else if !common.IsHexAddress(addr) {
+			resp.Error = rpcError(-32602, "invalid storage address")
+		} else {
+			value, err := s.chain.EVMStorageAt(addr, common.HexToHash(slot))
+			if err != nil {
+				resp.Error = rpcError(-32000, err.Error())
+			} else {
+				resp.Result = value.Hex()
+			}
+		}
 
 	// ── Transactions ─────────────────────────────────────────────────────────
 	case "eth_sendRawTransaction":
@@ -1040,15 +1076,26 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 			}
 			break
 		}
-		resp.Error = map[string]interface{}{
-			"code":    -32000,
-			"message": "raw transaction submission is unavailable: signed transaction decoding, mempool admission, and consensus execution are not implemented",
+		if s.chain == nil {
+			resp.Error = rpcError(-32000, "chain is not configured")
+			break
 		}
+		encoded, err := hexutil.Decode(raw)
+		if err != nil {
+			resp.Error = rpcError(-32602, fmt.Sprintf("invalid raw transaction: %v", err))
+			break
+		}
+		hash, err := s.chain.SubmitRawTransaction(encoded)
+		if err != nil {
+			resp.Error = rpcError(-32000, err.Error())
+			break
+		}
+		resp.Result = hash
 
 	case "eth_getTransactionByHash":
 		hash := paramStr(req.Params, 0)
 		if tx, ok := s.chain.GetTransaction(hash); ok {
-			resp.Result = txToRPC(tx)
+			resp.Result = txToRPC(tx, s.chain)
 		} else {
 			resp.Result = nil
 		}
@@ -1056,14 +1103,28 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 	case "eth_getTransactionReceipt":
 		hash := paramStr(req.Params, 0)
 		if tx, ok := s.chain.GetTransaction(hash); ok {
-			resp.Result = txReceiptRPC(tx, s.chain)
+			if tx.Status == "pending" {
+				resp.Result = nil
+			} else {
+				resp.Result = txReceiptRPC(tx, s.chain)
+			}
 		} else {
 			resp.Result = nil
 		}
 
 	// ── Calls ────────────────────────────────────────────────────────────────
 	case "eth_call":
-		resp.Result = "0x"
+		args, err := parseCallArgs(req.Params)
+		if err != nil {
+			resp.Error = rpcError(-32602, err.Error())
+			break
+		}
+		result, _, err := s.chain.EVMCall(args.from, args.to, args.value, args.data, args.gas)
+		if err != nil {
+			resp.Error = rpcError(-32000, err.Error())
+		} else {
+			resp.Result = hexutil.Encode(result)
+		}
 
 	case "eth_getLogs":
 		resp.Result = []interface{}{}
@@ -1085,6 +1146,61 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 	}
 
 	return resp
+}
+
+type callArguments struct {
+	from  string
+	to    *string
+	value *big.Int
+	data  []byte
+	gas   uint64
+}
+
+func parseCallArgs(params []interface{}) (callArguments, error) {
+	if len(params) == 0 {
+		return callArguments{}, fmt.Errorf("missing call transaction object")
+	}
+	object, ok := params[0].(map[string]interface{})
+	if !ok {
+		return callArguments{}, fmt.Errorf("call transaction must be an object")
+	}
+	args := callArguments{value: new(big.Int)}
+	if from, ok := object["from"].(string); ok {
+		args.from = from
+	}
+	if to, ok := object["to"].(string); ok && to != "" {
+		args.to = &to
+	}
+	if value, ok := object["value"].(string); ok {
+		decoded, err := hexutil.DecodeBig(value)
+		if err != nil {
+			return callArguments{}, fmt.Errorf("invalid call value: %w", err)
+		}
+		args.value = decoded
+	}
+	data, ok := object["data"].(string)
+	if !ok {
+		data, _ = object["input"].(string)
+	}
+	if data != "" {
+		decoded, err := hexutil.Decode(data)
+		if err != nil {
+			return callArguments{}, fmt.Errorf("invalid call data: %w", err)
+		}
+		args.data = decoded
+	}
+	if gas, ok := object["gas"].(string); ok {
+		decoded, err := hexutil.DecodeUint64(gas)
+		if err != nil {
+			return callArguments{}, fmt.Errorf("invalid call gas: %w", err)
+		}
+		args.gas = decoded
+	}
+	return args, nil
+}
+
+func rpcError(code int, message string) map[string]interface{} {
+	return map[string]interface{}{"code": code, "message": message}
 }
 
 // ── RPC formatters ────────────────────────────────────────────────────────────
@@ -1119,7 +1235,7 @@ func blockToRPC(b *core.Block) map[string]interface{} {
 	}
 }
 
-func txToRPC(tx *core.Transaction) map[string]interface{} {
+func txToRPC(tx *core.Transaction, chain *core.Chain) map[string]interface{} {
 	value := "0x0"
 	if tx.Value != nil {
 		value = fmt.Sprintf("0x%x", tx.Value)
@@ -1128,26 +1244,77 @@ func txToRPC(tx *core.Transaction) map[string]interface{} {
 	if tx.GasPrice != nil {
 		gasPrice = fmt.Sprintf("0x%x", tx.GasPrice)
 	}
-	return map[string]interface{}{
+	var to interface{}
+	if tx.To != "" {
+		to = tx.To
+	}
+	var blockHash interface{}
+	var blockNumber interface{}
+	transactionIndex := "0x0"
+	if tx.BlockNum > 0 {
+		blockNumber = fmt.Sprintf("0x%x", tx.BlockNum)
+		if block, err := chain.GetByNumber(tx.BlockNum); err == nil {
+			blockHash = block.Hash
+			for index, blockTx := range block.Transactions {
+				if blockTx.Hash == tx.Hash {
+					transactionIndex = fmt.Sprintf("0x%x", index)
+					break
+				}
+			}
+		}
+	}
+	input := hexutil.Encode(tx.Data)
+	txType := tx.Type
+	v, r, s := "0x1", "0x"+strings.Repeat("0", 64), "0x"+strings.Repeat("0", 64)
+	result := map[string]interface{}{
 		"hash":             tx.Hash,
 		"from":             tx.From,
-		"to":               tx.To,
+		"to":               to,
 		"value":            value,
 		"gas":              fmt.Sprintf("0x%x", tx.GasLimit),
 		"gasPrice":         gasPrice,
 		"nonce":            fmt.Sprintf("0x%x", tx.Nonce),
-		"input":            "0x",
-		"blockHash":        nil,
-		"blockNumber":      nil,
-		"transactionIndex": "0x0",
-		"type":             "0x0",
-		"v":                "0x1",
-		"r":                "0x" + strings.Repeat("0", 64),
-		"s":                "0x" + strings.Repeat("0", 64),
+		"input":            input,
+		"blockHash":        blockHash,
+		"blockNumber":      blockNumber,
+		"transactionIndex": transactionIndex,
+		"type":             fmt.Sprintf("0x%x", txType),
+		"v":                v,
+		"r":                r,
+		"s":                s,
 	}
+	if tx.RawTransaction != nil {
+		result["type"] = fmt.Sprintf("0x%x", tx.EVMType)
+		if tx.ChainID != nil {
+			result["chainId"] = hexutil.EncodeBig(tx.ChainID)
+		}
+		if tx.GasFeeCap != nil {
+			result["maxFeePerGas"] = hexutil.EncodeBig(tx.GasFeeCap)
+		}
+		if tx.GasTipCap != nil {
+			result["maxPriorityFeePerGas"] = hexutil.EncodeBig(tx.GasTipCap)
+		}
+		if tx.V != nil {
+			v = hexutil.EncodeBig(tx.V)
+		}
+		if tx.R != nil {
+			r = hexutil.EncodeBig(tx.R)
+		}
+		if tx.S != nil {
+			s = hexutil.EncodeBig(tx.S)
+		}
+		result["v"], result["r"], result["s"] = v, r, s
+	}
+	return result
 }
 
 func txReceiptRPC(tx *core.Transaction, chain *core.Chain) map[string]interface{} {
+	if len(tx.Receipt) > 0 {
+		var receipt map[string]interface{}
+		if json.Unmarshal(tx.Receipt, &receipt) == nil {
+			return receipt
+		}
+	}
 	blockNum := "0x0"
 	blockHash := "0x" + strings.Repeat("0", 64)
 	if b, err := chain.GetByNumber(tx.BlockNum); err == nil {

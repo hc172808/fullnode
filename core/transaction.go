@@ -3,6 +3,7 @@ package core
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
@@ -11,27 +12,36 @@ import (
 type TxType uint8
 
 const (
-	TxTypeTransfer   TxType = 0
-	TxTypeContract   TxType = 1
-	TxTypeStake      TxType = 2
-	TxTypeUnstake    TxType = 3
-	TxTypeBridge     TxType = 4
+	TxTypeTransfer TxType = 0
+	TxTypeContract TxType = 1
+	TxTypeStake    TxType = 2
+	TxTypeUnstake  TxType = 3
+	TxTypeBridge   TxType = 4
 )
 
 type Transaction struct {
-	Hash      string   `json:"hash"`
-	From      string   `json:"from"`
-	To        string   `json:"to"`
-	Value     *big.Int `json:"value"`
-	GasLimit  uint64   `json:"gasLimit"`
-	GasPrice  *big.Int `json:"gasPrice"`
-	GasUsed   uint64   `json:"gasUsed"`
-	Nonce     uint64   `json:"nonce"`
-	Data      []byte   `json:"data,omitempty"`
-	Type      TxType   `json:"type"`
-	Status    string   `json:"status"`
-	Timestamp int64    `json:"timestamp"`
-	BlockNum  uint64   `json:"blockNumber"`
+	Hash           string          `json:"hash"`
+	From           string          `json:"from"`
+	To             string          `json:"to"`
+	Value          *big.Int        `json:"value"`
+	GasLimit       uint64          `json:"gasLimit"`
+	GasPrice       *big.Int        `json:"gasPrice"`
+	GasUsed        uint64          `json:"gasUsed"`
+	Nonce          uint64          `json:"nonce"`
+	Data           []byte          `json:"data,omitempty"`
+	RawTransaction []byte          `json:"rawTransaction,omitempty"`
+	ChainID        *big.Int        `json:"chainId,omitempty"`
+	GasFeeCap      *big.Int        `json:"gasFeeCap,omitempty"`
+	GasTipCap      *big.Int        `json:"gasTipCap,omitempty"`
+	EVMType        uint8           `json:"evmType,omitempty"`
+	V              *big.Int        `json:"v,omitempty"`
+	R              *big.Int        `json:"r,omitempty"`
+	S              *big.Int        `json:"s,omitempty"`
+	Receipt        json.RawMessage `json:"receipt,omitempty"`
+	Type           TxType          `json:"type"`
+	Status         string          `json:"status"`
+	Timestamp      int64           `json:"timestamp"`
+	BlockNum       uint64          `json:"blockNumber"`
 }
 
 func NewTransaction(from, to string, value *big.Int, nonce uint64, data []byte) *Transaction {

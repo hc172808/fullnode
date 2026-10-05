@@ -31,15 +31,16 @@ type TokenDefinition struct {
 }
 
 type GenesisConfig struct {
-	ChainID     int64             `json:"chainId"`
-	NetworkName string            `json:"networkName"`
-	Timestamp   int64             `json:"timestamp"`
-	GasLimit    uint64            `json:"gasLimit"`
-	Difficulty  *big.Int          `json:"difficulty"`
-	ExtraData   string            `json:"extraData"`
-	Validators  []string          `json:"validators"`
-	Alloc       []GenesisAlloc    `json:"alloc"`
-	Tokens      []TokenDefinition `json:"tokens"`
+	ChainID            int64             `json:"chainId"`
+	NetworkName        string            `json:"networkName"`
+	Timestamp          int64             `json:"timestamp"`
+	GasLimit           uint64            `json:"gasLimit"`
+	EVMActivationBlock uint64            `json:"evmActivationBlock,omitempty"`
+	Difficulty         *big.Int          `json:"difficulty"`
+	ExtraData          string            `json:"extraData"`
+	Validators         []string          `json:"validators"`
+	Alloc              []GenesisAlloc    `json:"alloc"`
+	Tokens             []TokenDefinition `json:"tokens"`
 }
 
 // e18 returns n × 10^18 (i.e. n whole tokens in wei).

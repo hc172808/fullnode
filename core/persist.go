@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rs/zerolog/log"
 	"github.com/gydschain/fullnode/storage"
+	"github.com/rs/zerolog/log"
 )
 
 // Key-space layout inside LevelDB:
@@ -66,6 +66,15 @@ func (c *Chain) openDB() error {
 
 // Close flushes and closes the LevelDB handle. Safe to call multiple times.
 func (c *Chain) Close() {
+	c.evmMu.Lock()
+	engine := c.evmEngine
+	c.evmEngine = nil
+	c.evmMu.Unlock()
+	if engine != nil {
+		if err := engine.Close(); err != nil {
+			log.Error().Err(err).Msg("Error closing EVM state database")
+		}
+	}
 	if c.db != nil {
 		if err := c.db.Close(); err != nil {
 			log.Error().Err(err).Msg("Error closing LevelDB")
@@ -78,9 +87,9 @@ func (c *Chain) Close() {
 // persistBlock writes a sealed block and the resulting account state for every
 // address touched by its transactions into LevelDB as an atomic batch.
 // Must be called AFTER applyTx so account state is already updated.
-func (c *Chain) persistBlock(b *Block) {
+func (c *Chain) persistBlock(b *Block) error {
 	if c.db == nil {
-		return
+		return nil
 	}
 
 	batch := c.db.NewBatch()
@@ -89,7 +98,7 @@ func (c *Chain) persistBlock(b *Block) {
 	blockData, err := json.Marshal(b)
 	if err != nil {
 		log.Error().Err(err).Uint64("block", b.Header.Number).Msg("Failed to marshal block")
-		return
+		return err
 	}
 	batch.Put(blkKey(b.Header.Number), blockData)
 
@@ -107,14 +116,16 @@ func (c *Chain) persistBlock(b *Block) {
 		}
 		encoded, err := json.Marshal(as)
 		if err != nil {
-			continue
+			return err
 		}
 		batch.Put(accKey(addr), encoded)
 	}
 
 	if err := batch.Write(); err != nil {
 		log.Error().Err(err).Uint64("block", b.Header.Number).Msg("Failed to commit block to LevelDB")
+		return err
 	}
+	return nil
 }
 
 // loadFromDB reconstructs chain state from LevelDB on startup.
@@ -198,6 +209,14 @@ func touchedAddresses(b *Block) []string {
 		}
 		if tx.To != "" {
 			seen[strings.ToLower(tx.To)] = struct{}{}
+		}
+		if len(tx.Receipt) > 0 {
+			var receipt struct {
+				ContractAddress string `json:"contractAddress"`
+			}
+			if json.Unmarshal(tx.Receipt, &receipt) == nil && strings.HasPrefix(receipt.ContractAddress, "0x") {
+				seen[strings.ToLower(receipt.ContractAddress)] = struct{}{}
+			}
 		}
 	}
 	addrs := make([]string, 0, len(seen))
