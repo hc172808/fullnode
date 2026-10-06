@@ -469,7 +469,10 @@ Acceptance criteria:
 - [ ] Reproduce and fix the reported failure to change the PIN from the Admin
   wallet. Verify the active Web3 session, target node, API response, and PIN
   hash location; confirm the displayed PIN status and login behavior update on
-  that same node.
+  that same node. The reported message (`You are not a admin get back or you
+  will be block`) is not present in this checkout; the supplied public host
+  returned HTTP 403 to this environment, so its live response could not be
+  inspected. Do not bypass the wallet check to silence the message.
 - [ ] Keep post-setup PIN changes out of `.env` rotation and avoid requiring a
   process restart. Never return or log the plaintext PIN.
 - [ ] Test PIN initialization, valid Web3-admin change, unauthenticated and
@@ -484,15 +487,14 @@ Acceptance criteria:
 - [ ] Add a persisted per-network approval list with Admin approve/revoke
   controls, an audit trail, and a clear pending/approved/revoked status. Enforce
   approvals during P2P authentication before blocks or transactions are served.
-- [ ] Add a remote-node registry to the Boost/Genesis Admin panel so the
-  administrator can select and manage enrolled nodes from one place. Require
-  the selected node's own PIN when opening that node's admin session; do not
-  silently reuse a PIN across nodes or store plaintext PINs in the coordinator.
-- [ ] Provide SSH access only to explicitly approved nodes using a defined,
-  least-privilege credential and session-audit model. Never embed shared root
-  credentials or reusable private keys in browser code or node configuration.
+- [ ] Add an HTTPS remote-node registry to the Boost/Genesis Admin panel so the
+  administrator can open approved nodes from one place. Each target node must
+  require both its own Web3 Admin signature and its own PIN; do not reuse PINs
+  across nodes or store plaintext PINs in the coordinator.
+- [x] Do not add an SSH shell to the Admin panel. The selected remote-access
+  scope is HTTPS dashboard/API access with per-node PINs and Web3 Admin login.
 - [ ] Test approval and revocation across restart, rejection of unknown nodes,
-  per-node PIN isolation, remote login failures, and SSH access controls before
+  per-node PIN isolation, remote login failures, and HTTPS-only access before
   enabling remote administration on a public network.
 
 ### Two-server verification runbook

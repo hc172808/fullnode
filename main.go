@@ -21,18 +21,19 @@ import (
 )
 
 // wireAuth loads the node keypair and configures peer authorization on a P2P server.
-// Safe to call before or after Start(); if auth is disabled it is a no-op.
+// P2P-capable roles always require an approved node ID for inbound connections.
 func wireAuth(srv *p2p.Server, cfg *config.Config) {
 	nk, err := p2p.LoadOrCreateNodeKey(cfg.DataDir)
 	if err != nil {
 		log.Warn().Err(err).Msg("Could not load/create node key — peer auth unavailable")
 		return
 	}
+	requireAuth := cfg.PeerAuth || config.PeerAuthRequired(cfg.NodeMode)
 	log.Info().Str("nodeId", nk.ID()[:16]+"…").
-		Bool("peerAuth", cfg.PeerAuth).
+		Bool("peerAuth", requireAuth).
 		Int("allowedNodes", len(cfg.AllowedNodes)).
 		Msg("Node identity loaded")
-	srv.SetAuth(nk, cfg.PeerAuth, cfg.AllowedNodes)
+	srv.SetAuth(nk, requireAuth, cfg.AllowedNodes)
 }
 
 // wireBlockProvider registers a block-serving callback on the P2P server so that

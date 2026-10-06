@@ -71,12 +71,12 @@ Visit `/setup` for the 8-step guided configuration wizard:
 3. Ports & Networking (RPC, WS, P2P, bootstrap peers, peer auth)
 4. Storage (data directory, limit)
 5. Firewall & Security (UFW)
-6. Dashboard PIN (set during setup; optional, and never prompted on the dashboard)
+6. Dashboard PIN (set during setup; required alongside the authorized Web3 Admin signature on each node)
 7. Logging (level, format)
 8. Review & Save (writes `.env`, applies PIN)
 
 ## Security
-- Dashboard PIN: optional; SHA-256 hashed, stored at `<dataDir>/admin/.pin_hash`. It can only be created during setup wizard step 6. If unset, the dashboard remains unlocked.
+- Dashboard PIN: set during setup and SHA-256 hashed at `<dataDir>/admin/.pin_hash`. Admin login requires both the authorized Web3 wallet signature and that node's own PIN; pins must not be reused or relayed through another node.
 - Admin session: 8-hour cookie, IP-based rate-limit (5 attempts / 15 min lockout).
 - Firewall: UFW is the required boundary and is the only firewall layer configured by `deploy.sh`.
 - Optional fail2ban configuration remains available only through a separate, explicit `setup-firewall.sh` invocation.

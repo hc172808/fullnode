@@ -268,7 +268,7 @@ func (s *Server) SetAdvertiseHost(host string) {
 // SetAuth configures peer authorization. Call before Start().
 //   - nk:           this node's keypair (must be non-nil when auth is enabled)
 //   - requireAuth:  if true, all inbound peers must prove their identity
-//   - allowedIDs:   whitelist of permitted node IDs; empty = allow all authenticated nodes
+//   - allowedIDs:   whitelist of permitted node IDs; empty = deny all authenticated nodes
 func (s *Server) SetAuth(nk *NodeKey, requireAuth bool, allowedIDs []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -276,10 +276,15 @@ func (s *Server) SetAuth(nk *NodeKey, requireAuth bool, allowedIDs []string) {
 	s.peerAuth = requireAuth
 	s.allowedNodes = make(map[string]struct{}, len(allowedIDs))
 	for _, id := range allowedIDs {
-		if id = strings.TrimSpace(id); id != "" {
+		if id = normalizeNodeID(id); id != "" {
 			s.allowedNodes[id] = struct{}{}
 		}
 	}
+}
+
+func normalizeNodeID(id string) string {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return strings.TrimPrefix(id, "0x")
 }
 
 // NodeID returns this node's P2P identity string, or "" if no key is loaded.
@@ -524,30 +529,30 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 			return
 		}
 
+		nodeID := normalizeNodeID(resp.NodeID)
 		// Verify the signature.
-		if !VerifyNodeSig(resp.NodeID, nonceBytes, resp.Signature) {
+		if !VerifyNodeSig(nodeID, nonceBytes, resp.Signature) {
 			log.Warn().Str("peer", peer.RemoteAddr()).Str("nodeId", resp.NodeID[:min8(resp.NodeID)]+"…").
 				Msg("peer auth failed: invalid signature")
 			s.denyPeer(peer, "invalid signature")
 			return
 		}
 
-		// Check whitelist (empty whitelist = allow any valid identity).
+		// Every authenticated identity must be explicitly approved. An empty
+		// whitelist rejects all inbound peers instead of implicitly trusting all.
 		s.mu.RLock()
 		allowed := s.allowedNodes
 		s.mu.RUnlock()
-		if len(allowed) > 0 {
-			if _, ok := allowed[resp.NodeID]; !ok {
-				log.Warn().Str("peer", peer.RemoteAddr()).Str("nodeId", resp.NodeID[:min8(resp.NodeID)]+"…").
-					Msg("peer auth failed: node ID not in allowlist")
-				s.denyPeer(peer, "node ID not in allowlist")
-				return
-			}
+		if _, ok := allowed[nodeID]; !ok {
+			log.Warn().Str("peer", peer.RemoteAddr()).Str("nodeId", nodeID[:min8(nodeID)]+"…").
+				Msg("peer auth failed: node ID not in allowlist")
+			s.denyPeer(peer, "node ID not in allowlist")
+			return
 		}
 
 		// Auth passed.
 		peer.mu.Lock()
-		peer.peerNodeID = resp.NodeID
+		peer.peerNodeID = nodeID
 		peer.authorized = true
 		peer.mu.Unlock()
 		peer.Send(Message{Type: MsgAuthOk})

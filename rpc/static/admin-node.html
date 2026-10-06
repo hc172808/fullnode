@@ -22,6 +22,7 @@
     .peer-head{display:flex;align-items:center;margin-bottom:10px}.peer-head h2{flex:1}.count{font-size:11px;color:var(--green)}.peer-list{display:flex;flex-direction:column;gap:8px;max-height:350px;overflow:auto}.peer{padding:11px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px}.peer-top{display:flex;justify-content:space-between;gap:12px}.peer-id{font:11px monospace;color:#93c5fd;overflow:hidden;text-overflow:ellipsis}.peer-mode{font-size:10px;color:var(--green);text-transform:uppercase}.peer-meta{font-size:11px;color:var(--muted);margin-top:6px}.empty{color:var(--muted);font-size:12px;padding:22px 5px;text-align:center;border:1px dashed var(--line);border-radius:8px}
      .presence{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:0 0 18px}.metric{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:12px}.metric-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}.metric-value{font-size:20px;font-weight:800;margin-top:5px}.metric-value.good{color:var(--green)}.metric-value.warn{color:var(--amber)}.types{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.type{font-size:11px;color:#bfdbfe;background:#172a47;border:1px solid #284c78;border-radius:20px;padding:4px 8px}.last-check{font-size:10px;color:var(--muted);margin-top:10px}
     .quick{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:15px}.quick input{grid-column:1/-1}.quick .btn{width:100%}.identity{font:11px monospace;word-break:break-all;color:#93c5fd;background:var(--panel2);border-radius:7px;padding:10px;margin-top:13px}
+     .remote-list{display:flex;flex-direction:column;gap:9px}.remote-row{display:flex;align-items:center;gap:12px;padding:11px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px}.remote-info{min-width:0;flex:1}.remote-name{font-weight:700}.remote-url{font:11px monospace;color:var(--muted);overflow-wrap:anywhere;margin-top:4px}.remote-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}.remote-actions a{margin:0}.remote-actions button{margin:0}
     @media(max-width:850px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.wide{grid-column:auto}.top{padding:0 14px}main{padding:20px 14px}}
   </style>
 </head>
@@ -50,10 +51,10 @@
           <div class="field"><label>Maximum peers</label><input id="maxPeers" type="number" min="1" max="10000"/></div>
           <div class="field wide"><label>Advertised P2P host</label><input id="p2pAdvertiseHost" placeholder="public-ip-or-dns (never 0.0.0.0)"/><span class="hint">The listener still binds all interfaces; this is the reachable host shared with peers.</span></div>
            <div class="field wide"><label>Bootstrap peers</label><textarea id="bootstrapNodes" placeholder="genesis.example.com:30303, 203.0.113.10:30303"></textarea><span class="hint">Edits remain pending until you click Apply &amp; Restart Node. The Connected nodes panel shows live connections only.</span></div>
-          <div class="field wide"><label>Allowed node IDs</label><textarea id="allowedNodes" placeholder="One or more ed25519 node IDs, comma-separated"></textarea></div>
+          <div class="field wide"><label>Approved node IDs</label><textarea id="allowedNodes" placeholder="One or more ed25519 node IDs, comma-separated"></textarea><span class="hint">Only listed identities can connect inbound. An empty list rejects all inbound peers; approve the same node separately on every receiving node.</span></div>
           <div class="field"><label>Log level</label><select id="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option></select></div>
           <div class="field"><label>Log format</label><select id="logFormat"><option>json</option><option>pretty</option></select></div>
-          <label class="check wide"><input id="peerAuth" type="checkbox"/> Require authenticated peers (use Allowed node IDs to whitelist)</label>
+          <label class="check wide"><input id="peerAuth" type="checkbox" checked disabled/> Authenticated peer approval is required for P2P node roles</label>
         </div>
         <div class="actions"><button class="btn green" id="applyBtn" onclick="applyConfig()">Apply &amp; Restart Node</button><span class="hint">The dashboard will briefly disconnect.</span></div><div id="configNotice" class="notice"></div>
       </section>
@@ -83,6 +84,18 @@
       <div class="actions"><button class="btn green" id="pinResetBtn" onclick="resetDashboardPin()">Set new dashboard PIN</button><span class="hint">The old PIN is not required; your authenticated Admin session authorizes this change.</span></div>
       <div id="pinNotice" class="notice"></div>
     </section>
+    <section class="card" id="remote-nodes" style="margin-top:18px">
+      <h2>Remote Admin nodes</h2>
+      <div class="sub">Register trusted HTTPS dashboard origins and open each node's own Admin login in a new tab. This directory stores no PINs and does not proxy API requests; each node requires its own Web3 signature and PIN. No SSH shell is provided.</div>
+      <div class="fields">
+        <div class="field"><label for="remoteNodeName">Node name</label><input id="remoteNodeName" maxlength="64" placeholder="Boost Node"/></div>
+        <div class="field"><label for="remoteNodeURL">HTTPS dashboard origin</label><input id="remoteNodeURL" type="url" placeholder="https://boost.netlifegy.com"/></div>
+      </div>
+      <div class="actions"><button class="btn blue" id="remoteNodeAddBtn" onclick="addRemoteNode()">Register HTTPS node</button><span class="hint">Enter only the origin, with no path, query string, or credentials.</span></div>
+      <div id="remoteNodeNotice" class="notice"></div>
+      <div style="height:14px"></div>
+      <div class="remote-list" id="remoteNodeList"><div class="empty">Loading registered nodes…</div></div>
+    </section>
   </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -110,9 +123,38 @@ function setNetworkProfile(changing){
 async function loadConfig(){try{const r=await fetch('/admin/node/config');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load config');
   for(const [id,key] of Object.entries({nodeMode:'nodeMode',chainId:'chainId',networkName:'networkName',blockTime:'blockTime',dataDir:'dataDir',walletAddress:'walletAddress',rpcPort:'rpcPort',wsPort:'wsPort',p2pPort:'p2pPort',maxPeers:'maxPeers',p2pAdvertiseHost:'p2pAdvertiseHost',bootstrapNodes:'bootstrapNodes',allowedNodes:'allowedNodes',logLevel:'logLevel',logFormat:'logFormat'}))$(id).value=d[key]??'';
   activeNetworkProfile=d.network==='testnet'?'testnet':'mainnet';$('networkProfile').value=activeNetworkProfile;setNetworkProfile(false);
-  $('peerAuth').checked=!!d.peerAuth;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
+   $('peerAuth').checked=true;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
  }catch(e){show('configNotice',e.message,'err')}}
  async function loadPinStatus(){try{const r=await fetch('/api/lock/status');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not check PIN status');$('pinStatus').textContent=d.pinSet?'PIN enabled':'No PIN set';}catch(e){$('pinStatus').textContent='Status unavailable';show('pinNotice',e.message,'err')}}
+ async function loadRemoteNodes(){
+   try{
+     const r=await fetch('/admin/remote-nodes');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load remote nodes');
+     const nodes=Array.isArray(d.nodes)?d.nodes:[];
+     $('remoteNodeList').innerHTML=nodes.length?nodes.map(n=>{
+       const loginURL=n.url+'/admin/login';
+       return `<div class="remote-row"><div class="remote-info"><div class="remote-name">${esc(n.name)}</div><div class="remote-url">${esc(n.url)}</div></div><div class="remote-actions"><a class="btn blue" href="${esc(loginURL)}" target="_blank" rel="noopener noreferrer">Open Admin</a><button class="btn ghost" onclick="removeRemoteNode('${encodeURIComponent(n.id)}')">Remove</button></div></div>`;
+     }).join(''):'<div class="empty">No remote nodes registered yet.</div>';
+   }catch(e){$('remoteNodeList').innerHTML='<div class="empty">Unable to load remote nodes.</div>';show('remoteNodeNotice',e.message,'err')}
+ }
+ async function addRemoteNode(){
+   const name=$('remoteNodeName').value.trim(),url=$('remoteNodeURL').value.trim(),b=$('remoteNodeAddBtn');
+   if(!name||!url){show('remoteNodeNotice','Enter both a node name and HTTPS dashboard origin.','err');return}
+   b.disabled=true;
+   try{
+     const r=await fetch('/admin/remote-nodes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,url})});
+     const d=await r.json();if(!r.ok)throw Error(d.error||'Could not register node');
+     $('remoteNodeName').value='';$('remoteNodeURL').value='';
+     show('remoteNodeNotice','HTTPS Admin node registered.','ok');await loadRemoteNodes();
+   }catch(e){show('remoteNodeNotice',e.message,'err')}
+   finally{b.disabled=false}
+ }
+ async function removeRemoteNode(encodedID){
+   const id=decodeURIComponent(encodedID);if(!confirm('Remove this remote Admin link? The remote node will not be changed.'))return;
+   try{
+     const r=await fetch('/admin/remote-nodes/'+encodeURIComponent(id),{method:'DELETE'});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not remove node');
+     show('remoteNodeNotice','Remote Admin link removed.','ok');await loadRemoteNodes();
+   }catch(e){show('remoteNodeNotice',e.message,'err')}
+ }
  async function resetDashboardPin(){
    const pin=$('newDashboardPin').value,confirmPin=$('confirmDashboardPin').value,b=$('pinResetBtn');
    if(pin.length<4||pin.length>16){show('pinNotice','PIN must be 4–16 characters.','err');return}
@@ -171,7 +213,7 @@ async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configN
  function stagePeer(){const address=cleanPeerAddress($('peerAddress').value);if(!address){show('peerNotice','Enter a peer host:port first.','err');return}const peers=readBootstrapPeers();if(peers.some(peer=>peer.toLowerCase()===address.toLowerCase())){show('peerNotice','That peer is already in the pending list. Click Apply & Restart Node to save any pending changes.','warn');return}peers.push(address);writeBootstrapPeers(peers);$('peerAddress').value='';show('peerNotice','Peer added to pending changes. Click Apply & Restart Node to save and connect it.','ok')}
  function removePeer(encoded){const address=cleanPeerAddress(decodeURIComponent(encoded));if(!confirm('Stage removal of '+address+'? It will remain connected until you click Apply & Restart Node.'))return;const peers=readBootstrapPeers().filter(peer=>peer.toLowerCase()!==address.toLowerCase());writeBootstrapPeers(peers);show('peerNotice','Peer removal staged. Click Apply & Restart Node to save the change and disconnect it.','ok')}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
- loadConfig();loadPinStatus();refreshPeers();setInterval(refreshPeers,5000);
+  loadConfig();loadPinStatus();refreshPeers();loadRemoteNodes();setInterval(refreshPeers,5000);
 </script>
 </body>
 </html>

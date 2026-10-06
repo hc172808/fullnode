@@ -69,6 +69,17 @@ func DefaultConfig() *Config {
 	}
 }
 
+// PeerAuthRequired reports whether this node role exposes P2P connections.
+// P2P-capable roles always require an authenticated, explicitly approved peer.
+func PeerAuthRequired(mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "rpc", "testnode":
+		return false
+	default:
+		return true
+	}
+}
+
 func FromEnv() *Config {
 	cfg := DefaultConfig()
 
@@ -191,6 +202,12 @@ func FromEnv() *Config {
 				cfg.AllowedNodes = append(cfg.AllowedNodes, id)
 			}
 		}
+	}
+	if PeerAuthRequired(cfg.NodeMode) {
+		// Do not let a stale GYDS_PEER_AUTH=false setting disable approval checks
+		// on a P2P node. The allowlist itself may be empty, which denies all
+		// inbound peer connections until the operator approves node IDs.
+		cfg.PeerAuth = true
 	}
 	if v := os.Getenv("GYDS_EXTERNAL_URL"); v != "" {
 		cfg.ExternalURL = v

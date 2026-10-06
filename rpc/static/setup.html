@@ -436,26 +436,19 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div>
             <div style="font-size:13px;font-weight:700">🔒 Peer Authorization</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px">Only allow whitelisted nodes to connect to this node</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">P2P nodes require identity checks and explicit node approval</div>
           </div>
-          <label style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer">
-            <input type="checkbox" id="peerAuthEnabled" style="opacity:0;width:0;height:0" onchange="togglePeerAuth(this.checked)" />
-            <span id="peerAuthToggle" style="position:absolute;inset:0;border-radius:12px;background:var(--border);transition:.2s;cursor:pointer"></span>
-            <span id="peerAuthKnob"   style="position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s;pointer-events:none"></span>
-          </label>
+          <span style="font-size:11px;color:#86efac;border:1px solid #1d6048;background:#0c2d21;padding:4px 8px;border-radius:20px">REQUIRED</span>
         </div>
-        <div id="peerAuthFields" style="display:none">
+        <input type="checkbox" id="peerAuthEnabled" checked disabled style="display:none"/>
+        <div id="peerAuthFields">
           <div class="field">
             <label>Allowed Node IDs <span style="color:var(--muted);font-weight:400;text-transform:none">(one per line)</span></label>
-            <textarea id="allowedNodes" rows="4" placeholder="Paste the Node IDs of peers you want to allow.&#10;Each node's ID appears in its dashboard under Node ID.&#10;Leave empty to allow any node that can prove its identity (challenge-response)." style="font-family:var(--mono);font-size:12px"></textarea>
+            <textarea id="allowedNodes" rows="4" placeholder="Paste the exact Node IDs approved to connect.&#10;Each node's ID appears in its dashboard under Node ID.&#10;An empty list rejects every inbound peer." style="font-family:var(--mono);font-size:12px"></textarea>
             <div class="field-hint">
-              💡 A node's ID is its hex-encoded ed25519 public key. Peers with unknown IDs will be rejected after failing the challenge handshake.
-              Leave blank to allow any authenticated node (challenge-response still required, but no whitelist check).
+              A node's ID is its hex-encoded ed25519 public key. Only listed IDs that prove their identity can connect. An empty list rejects all inbound peers; approving a node on one server does not approve it on other servers.
             </div>
           </div>
-        </div>
-        <div id="peerAuthOff" style="font-size:12px;color:var(--muted)">
-          When disabled, any node can connect as long as they are on the same chain. Enable to restrict connections to a trusted set.
         </div>
       </div>
     </div>

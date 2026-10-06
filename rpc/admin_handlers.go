@@ -34,7 +34,7 @@ func (s *Server) handleAdminLoginSubmit(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	fields := extractFields(r, "address", "nonce", "signature")
+	fields := extractFields(r, "address", "nonce", "signature", "pin")
 	address := strings.ToLower(strings.TrimSpace(fields["address"]))
 	if address != strings.ToLower(AdminWallet) {
 		s.auth.RecordFailure(ip)
@@ -66,6 +66,11 @@ func (s *Server) handleAdminLoginSubmit(w http.ResponseWriter, r *http.Request) 
 		} else {
 			jsonErr(w, http.StatusUnauthorized, fmt.Sprintf("Invalid signature. %d attempt(s) remaining before lockout.", left))
 		}
+		return
+	}
+
+	if status, message := validateAdminLoginPIN(s.auth, ip, fields["pin"]); status != 0 {
+		jsonErr(w, status, message)
 		return
 	}
 

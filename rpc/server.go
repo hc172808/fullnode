@@ -71,6 +71,8 @@ type Server struct {
 	pendingBootstrapMu sync.Mutex
 	pendingBootstrap   map[string]stagedBootstrapChanges
 
+	remoteNodesMu sync.Mutex
+
 	accessLogFile *os.File
 }
 
@@ -314,6 +316,8 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/node/remove", s.requireAdminSession(s.handleAdminNodeRemove)).Methods("DELETE", "POST")
 	admin.HandleFunc("/node/status", s.requireAdminSession(s.handleAdminNodeStatus)).Methods("GET")
 	admin.HandleFunc("/security/pin", s.requireAdminSession(s.handleAdminPinReset)).Methods("POST")
+	admin.HandleFunc("/remote-nodes", s.requireAdminSession(s.handleRemoteNodes)).Methods("GET", "POST")
+	admin.HandleFunc("/remote-nodes/{id}", s.requireAdminSession(s.handleRemoteNodeDelete)).Methods("DELETE")
 	admin.HandleFunc("/db", s.handleAdminDBPage).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBTables)).Methods("GET")
 	admin.HandleFunc("/db/tables", s.requireAdminSession(s.handleDBCreateTable)).Methods("POST")

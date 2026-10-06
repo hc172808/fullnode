@@ -110,6 +110,13 @@
       margin-bottom: 8px;
     }
     .wallet-note { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
+    .pin-field { margin-bottom: 18px; }
+    .pin-field input {
+      width: 100%; padding: 12px 14px; background: var(--card2);
+      border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+      font-size: 18px; letter-spacing: 3px; outline: none;
+    }
+    .pin-field input:focus { border-color: var(--accent); }
 
     /* ── Error ── */
     .error-box {
@@ -173,7 +180,7 @@
 
   <div class="card">
     <div class="card-title">🔐 Admin Dashboard</div>
-    <div class="card-sub">Connect the authorized wallet and sign in with Web3</div>
+    <div class="card-sub">Sign in with the authorized wallet and this node's PIN</div>
 
     <div class="wallet-badge">
       <div class="wallet-dot"></div>
@@ -183,7 +190,12 @@
       </div>
     </div>
 
-    <div class="wallet-note">No PIN is required. Your wallet proves control of the authorized administrator address by signing a one-time challenge. Your signature never leaves the browser.</div>
+    <div class="wallet-note">Both checks are required on every node: sign a one-time challenge with the authorized Admin wallet, then enter this node's own PIN. Your PIN and signature are sent only to this node.</div>
+    <div class="pin-field">
+      <label for="adminPin">This node's dashboard PIN</label>
+      <input id="adminPin" type="password" maxlength="16" autocomplete="current-password"
+             placeholder="Enter this node's PIN" required/>
+    </div>
     <div class="error-box"   id="errBox"></div>
     <div class="lockout-box" id="lockBox"></div>
 
@@ -244,11 +256,13 @@ async function requestJSON(path, options, label) {
 // ── Login ─────────────────────────────────────────────────────────────────────
 async function doLogin() {
   const btn = document.getElementById('loginBtn');
+  const pin = document.getElementById('adminPin').value;
   btn.disabled = true;
   btn.textContent = 'Verifying…';
   hideError();
 
   try {
+    if (!pin) throw new Error("Enter this node's dashboard PIN.");
     if (!window.ethereum) throw new Error('No Web3 wallet detected. Install MetaMask or another EVM wallet.');
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
     const address = accounts && accounts[0];
@@ -271,8 +285,9 @@ async function doLogin() {
     const data = await requestJSON('/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address, nonce: challenge.nonce, signature })
+      body: JSON.stringify({ address, nonce: challenge.nonce, signature, pin })
     }, 'Admin login');
+    document.getElementById('adminPin').value = '';
     window.location.href = data.redirect || '/admin/node';
   } catch(e) {
     if (e.status === 429) {

@@ -71,3 +71,43 @@ func TestAdminPinResetRejectsMismatchWithoutChangingPIN(t *testing.T) {
 		t.Fatal("mismatched PIN entries changed the existing PIN")
 	}
 }
+
+func TestValidateAdminLoginPINRequiresThisNodesConfiguredPIN(t *testing.T) {
+	auth := NewAuthStore(t.TempDir())
+	status, message := validateAdminLoginPIN(auth, "192.0.2.10", "2468")
+	if status != http.StatusForbidden || !strings.Contains(message, "no dashboard PIN") {
+		t.Fatalf("unset PIN result = (%d, %q), want forbidden with setup guidance", status, message)
+	}
+
+	if err := auth.SetPin("2468"); err != nil {
+		t.Fatalf("set node PIN: %v", err)
+	}
+	status, _ = validateAdminLoginPIN(auth, "192.0.2.10", "")
+	if status != http.StatusBadRequest {
+		t.Fatalf("empty PIN status = %d, want 400", status)
+	}
+	status, _ = validateAdminLoginPIN(auth, "192.0.2.10", "wrong")
+	if status != http.StatusUnauthorized {
+		t.Fatalf("wrong PIN status = %d, want 401", status)
+	}
+	status, message = validateAdminLoginPIN(auth, "192.0.2.10", "2468")
+	if status != 0 || message != "" {
+		t.Fatalf("correct PIN result = (%d, %q), want success", status, message)
+	}
+}
+
+func TestValidateAdminLoginPINLocksAfterRepeatedFailures(t *testing.T) {
+	auth := NewAuthStore(t.TempDir())
+	if err := auth.SetPin("2468"); err != nil {
+		t.Fatalf("set node PIN: %v", err)
+	}
+	for attempt := 1; attempt <= maxLoginAttempts; attempt++ {
+		status, _ := validateAdminLoginPIN(auth, "192.0.2.20", "wrong")
+		if attempt < maxLoginAttempts && status != http.StatusUnauthorized {
+			t.Fatalf("attempt %d status = %d, want 401", attempt, status)
+		}
+		if attempt == maxLoginAttempts && status != http.StatusTooManyRequests {
+			t.Fatalf("attempt %d status = %d, want 429", attempt, status)
+		}
+	}
+}

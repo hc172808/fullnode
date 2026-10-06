@@ -10,6 +10,26 @@ type adminPinResetRequest struct {
 	ConfirmPIN string `json:"confirmPin"`
 }
 
+func validateAdminLoginPIN(auth *AuthStore, ip, pin string) (int, string) {
+	if !auth.PinIsSet() {
+		auth.writeAudit(ip, "PIN-UNSET")
+		return http.StatusForbidden, "This node has no dashboard PIN. Complete setup before Admin login."
+	}
+	if pin == "" {
+		return http.StatusBadRequest, "Enter this node's dashboard PIN."
+	}
+	if auth.CheckPin(pin) {
+		return 0, ""
+	}
+
+	attempts := auth.RecordFailure(ip)
+	auth.writeAudit(ip, "PIN-FAIL")
+	if attempts >= maxLoginAttempts {
+		return http.StatusTooManyRequests, "Too many failed attempts. Try again in 15 minutes."
+	}
+	return http.StatusUnauthorized, "Incorrect PIN."
+}
+
 // handleAdminPinReset replaces the dashboard PIN after Web3 admin
 // authentication. It deliberately does not require the forgotten PIN.
 func (s *Server) handleAdminPinReset(w http.ResponseWriter, r *http.Request) {

@@ -131,6 +131,9 @@ func (c adminNodeConfig) validate() error {
 	if c.NodeMode == "sync" && len(bootstrapPeers) == 0 {
 		return fmt.Errorf("sync mode requires at least one bootstrap node in host:port form")
 	}
+	if config.PeerAuthRequired(c.NodeMode) && !c.PeerAuth {
+		return fmt.Errorf("peer authentication is required for P2P node roles")
+	}
 	if c.ChainID <= 0 {
 		return fmt.Errorf("chain ID must be positive")
 	}
