@@ -2,8 +2,8 @@
 
 ## Plan 9 — Multi-node setup, network identity, and automatic maintenance
 
-- [x] Use chain ID `198282` for the live GYDS network and keep the isolated
-  test node on chain ID `31337`.
+- [x] Use chain ID `198282` for mainnet and `198281` for the persistent testnet.
+  Disposable test fixtures are separate and must not be confused with testnet.
 - [x] Provide setup choices for full, lite, RPC, boost, genesis, sync,
   validator, and isolated testnode roles.
 - [x] Give each role a documented non-overlapping default dashboard, RPC,
@@ -173,6 +173,10 @@ GYDS_P2P_PORT=30303
 GYDS_P2P_ADVERTISE_HOST=GENESIS_PUBLIC_IP_OR_DNS
 ```
 
+Persistent testnet nodes use `GYDS_NETWORK=testnet`, which selects chain ID
+`198281` and a separate testnet data directory. Do not use the disposable
+test-node chain ID as the persistent testnet identity.
+
 Joining node:
 
 ```env
@@ -237,8 +241,9 @@ Acceptance criteria:
 - [x] Treat `0.0.0.0` as a bind address only. Do **not** advertise
   `0.0.0.0:30303` to peers. Bootstrap nodes must use the real public IP or DNS
   name of the genesis node, for example `203.0.113.10:30303`.
-- [ ] Verify that the genesis node and joining nodes use the same chain ID
-  (`198282`) and the same genesis hash.
+- [ ] Verify that the genesis node and joining nodes use the same selected
+  network ID (mainnet `198282` or persistent testnet `198281`) and the same
+  genesis hash.
 - [ ] Verify that every node has a unique persisted `<dataDir>/node.key`.
   Never copy the genesis node's `node.key` to another server.
 - [ ] Check that the joining node has `GYDS_BOOTSTRAP_NODES=<genesis-public-ip>:30303`
@@ -652,10 +657,18 @@ already maintaining a $1 price.
   redemption eligibility and process, issuance/burn controls, fees, depeg
   response, legal/compliance obligations, and disclosures. Do not claim a
   reliable USD peg until those controls are real and independently verified.
-- [ ] Change the dashboard copy that currently says GYD is pegged 1:1 to the
-  Guyana Dollar and claims auditable reserves. Until the USD peg and backing are
-  operational, label USD parity as the target only and state what is not yet
-  implemented.
+- [x] Correct the dashboard copy: GYD targets USD parity only; its peg, backing,
+  and redemption are not implemented or independently verified.
+- [ ] Decide whether GYD should have no fixed maximum supply but use
+  demand-gated issuance. Define verifiable demand (including how off-chain USD
+  payments or collateral are confirmed), mint authorization, audit evidence,
+  per-operation limits, and burn/redemption handling. No uncapped, unbacked
+  minting: an unlimited supply ceiling does not guarantee a $1 price.
+- [ ] Publish and distinguish on-chain `totalSupply` from circulating supply,
+  treasury holdings, and locked/escrowed tokens. Index mint/burn events or
+  provide another auditable public supply view. Contract-aware wallets can read
+  `totalSupply`, but arbitrary wallets are not guaranteed to display global
+  supply or circulating supply; verify support wallet by wallet.
 - [ ] Define the permanent GYD contract address and deployment procedure.
 - [ ] Define how the existing 10B genesis GYD balance maps to contract balances.
 - [ ] Prevent double counting between node-managed GYD and contract GYD.
