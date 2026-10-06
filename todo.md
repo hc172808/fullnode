@@ -461,20 +461,39 @@ Acceptance criteria:
 
 ### PIN configuration policy
 
-- [ ] Add an optional `GYDS_DASHBOARD_PIN` environment setting. Do not store
-  the plaintext PIN in logs or API responses.
-- [ ] On startup, if `GYDS_DASHBOARD_PIN` is set, validate its length and
-  update the hashed `<dataDir>/admin/.pin_hash` atomically.
-- [ ] Define empty/unset behavior explicitly: either keep the existing hashed
-  PIN unchanged, or provide a separate documented switch to disable the PIN;
-  never disable authentication accidentally because an environment variable is
-  missing.
-- [ ] Allow changing the PIN by editing the server `.env`, then restarting the
-  node. Document the exact procedure and ownership/permissions.
-- [ ] Make the setup wizard and `.env` behavior consistent. The current setup
-  path skips changing the PIN when a hash already exists.
-- [ ] Add tests for first-time PIN creation, `.env` PIN rotation, invalid PIN,
-  unset PIN, restart persistence, and failed/partial writes.
+- [x] Keep PIN creation in first-time setup; an optional setup environment
+  value may initialize the hash once, but must never overwrite an existing PIN.
+- [x] Require a signed Web3 Admin session to change or recover a PIN after
+  setup. The Admin Node page calls `POST /admin/security/pin`; legacy
+  unauthenticated PIN-setting routes remain disabled.
+- [ ] Reproduce and fix the reported failure to change the PIN from the Admin
+  wallet. Verify the active Web3 session, target node, API response, and PIN
+  hash location; confirm the displayed PIN status and login behavior update on
+  that same node.
+- [ ] Keep post-setup PIN changes out of `.env` rotation and avoid requiring a
+  process restart. Never return or log the plaintext PIN.
+- [ ] Test PIN initialization, valid Web3-admin change, unauthenticated and
+  mismatched requests, persistence across restart, and behavior when the PIN is
+  unset.
+
+### Approved node access and remote administration
+
+- [ ] Require explicit administrator approval for every node allowed to sync.
+  Default to denying unapproved node identities; approval must be based on the
+  node's authenticated identity, not only its network address.
+- [ ] Add a persisted per-network approval list with Admin approve/revoke
+  controls, an audit trail, and a clear pending/approved/revoked status. Enforce
+  approvals during P2P authentication before blocks or transactions are served.
+- [ ] Add a remote-node registry to the Boost/Genesis Admin panel so the
+  administrator can select and manage enrolled nodes from one place. Require
+  the selected node's own PIN when opening that node's admin session; do not
+  silently reuse a PIN across nodes or store plaintext PINs in the coordinator.
+- [ ] Provide SSH access only to explicitly approved nodes using a defined,
+  least-privilege credential and session-audit model. Never embed shared root
+  credentials or reusable private keys in browser code or node configuration.
+- [ ] Test approval and revocation across restart, rejection of unknown nodes,
+  per-node PIN isolation, remote login failures, and SSH access controls before
+  enabling remote administration on a public network.
 
 ### Two-server verification runbook
 
