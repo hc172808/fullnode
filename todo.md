@@ -630,26 +630,49 @@ Validation completed on **2026-08-09**:
 
 GYD is currently a node-managed genesis token, not a standard ERC-20 contract.
 Most external EVM wallets cannot discover or display such a token from the
-custom `/api/tokens/{address}` endpoint.
+custom `/api/tokens/{address}` endpoint. The USD peg is a product target only:
+there is no implemented or independently verified USD reserve, redemption
+guarantee, or ERC-20 contract yet. Do not describe GYD as backed, redeemable, or
+already maintaining a $1 price.
 
-- [ ] Decide whether GYD should become an ERC-20-compatible token on GYDS
-  Chain, or remain a node-native token with a custom wallet integration.
-- [ ] If using ERC-20, implement and independently review the token contract.
+- [x] Product decision: GYD's intended peg is **1 GYD = 1 USD**, not 1 GYD = 1
+  Guyana Dollar. The peg is not operational or verified yet.
+- [x] Product decision: publish a stable, public HTTPS URL for the GYD token
+  logo. Keep it distinct from the GYDS network logo URL.
+- [x] Use a standard ERC-20 contract for wallet-compatible GYD and
+  user-created tokens; the ERC-20 standard itself does not define a logo field.
+- [ ] Define the USD reserve/collateral model, custodian, attestations/audits,
+  redemption eligibility and process, issuance/burn controls, fees, depeg
+  response, legal/compliance obligations, and disclosures. Do not claim a
+  reliable USD peg until those controls are real and independently verified.
+- [ ] Change the dashboard copy that currently says GYD is pegged 1:1 to the
+  Guyana Dollar and claims auditable reserves. Until the USD peg and backing are
+  operational, label USD parity as the target only and state what is not yet
+  implemented.
 - [ ] Define the permanent GYD contract address and deployment procedure.
 - [ ] Define how the existing 10B genesis GYD balance maps to contract balances.
 - [ ] Prevent double counting between node-managed GYD and contract GYD.
 - [ ] Define mint authority, freeze authority, burn rules, pause rules, and
-  stablecoin reserve/redemption policy.
+  consensus-safe USD-token issuance/redemption policy.
 - [ ] Add ERC-20 JSON-RPC support and test `balanceOf`, `decimals`, `symbol`,
   `name`, `totalSupply`, `transfer`, `approve`, and `transferFrom`.
 - [x] Host `/gyd-token.json` with GYD name, symbol, decimals, supply, logo URL,
   and an explicit no-contract status.
+- [ ] Point GYD's `logoUrl` to a GYD-specific public HTTPS image URL such as
+  `/gyd-coin.png`; do not reuse `/logo.png`, which is the GYDS network logo.
+  Confirm HTTPS, correct image type, anonymous access, CORS, stable caching, and
+  that the URL keeps working after deploys and asset changes.
 - [ ] After a real ERC-20 contract exists, publish contract-backed GYD metadata
-  with its permanent contract address.
-- [ ] Register the GYD logo and metadata with target wallet token lists.
-- [ ] Test importing GYD by contract address in every target wallet.
-- [ ] Publish the stablecoin reserve, issuer, redemption, audit, legal, and
-  risk information before representing GYD as a 1:1 stablecoin.
+  with its permanent contract address and the canonical public logo URL.
+- [ ] Register the GYD contract, metadata, and logo with each chosen wallet's
+  token list or asset registry where required. A metadata URL or ERC-20 contract
+  alone does not make every wallet show a token image.
+- [ ] Test adding GYD by contract address in every explicitly supported wallet;
+  record which display its logo, caching delays, approval requirements, and
+  manual-import fallback. Do not promise support for arbitrary wallets because
+  logo discovery and registry policies are wallet-specific.
+- [ ] Publish verified USD reserve, issuer, redemption, audit, legal, and risk
+  information before representing GYD as backed or maintaining a $1 USD peg.
 
 ## Future — User-created tokens and token-management website
 
@@ -888,6 +911,10 @@ coordinated network migration is explicitly approved.
 - [ ] Keep user-created tokens as standard ERC-20 contracts as decided; do not
   imply the ERC-20 interface itself stores or exposes a logo. `name`, `symbol`,
   `decimals`, and `totalSupply` do not standardize token images.
+- [ ] For GYD, use the approved USD target (not the Guyana Dollar) and do not
+  describe the target as active, backed, or redeemable until the reserve,
+  redemption, legal, and independent-verification requirements in the GYD
+  wallet section are complete.
 - [ ] Decide how the token-creation website accepts and validates a logo, then
   stores it durably at a public HTTPS URL or content-addressed location. Do not
   put large image bytes in contract storage or expose private upload paths.
