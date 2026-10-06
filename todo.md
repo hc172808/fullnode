@@ -757,11 +757,12 @@ already maintaining a $1 price.
   reliable USD peg until those controls are real and independently verified.
 - [x] Correct the dashboard copy: GYD targets USD parity only; its peg, backing,
   and redemption are not implemented or independently verified.
-- [ ] Decide whether GYD should have no fixed maximum supply but use
-  demand-gated issuance. Define verifiable demand (including how off-chain USD
-  payments or collateral are confirmed), mint authorization, audit evidence,
-  per-operation limits, and burn/redemption handling. No uncapped, unbacked
-  minting: an unlimited supply ceiling does not guarantee a $1 price.
+- [x] Supply policy decision: GYD should have no fixed maximum supply and
+  should mint on demand.
+- [ ] Before connecting minting to live consensus, define what proves demand,
+  who authorizes each mint, the evidence/audit trail, per-operation safeguards,
+  and redemption/burn handling. Do not implement permissionless or unbacked
+  minting; unlimited supply does not guarantee a $1 price.
 - [ ] Publish and distinguish on-chain `totalSupply` from circulating supply,
   treasury holdings, and locked/escrowed tokens. Index mint/burn events or
   provide another auditable public supply view. Contract-aware wallets can read
