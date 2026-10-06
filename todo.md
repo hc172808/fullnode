@@ -1,5 +1,54 @@
 # GYDS Chain production TODO
 
+## Latest launch-readiness check
+
+**Status: not ready for a public production launch.** The public RPC responds
+with mainnet chain ID `198282`, but reports `net_peerCount = 0`; block production
+on one node does not prove that nodes share a canonical chain.
+
+- [x] Identify the configured bootstrap value as invalid: it used a misspelled
+  `tpc://` scheme, the HTTPS RPC hostname, and no P2P port. Do not assume the
+  RPC hostname is also a reachable P2P peer.
+- [ ] Replace or clear the invalid bootstrap value in the node's runtime
+  configuration. This checkout's `.env` was not edited; the public RPC hostname
+  did not accept a TCP connection on port `30303` from this environment.
+- [ ] Configure `GYDS_BOOTSTRAP_NODES` with the actual public peer
+  `host:30303`; confirm TCP `30303` is reachable through both the server and
+  hosting-provider firewall.
+- [ ] Bring up at least two independently operated nodes on the same network;
+  verify live peer connections, matching genesis hashes, propagated blocks,
+  and equal heights/state after restart and catch-up.
+- [ ] Keep the P0 consensus/security gates below blocking production launch:
+  replace round-robin proposer selection with a specified, cryptographically
+  enforced validator/consensus protocol; validate signed blocks/transactions,
+  fork choice/finality, deterministic state replay, and recovery before real
+  funds or public production use. Current block acceptance checks parent and
+  height but does not establish validator authorization or finality.
+- [ ] Activate and verify EVM execution on the persistent mainnet and testnet
+  profiles. Both currently leave `EVMActivationBlock` unset, and the chain
+  initializes EVM state only when that value is greater than zero; signed EVM
+  transactions therefore remain unavailable on those profiles. The EVM
+  implementation is exercised with explicitly activated test/custom chains,
+  which does not establish production-network availability.
+- [ ] Treat EVM activation as a coordinated protocol migration: choose and
+  document the activation height, verify deterministic replay and state recovery,
+  and coordinate compatible software and persisted-state handling across every
+  node. Do not enable it through an uncoordinated genesis/configuration change.
+- [ ] Keep this deployment on testnet until the P0 consensus/security and EVM
+  activation/migration gates pass. The public RPC answering `eth_chainId`
+  confirms API availability only, not production execution, consensus safety,
+  or a functioning multi-node network.
+
+### Mining vs. minting terminology
+
+Use **mining** only when describing proof-of-work block discovery. This codebase
+currently describes itself as proof-of-stake: validators propose blocks; it does
+not implement proof-of-work mining. The existing **minting** references below
+describe creating token supply, so they are intentional and should not be
+globally replaced. Decide whether the intended launch protocol remains PoS or
+requires a separately designed PoW protocol before using “mining” as a feature
+claim.
+
 ## Plan 9 — Multi-node setup, network identity, and automatic maintenance
 
 - [x] Use chain ID `198282` for mainnet and `198281` for the persistent testnet.
@@ -507,13 +556,20 @@ Validation completed on **2026-08-09**:
   policy. Never make live supply changes an unaudited dashboard field.
 - [x] Product decision: GYD should become a standard ERC-20 contract with a
   permanent contract address.
-- [ ] Replace the current simplified transaction path with consensus-backed
-  signed transaction decoding and execution. `eth_sendRawTransaction` currently
-  indexes a placeholder transaction instead of executing it.
-- [ ] Implement a production EVM-compatible contract state path. The current
-  custom VM does not yet provide Ethereum-compatible selectors, calldata
-  semantics, contract deployment, storage commitment, or consensus replication
-  sufficient for a real ERC-20.
+- [x] Implement canonical signed-transaction decoding, chain-ID validation,
+  sender recovery, pending-pool admission, and EVM block execution for chains
+  with EVM activated. `eth_sendRawTransaction` fails closed when EVM is
+  unavailable rather than indexing a placeholder transaction.
+- [ ] Activate and verify EVM execution on the persistent mainnet/testnet
+  profiles, then validate transaction inclusion, receipts, state replay,
+  synchronization, and restart recovery across multiple nodes. Keep production
+  launch blocked until these behaviors are covered by the consensus/security
+  gates above.
+- [ ] Verify production EVM compatibility against the chain's specified fork
+  rules, contract creation, storage, logs, revert and gas behavior, block
+  context, persistence, and historical reads. The implementation uses
+  go-ethereum EVM components, but activated test/custom chains do not establish
+  that the persistent production networks are enabled or fully compatible.
 - [ ] Implement and test ERC-20 `name`, `symbol`, `decimals`, `totalSupply`,
   `balanceOf`, `transfer`, `approve`, `allowance`, `transferFrom`, `mint`, and
   `burn` behavior with standard ABI encoding and event logs.
@@ -700,8 +756,9 @@ The Go `gpl/token` package has standalone token operations, including creation,
 minting, burning, allowances, account freezing, and mint-authority changes.
 However, no current Go call sites connect those operations to chain
 transactions, consensus, or the RPC API. The current token RPC endpoints expose
-genesis-token data only. The custom VM is not yet a production EVM contract
-runtime, so the package alone is not enough to issue wallet-compatible tokens.
+genesis-token data only. An EVM implementation exists for activated chains, but
+the persistent mainnet and testnet profiles do not currently activate it; the
+token package alone is therefore not enough to issue wallet-compatible tokens.
 
 - [x] Product decision: user-created assets will use standard EVM ERC-20
   contracts.
@@ -709,8 +766,10 @@ runtime, so the package alone is not enough to issue wallet-compatible tokens.
   metadata, decimals, and supply limits. Coordinate the EVM work with the
   existing GYD ERC-20 migration plan above.
 - [x] Make `eth_sendRawTransaction` fail closed rather than return fabricated
-  transaction hashes and pending records. It remains unavailable until signed
-  transaction decoding, mempool admission, and consensus execution exist.
+  transaction hashes and pending records when EVM execution is unavailable.
+  Signed transaction decoding, mempool admission, and EVM block execution exist
+  for activated chains; production network profiles still need coordinated EVM
+  activation and consensus-safe multi-node verification.
 - [ ] Connect token creation and every state-changing operation to signed,
   chain-ID-bound transactions that are validated and replayed identically by
   every node. Use deterministic block data rather than wall-clock values, and
