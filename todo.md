@@ -39,6 +39,13 @@ the deployment failure shown in the uploaded screenshot.
 - [ ] P1 — Add comprehensive P2P and recovery tests for peer discovery,
   multiple bootnodes, static peers, reconnect, sync, and bootnode failure;
   required to validate multi-node operation rather than only startup.
+- [x] Start this work with local TCP tests for multiple static bootstrap peers,
+  matching handshakes and peer heights, block request/reply propagation,
+  offline bootnode failure, disconnect cleanup, and reconnect.
+- [ ] Finish the P2P test item with actual chain block replay/state-root
+  convergence, process restart recovery, automated retry behavior, and peer
+  discovery if/when a discovery protocol is implemented. Current tests do not
+  prove production multi-host connectivity or complete chain synchronization.
 - [ ] P1 — Add production monitoring and alerting for node/RPC availability,
   sync lag, peer count, validator duties, disk, CPU, RAM, network, and
   repeated restarts; current dashboard health is not external alerting.

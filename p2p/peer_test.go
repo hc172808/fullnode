@@ -1,9 +1,11 @@
 package p2p
 
 import (
+	"bytes"
 	"encoding/json"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestEnodeUsesStableNodeIdentityAndPublicAdvertisedHost(t *testing.T) {
@@ -130,4 +132,169 @@ func addTestPeer(s *Server, addr string) (*Peer, net.Conn) {
 	}
 	s.mu.Unlock()
 	return peer, remote
+}
+
+func servePeerTestServer(t *testing.T, s *Server, ln net.Listener) string {
+	t.Helper()
+	s.mu.Lock()
+	s.port = ln.Addr().(*net.TCPAddr).Port
+	s.mu.Unlock()
+	go s.acceptLoop(ln)
+	t.Cleanup(func() {
+		close(s.quit)
+		_ = ln.Close()
+		s.mu.RLock()
+		peers := make([]*Peer, 0, len(s.peers))
+		for _, peer := range s.peers {
+			peers = append(peers, peer)
+		}
+		s.mu.RUnlock()
+		for _, peer := range peers {
+			peer.Close()
+		}
+	})
+	return ln.Addr().String()
+}
+
+func listenPeerTestServer(t *testing.T, s *Server) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return servePeerTestServer(t, s, ln)
+}
+
+func waitForPeerState(t *testing.T, label string, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", label)
+}
+
+func TestTCPMultipleBootstrapPeersServeBlocksAndReconnect(t *testing.T) {
+	genesis := "shared-genesis-hash"
+	local := NewServer(0, 198282, func() uint64 { return 3 })
+	local.SetGenesisHash(genesis)
+	local.SetNodeMode("full")
+	listenPeerTestServer(t, local)
+
+	primary := NewServer(0, 198282, func() uint64 { return 7 })
+	primary.SetGenesisHash(genesis)
+	primary.SetNodeMode("genesis")
+	primaryAddr := listenPeerTestServer(t, primary)
+
+	secondary := NewServer(0, 198282, func() uint64 { return 12 })
+	secondary.SetGenesisHash(genesis)
+	secondary.SetNodeMode("full")
+	secondaryAddr := listenPeerTestServer(t, secondary)
+
+	requests := make(chan GetBlocksPayload, 1)
+	blockBatch := json.RawMessage(`["block-one","block-two"]`)
+	primary.SetBlockProvider(func(from uint64, count int) json.RawMessage {
+		requests <- GetBlocksPayload{From: from, Count: count}
+		return blockBatch
+	})
+	received := make(chan json.RawMessage, 2)
+	local.OnMessage(func(_ *Peer, msg Message) {
+		if msg.Type == MsgBlocks {
+			received <- msg.Payload
+		}
+	})
+
+	if err := local.ConnectTo("tcp://" + primaryAddr); err != nil {
+		t.Fatalf("connect to primary bootstrap: %v", err)
+	}
+	if err := local.ConnectTo(secondaryAddr); err != nil {
+		t.Fatalf("connect to secondary bootstrap: %v", err)
+	}
+	waitForPeerState(t, "both peers and their handshakes", func() bool {
+		return local.PeerCount() == 2 && primary.PeerCount() == 1 &&
+			secondary.PeerCount() == 1 && local.MaxPeerHeight() == 12
+	})
+	peers := local.Peers()
+	if len(peers) != 2 {
+		t.Fatalf("local peer list has %d entries, want two", len(peers))
+	}
+	foundGenesis := false
+	for _, peer := range peers {
+		if !peer.Authorized || peer.Height == 0 {
+			t.Fatalf("peer handshake status not populated: %#v", peer)
+		}
+		if peer.NodeMode == "genesis" && peer.Height == 7 {
+			foundGenesis = true
+		}
+	}
+	if !foundGenesis {
+		t.Fatalf("genesis bootstrap handshake missing from peer list: %#v", peers)
+	}
+
+	local.RequestBlocks(4, 50)
+	select {
+	case req := <-requests:
+		if req.From != 4 || req.Count != 50 {
+			t.Fatalf("block request = %#v, want from=4 count=50", req)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("bootstrap peer did not receive the block request")
+	}
+	select {
+	case got := <-received:
+		if !bytes.Equal(got, blockBatch) {
+			t.Fatalf("received block payload %s, want %s", got, blockBatch)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("block batch was not propagated back to the syncing peer")
+	}
+
+	local.Disconnect(primaryAddr)
+	waitForPeerState(t, "primary disconnect cleanup", func() bool {
+		return local.PeerCount() == 1 && primary.PeerCount() == 0
+	})
+	if err := local.ConnectTo(primaryAddr); err != nil {
+		t.Fatalf("reconnect to primary bootstrap: %v", err)
+	}
+	waitForPeerState(t, "primary reconnect and handshake", func() bool {
+		return local.PeerCount() == 2 && primary.PeerCount() == 1 && local.MaxPeerHeight() == 12
+	})
+}
+
+func TestTCPBootstrapCanRecoverAfterBeingOffline(t *testing.T) {
+	reserved, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := reserved.Addr().String()
+	if err := reserved.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	local := NewServer(0, 198282, func() uint64 { return 0 })
+	local.SetGenesisHash("shared-genesis-hash")
+	listenPeerTestServer(t, local)
+	if err := local.ConnectTo(addr); err == nil {
+		t.Fatal("connecting to an offline bootstrap peer unexpectedly succeeded")
+	}
+	if local.PeerCount() != 0 {
+		t.Fatalf("offline bootstrap left %d live peers", local.PeerCount())
+	}
+
+	remote := NewServer(0, 198282, func() uint64 { return 4 })
+	remote.SetGenesisHash("shared-genesis-hash")
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatalf("start bootstrap at its recovered address: %v", err)
+	}
+	servePeerTestServer(t, remote, ln)
+	if err := local.ConnectTo(addr); err != nil {
+		t.Fatalf("retry recovered bootstrap peer: %v", err)
+	}
+	waitForPeerState(t, "recovered bootstrap handshake", func() bool {
+		return local.PeerCount() == 1 && remote.PeerCount() == 1 && local.MaxPeerHeight() == 4
+	})
 }
