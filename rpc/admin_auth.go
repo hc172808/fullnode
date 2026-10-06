@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ const (
 	sessionCookieName = "gyds_admin_session"
 	sessionTTL        = 8 * time.Hour
 	maxLoginAttempts  = 5
+	maxPINAttempts    = 3
 	lockoutDuration   = 15 * time.Minute
 	pinMinLen         = 4
 	pinMaxLen         = 16
@@ -50,6 +52,7 @@ type AuthStore struct {
 	mu         sync.Mutex
 	sessions   map[string]*adminSession
 	ipMap      map[string]*ipRecord
+	pinIPMap   map[string]*ipRecord
 	dataDir    string
 	challenges map[string]adminChallenge
 }
@@ -63,14 +66,15 @@ func NewAuthStore(dataDir string) *AuthStore {
 	return &AuthStore{
 		sessions:   make(map[string]*adminSession),
 		ipMap:      make(map[string]*ipRecord),
+		pinIPMap:   make(map[string]*ipRecord),
 		dataDir:    dataDir,
 		challenges: make(map[string]adminChallenge),
 	}
 }
 
 // ── PIN storage ───────────────────────────────────────────────────────────────
-// PINs are initialized during setup and can be replaced by a Web3-authenticated
-// Admin session.
+// PINs may be initialized or rotated from the environment at startup, changed
+// from an authenticated Admin session, or recovered with a PIN-only Web3 proof.
 
 func (a *AuthStore) pinFile() string {
 	return filepath.Join(a.dataDir, "admin", ".pin_hash")
@@ -97,6 +101,16 @@ func (a *AuthStore) SetPin(raw string) error {
 	return os.WriteFile(a.pinFile(), []byte(hash), 0600)
 }
 
+// ApplyPinFromEnvironment rotates the stored PIN when GYDS_DASHBOARD_PIN is
+// explicitly present. The caller must never log or return the value.
+func (a *AuthStore) ApplyPinFromEnvironment() error {
+	raw := strings.TrimSpace(os.Getenv("GYDS_DASHBOARD_PIN"))
+	if raw == "" {
+		return nil
+	}
+	return a.SetPin(raw)
+}
+
 func (a *AuthStore) CheckPin(raw string) bool {
 	data, err := os.ReadFile(a.pinFile())
 	if err != nil {
@@ -105,16 +119,83 @@ func (a *AuthStore) CheckPin(raw string) bool {
 	return strings.TrimSpace(string(data)) == hashPin(raw)
 }
 
+func (a *AuthStore) pinRedirectFile() string {
+	return filepath.Join(a.dataDir, "admin", "pin_failure_redirect")
+}
+
+func (a *AuthStore) PinFailureRedirect() string {
+	data, err := os.ReadFile(a.pinRedirectFile())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func (a *AuthStore) SetPinFailureRedirect(target string) error {
+	target = strings.TrimSpace(target)
+	if len(target) > 2048 {
+		return fmt.Errorf("redirect URL must be 2048 characters or fewer")
+	}
+	if target != "" {
+		parsed, err := url.Parse(target)
+		if err != nil || strings.ContainsAny(target, "\r\n\t\\\x00") {
+			return fmt.Errorf("enter a valid HTTPS URL or a same-site path")
+		}
+		if parsed.IsAbs() {
+			if parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+				return fmt.Errorf("external redirect URLs must use HTTPS and must not include credentials")
+			}
+		} else if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") {
+			return fmt.Errorf("enter an HTTPS URL or a same-site path beginning with a single /")
+		}
+	}
+
+	dir := filepath.Dir(a.pinRedirectFile())
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(dir, ".pin-redirect-*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(0600); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err := temp.WriteString(target + "\n"); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, a.pinRedirectFile())
+}
+
 func hashPin(raw string) string {
 	sum := keccak.Sum256([]byte("gyds-admin-pin:" + raw))
 	return hex.EncodeToString(sum[:])
 }
 
 func (a *AuthStore) NewChallenge() (string, string) {
+	return a.newChallenge("GYDS Chain Admin Login")
+}
+
+func (a *AuthStore) NewPINRecoveryChallenge() (string, string) {
+	return a.newChallenge("GYDS Chain Admin PIN Recovery")
+}
+
+func (a *AuthStore) newChallenge(title string) (string, string) {
 	buf := make([]byte, 32)
 	_, _ = rand.Read(buf)
 	nonce := hex.EncodeToString(buf)
-	message := "GYDS Chain Admin Login\n\nSign this one-time message to authenticate.\nNonce: " + nonce
+	message := title + "\n\nSign this one-time message to authorize this action.\nNonce: " + nonce
 	a.mu.Lock()
 	a.challenges[nonce] = adminChallenge{message: message, expires: time.Now().Add(5 * time.Minute)}
 	a.mu.Unlock()
@@ -228,6 +309,44 @@ func (a *AuthStore) ResetFailures(ip string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.ipMap, ip)
+}
+
+func (a *AuthStore) IsPINLocked(ip string) (bool, time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	rec, ok := a.pinIPMap[ip]
+	if !ok {
+		return false, 0
+	}
+	if rec.attempts >= maxPINAttempts {
+		remaining := lockoutDuration - time.Since(rec.lockedAt)
+		if remaining > 0 {
+			return true, remaining
+		}
+		delete(a.pinIPMap, ip)
+	}
+	return false, 0
+}
+
+func (a *AuthStore) RecordPINFailure(ip string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	rec, ok := a.pinIPMap[ip]
+	if !ok {
+		rec = &ipRecord{}
+		a.pinIPMap[ip] = rec
+	}
+	rec.attempts++
+	if rec.attempts >= maxPINAttempts {
+		rec.lockedAt = time.Now()
+	}
+	return rec.attempts
+}
+
+func (a *AuthStore) ResetPINFailures(ip string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.pinIPMap, ip)
 }
 
 func (a *AuthStore) AttemptsLeft(ip string) int {

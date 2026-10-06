@@ -10,7 +10,7 @@ When `GYDS_PEER_AUTH=true`:
 - Inbound connections receive a `MsgAuthChallenge{nonce}` immediately after the initial handshake
 - The connecting node must reply with `MsgAuthResponse{nodeId, signature}` where `signature = ed25519.Sign(privKey, nonceBytes)`
 - Server verifies the sig via `VerifyNodeSig(nodeID, nonce, sig)`
-- If `GYDS_ALLOWED_NODES` is set (comma-separated), only listed node IDs pass; empty = any valid identity is accepted
+- Only node IDs in `GYDS_ALLOWED_NODES` (comma-separated) pass; an empty list denies all authenticated peers
 - Failed auth → `MsgAuthDenied{reason}` + connection dropped
 
 `MsgGetBlocks` and custom `onMsg` callbacks are only dispatched to **authorized** peers.
@@ -23,7 +23,7 @@ When `GYDS_PEER_AUTH=true`:
 
 ## Config env vars
 - `GYDS_PEER_AUTH=true` — enable the guard
-- `GYDS_ALLOWED_NODES=hexId1,hexId2,...` — whitelist; empty = allow any authenticated node
+- `GYDS_ALLOWED_NODES=hexId1,hexId2,...` — explicit node identity approval list; empty = deny all
 
 ## Dashboard
 - Node ID appears in the stats strip with an `AUTH` badge; click to copy full ID
@@ -31,3 +31,5 @@ When `GYDS_PEER_AUTH=true`:
 - `/api/node-id` returns `{"nodeId": "..."}` for operators to share
 
 **Why:** Permissioned networks need to prevent unauthorized nodes from connecting and receiving chain data.
+
+**How to apply:** P2P-capable roles require peer authentication and explicit identity approval. Do not interpret an empty allowlist as open access; keep unapproved IDs from receiving blocks or other P2P messages.

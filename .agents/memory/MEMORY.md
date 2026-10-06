@@ -13,4 +13,4 @@
 - [Canonical explorer](canonical-explorer.md) — all GYDS nodes and wallet metadata use explorer.netlifegy.com
 - [Admin Web3 authentication](admin-web3-auth.md) — admin access uses a one-time Ethereum personal-sign challenge; PIN authentication is intentionally disabled
 - [User-created token standard](user-created-token-standard.md) — new user-created assets should be standard EVM ERC-20 contracts, not native GYDS-20 tokens
-- [GYD USD target and token logos](gyd-usd-target-and-token-logos.md) — GYD targets USD, not GYD; publish a distinct HTTPS token-logo URL and never promise universal wallet display
+- [GYD USD target and token logos](gyd-usd-target-and-token-logos.md) — configure the USD target in `.env` as informational metadata; keep token and network logos distinct

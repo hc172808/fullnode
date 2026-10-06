@@ -82,7 +82,7 @@ var GydsGenesis = &GenesisConfig{
 			Name:         "GYD Stablecoin",
 			Decimals:     18,
 			IsStablecoin: true,
-			TotalSupply:  e18B(10), // 10,000,000,000 GYD
+			TotalSupply:  e18B(10), // 10B initial genesis supply; no separate maximum cap is defined here.
 			Alloc: []GenesisTokenAlloc{
 				{Address: "0x0000000000000000000000000000000000000001", Amount: e18B(5)}, // 5 B GYD
 				{Address: "0x0000000000000000000000000000000000000002", Amount: e18B(3)}, // 3 B GYD
@@ -121,7 +121,7 @@ var GydsTestGenesis = &GenesisConfig{
 			Name:         "GYD Stablecoin",
 			Decimals:     18,
 			IsStablecoin: true,
-			TotalSupply:  e18B(10),
+			TotalSupply:  e18B(10), // 10B initial testnet supply; no separate maximum cap is defined here.
 			Alloc: []GenesisTokenAlloc{
 				{Address: "0x0000000000000000000000000000000000000001", Amount: e18B(5)},
 				{Address: "0x0000000000000000000000000000000000000002", Amount: e18B(3)},

@@ -35,6 +35,57 @@ func compatibilityServer(t *testing.T, genesis *core.GenesisConfig) *Server {
 	return s
 }
 
+func TestGYDMetadataUsesPublicTokenLogo(t *testing.T) {
+	t.Setenv("GYD_USD_TARGET", "1.25")
+	s := compatibilityServer(t, core.GydsGenesis)
+	metadataResponse := httptest.NewRecorder()
+	s.rpcRouter.ServeHTTP(metadataResponse, httptest.NewRequest("GET", "https://rpc.example/gyd-token.json", nil))
+	if metadataResponse.Code != http.StatusOK {
+		t.Fatalf("metadata status = %d, body=%s", metadataResponse.Code, metadataResponse.Body.String())
+	}
+	var metadata map[string]interface{}
+	if err := json.Unmarshal(metadataResponse.Body.Bytes(), &metadata); err != nil {
+		t.Fatalf("decode GYD metadata: %v", err)
+	}
+	if got, want := metadata["logoUrl"], "https://rpc.example/gyd-coin.png"; got != want {
+		t.Fatalf("GYD logoUrl = %v, want %q", got, want)
+	}
+	if got, want := metadata["targetCurrency"], "USD"; got != want {
+		t.Fatalf("GYD targetCurrency = %v, want %q", got, want)
+	}
+	if got, want := metadata["targetValueUSD"], "1.25"; got != want {
+		t.Fatalf("GYD targetValueUSD = %v, want %q", got, want)
+	}
+	if got, want := metadata["pegStatus"], "target-only-unverified"; got != want {
+		t.Fatalf("GYD pegStatus = %v, want %q", got, want)
+	}
+
+	logoResponse := httptest.NewRecorder()
+	s.rpcRouter.ServeHTTP(logoResponse, httptest.NewRequest("GET", "https://rpc.example/gyd-coin.png", nil))
+	if logoResponse.Code != http.StatusOK {
+		t.Fatalf("token logo status = %d, body=%s", logoResponse.Code, logoResponse.Body.String())
+	}
+	if got := logoResponse.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("token logo CORS = %q, want *", got)
+	}
+	if got := logoResponse.Header().Get("Content-Type"); !strings.HasPrefix(got, "image/png") {
+		t.Fatalf("token logo Content-Type = %q, want image/png", got)
+	}
+	if logoResponse.Body.Len() == 0 {
+		t.Fatal("token logo response was empty")
+	}
+}
+
+func TestGYDMetadataRejectsInvalidUSDDollarTarget(t *testing.T) {
+	t.Setenv("GYD_USD_TARGET", "0")
+	s := compatibilityServer(t, core.GydsGenesis)
+	response := httptest.NewRecorder()
+	s.rpcRouter.ServeHTTP(response, httptest.NewRequest("GET", "https://rpc.example/gyd-token.json", nil))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("metadata status = %d, want %d; body=%s", response.Code, http.StatusInternalServerError, response.Body.String())
+	}
+}
+
 func rpcRequest(t *testing.T, s *Server, method string, params ...interface{}) map[string]interface{} {
 	t.Helper()
 	body, err := json.Marshal(jsonRPCRequest{JSONRPC: "2.0", Method: method, Params: params, ID: "compatibility"})

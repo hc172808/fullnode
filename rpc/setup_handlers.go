@@ -184,18 +184,18 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 		return strings.TrimSpace(v)
 	}
 
-cfg.Network = strings.ToLower(def(cfg.Network, "mainnet"))
-switch cfg.Network {
-case "mainnet":
-	cfg.ChainID = "198282"
-	cfg.NetworkName = "GYDS Chain"
-case "testnet":
-	cfg.ChainID = "198281"
-	cfg.NetworkName = "GYDS Testnet"
-default:
-	jsonErr(w, http.StatusBadRequest, "network must be mainnet or testnet")
-	return
-}
+	cfg.Network = strings.ToLower(def(cfg.Network, "mainnet"))
+	switch cfg.Network {
+	case "mainnet":
+		cfg.ChainID = "198282"
+		cfg.NetworkName = "GYDS Chain"
+	case "testnet":
+		cfg.ChainID = "198281"
+		cfg.NetworkName = "GYDS Testnet"
+	default:
+		jsonErr(w, http.StatusBadRequest, "network must be mainnet or testnet")
+		return
+	}
 	cfg.NodeMode = def(cfg.NodeMode, "full")
 	cfg.BlockTime = def(cfg.BlockTime, "120")
 	cfg.RPCPort = def(cfg.RPCPort, "8545")
@@ -203,8 +203,8 @@ default:
 	cfg.WSPort = def(cfg.WSPort, "8546")
 	cfg.P2PPort = def(cfg.P2PPort, "30303")
 	cfg.MaxPeers = def(cfg.MaxPeers, "25")
-requestedDataDir := def(cfg.DataDir, "./data")
-cfg.DataDir = config.ProfileDataDir(cfg.Network, requestedDataDir)
+	requestedDataDir := def(cfg.DataDir, "./data")
+	cfg.DataDir = config.ProfileDataDir(cfg.Network, requestedDataDir)
 	cfg.StorageLimitGB = def(cfg.StorageLimitGB, "50")
 	cfg.EnableFirewall = def(cfg.EnableFirewall, "true")
 	cfg.EnableFail2ban = def(cfg.EnableFail2ban, "true")
@@ -223,11 +223,14 @@ cfg.DataDir = config.ProfileDataDir(cfg.Network, requestedDataDir)
 	w1("# ══════════════════════════════════════════════════════════════════")
 	w1("")
 	w1("# ── Chain Identity ─────────────────────────────────────────────")
-w1(envSetting("GYDS_NETWORK", cfg.Network))
+	w1(envSetting("GYDS_NETWORK", cfg.Network))
 	w1(envSetting("GYDS_CHAIN_ID", cfg.ChainID))
 	w1(envSetting("GYDS_NETWORK_NAME", cfg.NetworkName))
 	w1(envSetting("GYDS_NODE_MODE", cfg.NodeMode))
 	w1(envSetting("GYDS_BLOCK_TIME", cfg.BlockTime))
+	w1("")
+	w1("# GYD target amount in USD per token; informational only, not a price or redemption guarantee.")
+	w1("GYD_USD_TARGET=1.00")
 	w1("")
 	w1("# ── Wallet ─────────────────────────────────────────────────────")
 	w1(envSetting("GYDS_WALLET_ADDRESS", cfg.WalletAddress))

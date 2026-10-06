@@ -130,6 +130,7 @@
       display: none;
     }
     .error-box.show { display: block; }
+    .error-box.success { color: #a7f3d0; background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); }
 
     /* ── Lockout countdown ── */
     .lockout-box {
@@ -161,6 +162,10 @@
     .btn:hover:not(:disabled) { opacity: .9; }
     .btn:active:not(:disabled) { transform: scale(.98); }
     .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .recovery-toggle { display:block; width:100%; margin:12px 0 0; color:#93c5fd; border:0; background:none; cursor:pointer; font-size:13px; }
+    .recovery-panel { margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+    .recovery-panel[hidden] { display:none; }
+    .recovery-panel .btn { margin-top:4px; background:#2563eb; }
 
     .footer-note {
       text-align: center;
@@ -191,15 +196,27 @@
     </div>
 
     <div class="wallet-note">Both checks are required on every node: sign a one-time challenge with the authorized Admin wallet, then enter this node's own PIN. Your PIN and signature are sent only to this node.</div>
-    <div class="pin-field">
-      <label for="adminPin">This node's dashboard PIN</label>
-      <input id="adminPin" type="password" maxlength="16" autocomplete="current-password"
-             placeholder="Enter this node's PIN" required/>
-    </div>
-    <div class="error-box"   id="errBox"></div>
-    <div class="lockout-box" id="lockBox"></div>
-
-    <button class="btn" id="loginBtn" onclick="doLogin()">Connect Wallet &amp; Sign In</button>
+    <form id="adminLoginForm" onsubmit="event.preventDefault(); doLogin()">
+      <input type="text" name="username" autocomplete="username" aria-hidden="true" tabindex="-1" style="position:absolute;left:-10000px;width:1px;height:1px"/>
+      <div class="pin-field">
+        <label for="adminPin">This node's dashboard PIN</label>
+        <input id="adminPin" type="password" maxlength="16" autocomplete="current-password"
+               placeholder="Enter this node's PIN" required/>
+      </div>
+      <div class="error-box"   id="errBox"></div>
+      <div class="lockout-box" id="lockBox"></div>
+      <button class="btn" id="loginBtn" type="submit">Connect Wallet &amp; Sign In</button>
+    </form>
+    <button class="recovery-toggle" id="recoveryToggle" type="button" onclick="togglePINRecovery()">Forgot the PIN? Recover it with the Admin wallet</button>
+    <section class="recovery-panel" id="pinRecovery" hidden>
+      <form id="pinRecoveryForm" onsubmit="event.preventDefault(); recoverPIN()">
+        <input type="text" name="username" autocomplete="username" aria-hidden="true" tabindex="-1" style="position:absolute;left:-10000px;width:1px;height:1px"/>
+        <div class="wallet-note">This recovery action requires a fresh signature from the authorized Admin wallet. It only changes this node's PIN and does not create an Admin session.</div>
+        <div class="pin-field"><label for="recoveryPin">New PIN for this node</label><input id="recoveryPin" type="password" maxlength="16" autocomplete="new-password" placeholder="4–16 characters"/></div>
+        <div class="pin-field"><label for="recoveryConfirmPin">Confirm new PIN</label><input id="recoveryConfirmPin" type="password" maxlength="16" autocomplete="new-password" placeholder="Enter it again"/></div>
+        <button class="btn" id="recoverPinBtn" type="submit">Sign and replace PIN</button>
+      </form>
+    </section>
 
     <div class="footer-note">
       🛡 Web3 authentication &nbsp;·&nbsp; All access is logged
@@ -214,12 +231,13 @@ fetch('/admin/wallet')
   .then(d => { document.getElementById('adminAddr').textContent = d.adminWallet || '—'; })
   .catch(() => { document.getElementById('adminAddr').textContent = '0x6422d12b…09017b1'; });
 
-function showError(msg) {
+function showError(msg, success = false) {
   const b = document.getElementById('errBox');
   b.textContent = msg;
   b.classList.add('show');
+  b.classList.toggle('success', success);
 }
-function hideError() { document.getElementById('errBox').classList.remove('show'); }
+function hideError() { document.getElementById('errBox').classList.remove('show', 'success'); }
 
 function showLockout(msg) {
   const b = document.getElementById('lockBox');
@@ -248,6 +266,7 @@ async function requestJSON(path, options, label) {
   if (!response.ok) {
     const failure = new Error(data.error || `${label} failed (HTTP ${response.status}).`);
     failure.status = response.status;
+    failure.redirectURL = data.redirectURL || '';
     throw failure;
   }
   return data;
@@ -290,6 +309,11 @@ async function doLogin() {
     document.getElementById('adminPin').value = '';
     window.location.href = data.redirect || '/admin/node';
   } catch(e) {
+    if (e.redirectURL) {
+      showLockout(e.message);
+      window.location.assign(e.redirectURL);
+      return;
+    }
     if (e.status === 429) {
       showLockout('⚠️ ' + e.message);
     } else if (e.code === 4001) {
@@ -302,6 +326,50 @@ async function doLogin() {
       btn.textContent = 'Connect Wallet & Sign In';
       btn.disabled = false;
     }
+  }
+}
+
+function togglePINRecovery() {
+  const panel = document.getElementById('pinRecovery');
+  panel.hidden = !panel.hidden;
+  document.getElementById('recoveryToggle').textContent =
+    panel.hidden ? 'Forgot the PIN? Recover it with the Admin wallet' : 'Hide PIN recovery';
+  hideError();
+}
+
+async function recoverPIN() {
+  const pin = document.getElementById('recoveryPin').value;
+  const confirmPin = document.getElementById('recoveryConfirmPin').value;
+  const btn = document.getElementById('recoverPinBtn');
+  if (pin.length < 4 || pin.length > 16) { showError('PIN must be 4–16 characters.'); return; }
+  if (pin !== confirmPin) { showError('PIN entries do not match.'); return; }
+  if (!window.ethereum) { showError('No Web3 wallet detected. Install MetaMask or another EVM wallet.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Signing recovery request…';
+  hideError();
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const address = accounts && accounts[0];
+    if (!address) throw new Error('No wallet account was selected.');
+    const challenge = await requestJSON('/admin/security/pin/recovery-challenge', { cache: 'no-store' }, 'PIN recovery challenge');
+    if (!challenge.nonce || !challenge.message || !challenge.address) throw new Error('The server returned an incomplete recovery challenge.');
+    if (address.toLowerCase() !== challenge.address.toLowerCase()) throw new Error(`Connected wallet is not the authorized Admin wallet (${challenge.address}).`);
+    const signature = await window.ethereum.request({ method: 'personal_sign', params: [challenge.message, address] });
+    const result = await requestJSON('/admin/security/pin/recover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, nonce: challenge.nonce, signature, pin, confirmPin })
+    }, 'PIN recovery');
+    document.getElementById('adminPin').value = pin;
+    document.getElementById('recoveryPin').value = '';
+    document.getElementById('recoveryConfirmPin').value = '';
+    showError((result.message || 'PIN replaced.') + ' Sign in above with the new PIN.', true);
+  } catch (e) {
+    showError(e.message || 'Could not recover this node PIN.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign and replace PIN';
   }
 }
 

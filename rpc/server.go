@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -83,12 +84,13 @@ type subscriber struct {
 
 func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir, externalURL, nodeVersion string) *Server {
 	auth := NewAuthStore(dataDir)
-	// A PIN supplied by the setup wizard in .env bootstraps the hash on the
-	// first start. Existing hashes are never overwritten by environment data.
-	// Operators can then remove the plaintext value from .env if preferred.
-	if rawPin := strings.TrimSpace(os.Getenv("GYDS_DASHBOARD_PIN")); rawPin != "" && !auth.PinIsSet() {
-		if err := auth.SetPin(rawPin); err != nil {
-			log.Warn().Err(err).Msg("Could not initialize dashboard PIN from GYDS_DASHBOARD_PIN")
+	// An explicitly configured environment PIN takes precedence at startup and
+	// rotates the stored hash. Never log or return the plaintext value.
+	if rawPin := strings.TrimSpace(os.Getenv("GYDS_DASHBOARD_PIN")); rawPin != "" {
+		if err := auth.ApplyPinFromEnvironment(); err != nil {
+			log.Error().Err(err).Msg("Could not apply GYDS_DASHBOARD_PIN")
+		} else {
+			log.Info().Msg("Dashboard PIN updated from GYDS_DASHBOARD_PIN")
 		}
 	}
 	adminDB, _ := NewAdminDB(dataDir)
@@ -303,6 +305,8 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/login", s.handleAdminLoginPage).Methods("GET")
 	admin.HandleFunc("/challenge", s.handleAdminChallenge).Methods("GET")
 	admin.HandleFunc("/login", s.handleAdminLoginSubmit).Methods("POST")
+	admin.HandleFunc("/security/pin/recovery-challenge", s.handleAdminPINRecoveryChallenge).Methods("GET")
+	admin.HandleFunc("/security/pin/recover", s.handleAdminPINRecovery).Methods("POST")
 	admin.HandleFunc("/logout", s.handleAdminLogout).Methods("GET")
 	admin.HandleFunc("/set-pin", s.handleAdminSetPinPage).Methods("GET")
 	admin.HandleFunc("/set-pin", s.handleAdminSetPinSubmit).Methods("POST")
@@ -316,6 +320,7 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/node/remove", s.requireAdminSession(s.handleAdminNodeRemove)).Methods("DELETE", "POST")
 	admin.HandleFunc("/node/status", s.requireAdminSession(s.handleAdminNodeStatus)).Methods("GET")
 	admin.HandleFunc("/security/pin", s.requireAdminSession(s.handleAdminPinReset)).Methods("POST")
+	admin.HandleFunc("/security/pin/redirect", s.requireAdminSession(s.handleAdminPINRedirectSettings)).Methods("GET", "POST")
 	admin.HandleFunc("/remote-nodes", s.requireAdminSession(s.handleRemoteNodes)).Methods("GET", "POST")
 	admin.HandleFunc("/remote-nodes/{id}", s.requireAdminSession(s.handleRemoteNodeDelete)).Methods("DELETE")
 	admin.HandleFunc("/db", s.handleAdminDBPage).Methods("GET")
@@ -511,6 +516,11 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 // and publishing a fabricated address would cause wallets to display unsafe
 // or misleading token information.
 func (s *Server) handleGYDMetadata(w http.ResponseWriter, r *http.Request) {
+	usdTarget, err := configuredGYDUSDTarget()
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	base := s.publicBaseURL(r)
 	networkName := s.chain.GenesisConfig().NetworkName
 	jsonOK(w, map[string]interface{}{
@@ -521,13 +531,33 @@ func (s *Server) handleGYDMetadata(w http.ResponseWriter, r *http.Request) {
 		"isStablecoin":     true,
 		"tokenType":        "node-managed-genesis-token",
 		"contractAddress":  nil,
-		"logoUrl":          base + "/logo.png",
-		"description":      "GYD is a node-managed genesis token on " + networkName + ". It is not currently an ERC-20 contract.",
+		"logoUrl":          base + "/gyd-coin.png",
+		"targetCurrency":   "USD",
+		"targetValueUSD":   usdTarget,
+		"pegStatus":        "target-only-unverified",
+		"description":      fmt.Sprintf("GYD is a node-managed genesis token on %s with an intended target of $%s USD per GYD. This target is informational only; USD reserves, redemption, and price stability are not implemented or independently verified. GYD is not currently an ERC-20 contract.", networkName, usdTarget),
 		"networkName":      networkName,
 		"networkMetadata":  base + "/gyds-network.json",
 		"balanceApi":       base + "/api/tokens/{address}",
 		"walletImportable": false,
 	})
+}
+
+var gydUSDTargetPattern = regexp.MustCompile(`^[0-9]{1,24}(?:\.[0-9]{1,8})?$`)
+
+func configuredGYDUSDTarget() (string, error) {
+	target := strings.TrimSpace(os.Getenv("GYD_USD_TARGET"))
+	if target == "" {
+		return "1.00", nil
+	}
+	if !gydUSDTargetPattern.MatchString(target) {
+		return "", fmt.Errorf("invalid GYD_USD_TARGET: use a positive decimal USD amount, such as 1.00")
+	}
+	value, ok := new(big.Rat).SetString(target)
+	if !ok || value.Sign() <= 0 {
+		return "", fmt.Errorf("invalid GYD_USD_TARGET: amount must be greater than zero")
+	}
+	return target, nil
 }
 
 func (s *Server) buildConnectionInfo() map[string]interface{} {

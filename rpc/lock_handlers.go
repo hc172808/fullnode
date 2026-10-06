@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -22,15 +23,17 @@ func (s *Server) handleLockSet(w http.ResponseWriter, r *http.Request) {
 
 // ── POST /api/lock/verify ──────────────────────────────────────────────────
 // Verify the dashboard PIN. Accepts {"pin":"..."}.
-// Shares the same IP-based rate-limit / lockout as the admin login.
+// Shares the three-try IP-based PIN lockout with Admin login, independently of
+// the separate rate limit for invalid Web3 signatures.
 
 func (s *Server) handleLockVerify(w http.ResponseWriter, r *http.Request) {
 	ip := realIP(r)
 
-	if locked, remaining := s.auth.IsLocked(ip); locked {
+	if locked, remaining := s.auth.IsPINLocked(ip); locked {
 		mins := int(remaining.Minutes()) + 1
-		jsonErr(w, http.StatusTooManyRequests,
-			fmt.Sprintf("Too many failed attempts. Try again in %d minute(s).", mins))
+		writePINFailure(w, http.StatusTooManyRequests,
+			fmt.Sprintf("Three incorrect PIN attempts. This node is temporarily locked for %d minute(s).", mins),
+			s.auth.PinFailureRedirect())
 		return
 	}
 
@@ -41,20 +44,29 @@ func (s *Server) handleLockVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !s.auth.CheckPin(pin) {
-		attempts := s.auth.RecordFailure(ip)
-		left := maxLoginAttempts - attempts
+		attempts := s.auth.RecordPINFailure(ip)
 		s.auth.writeAudit(ip, "LOCK-FAIL")
-		if left <= 0 {
-			jsonErr(w, http.StatusUnauthorized,
-				"Incorrect PIN. Too many failures — wait 15 minutes.")
+		if attempts >= maxPINAttempts {
+			writePINFailure(w, http.StatusTooManyRequests,
+				"Three incorrect PIN attempts. This node is temporarily locked for 15 minutes.",
+				s.auth.PinFailureRedirect())
 		} else {
 			jsonErr(w, http.StatusUnauthorized,
-				fmt.Sprintf("Incorrect PIN. %d attempt(s) remaining.", left))
+				fmt.Sprintf("Incorrect PIN. %d attempt(s) remain before temporary lockout.", maxPINAttempts-attempts))
 		}
 		return
 	}
 
-	s.auth.ResetFailures(ip)
+	s.auth.ResetPINFailures(ip)
 	s.auth.writeAudit(ip, "LOCK-UNLOCK")
 	jsonOK(w, map[string]string{"status": "ok"})
+}
+
+func writePINFailure(w http.ResponseWriter, status int, message, redirectURL string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":       message,
+		"redirectURL": redirectURL,
+	})
 }

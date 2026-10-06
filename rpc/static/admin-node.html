@@ -84,6 +84,15 @@
       <div class="actions"><button class="btn green" id="pinResetBtn" onclick="resetDashboardPin()">Set new dashboard PIN</button><span class="hint">The old PIN is not required; your authenticated Admin session authorizes this change.</span></div>
       <div id="pinNotice" class="notice"></div>
     </section>
+    <section class="card" id="pin-failure-redirect" style="margin-top:18px">
+      <h2>Wrong-PIN redirect</h2>
+      <div class="sub">After three incorrect dashboard or Admin PIN attempts from one IP, temporarily block further attempts and redirect that browser to this destination. Use HTTPS or a same-site path. Leave empty to disable redirecting.</div>
+      <div class="fields">
+        <div class="field"><label for="pinFailureRedirect">Redirect URL</label><input id="pinFailureRedirect" type="text" maxlength="2048" placeholder="https://example.com/access-help or /access-help"/></div>
+      </div>
+      <div class="actions"><button class="btn blue" id="pinRedirectSaveBtn" onclick="savePINRedirect()">Save redirect URL</button></div>
+      <div id="pinRedirectNotice" class="notice"></div>
+    </section>
     <section class="card" id="remote-nodes" style="margin-top:18px">
       <h2>Remote Admin nodes</h2>
       <div class="sub">Register trusted HTTPS dashboard origins and open each node's own Admin login in a new tab. This directory stores no PINs and does not proxy API requests; each node requires its own Web3 signature and PIN. No SSH shell is provided.</div>
@@ -126,6 +135,8 @@ async function loadConfig(){try{const r=await fetch('/admin/node/config');const 
    $('peerAuth').checked=true;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
  }catch(e){show('configNotice',e.message,'err')}}
  async function loadPinStatus(){try{const r=await fetch('/api/lock/status');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not check PIN status');$('pinStatus').textContent=d.pinSet?'PIN enabled':'No PIN set';}catch(e){$('pinStatus').textContent='Status unavailable';show('pinNotice',e.message,'err')}}
+  async function loadPINRedirect(){try{const r=await fetch('/admin/security/pin/redirect');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load PIN redirect');$('pinFailureRedirect').value=d.redirectURL||''}catch(e){show('pinRedirectNotice',e.message,'err')}}
+  async function savePINRedirect(){const b=$('pinRedirectSaveBtn');b.disabled=true;try{const r=await fetch('/admin/security/pin/redirect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({redirectURL:$('pinFailureRedirect').value.trim()})});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not save PIN redirect');$('pinFailureRedirect').value=d.redirectURL||'';show('pinRedirectNotice',d.message||'Redirect saved.','ok')}catch(e){show('pinRedirectNotice',e.message,'err')}finally{b.disabled=false}}
  async function loadRemoteNodes(){
    try{
      const r=await fetch('/admin/remote-nodes');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load remote nodes');
@@ -213,7 +224,7 @@ async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configN
  function stagePeer(){const address=cleanPeerAddress($('peerAddress').value);if(!address){show('peerNotice','Enter a peer host:port first.','err');return}const peers=readBootstrapPeers();if(peers.some(peer=>peer.toLowerCase()===address.toLowerCase())){show('peerNotice','That peer is already in the pending list. Click Apply & Restart Node to save any pending changes.','warn');return}peers.push(address);writeBootstrapPeers(peers);$('peerAddress').value='';show('peerNotice','Peer added to pending changes. Click Apply & Restart Node to save and connect it.','ok')}
  function removePeer(encoded){const address=cleanPeerAddress(decodeURIComponent(encoded));if(!confirm('Stage removal of '+address+'? It will remain connected until you click Apply & Restart Node.'))return;const peers=readBootstrapPeers().filter(peer=>peer.toLowerCase()!==address.toLowerCase());writeBootstrapPeers(peers);show('peerNotice','Peer removal staged. Click Apply & Restart Node to save the change and disconnect it.','ok')}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-  loadConfig();loadPinStatus();refreshPeers();loadRemoteNodes();setInterval(refreshPeers,5000);
+  loadConfig();loadPinStatus();loadPINRedirect();refreshPeers();loadRemoteNodes();setInterval(refreshPeers,5000);
 </script>
 </body>
 </html>

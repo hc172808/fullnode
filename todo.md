@@ -403,9 +403,10 @@ an HTTP preview URL cannot be used as a bootstrap peer.
 - [x] Include `GYDS_P2P_ADVERTISE_HOST` in setup-generated `.env` files.
 - [x] Load `GYDS_NETWORK_NAME`, `GYDS_WS_PORT`, `GYDS_MAX_PEERS`, and
   `GYDS_LOG_FORMAT` from the environment.
-- [x] Allow the setup-generated `GYDS_DASHBOARD_PIN` to bootstrap the stored
-  hash once. Existing hashes are never overwritten; the plaintext value may be
-  removed from `.env` after initialization.
+- [x] Allow non-empty `GYDS_DASHBOARD_PIN` to override the stored hash at each
+  startup; remove or update the value after an Admin UI PIN change.
+- [x] Point GYD token metadata at the dedicated `/gyd-coin.png` asset, separate
+  from the GYDS network logo, with public CORS and caching.
 - [ ] Verify the logo and metadata from the public HTTPS RPC origin in each
   target wallet.
 - [ ] Verify joining-node synchronization against a reachable public P2P host.
@@ -461,33 +462,48 @@ Acceptance criteria:
 
 ### PIN configuration policy
 
-- [x] Keep PIN creation in first-time setup; an optional setup environment
-  value may initialize the hash once, but must never overwrite an existing PIN.
-- [x] Require a signed Web3 Admin session to change or recover a PIN after
-  setup. The Admin Node page calls `POST /admin/security/pin`; legacy
-  unauthenticated PIN-setting routes remain disabled.
-- [ ] Reproduce and fix the reported failure to change the PIN from the Admin
-  wallet. Verify the active Web3 session, target node, API response, and PIN
-  hash location; confirm the displayed PIN status and login behavior update on
-  that same node. The reported message (`You are not a admin get back or you
-  will be block`) is not present in this checkout; the supplied public host
-  returned HTTP 403 to this environment, so its live response could not be
-  inspected. Do not bypass the wallet check to silence the message.
-- [ ] Keep post-setup PIN changes out of `.env` rotation and avoid requiring a
-  process restart. Never return or log the plaintext PIN.
-- [ ] Test PIN initialization, valid Web3-admin change, unauthenticated and
-  mismatched requests, persistence across restart, and behavior when the PIN is
-  unset.
+- [x] Keep PIN creation in first-time setup. `GYDS_DASHBOARD_PIN` can also
+  initialize or rotate the stored hash on every process start while configured;
+  it takes precedence over the hash file. Never log or return its plaintext.
+- [x] Allow a signed Web3 Admin session to replace the PIN through
+  `POST /admin/security/pin`; legacy unauthenticated PIN-setting routes remain
+  disabled.
+- [x] Add a separate one-time Web3 PIN-recovery signature on the Admin login
+  page. It can replace only this node's PIN and does not create an Admin
+  session, avoiding the old-PIN/login dead end.
+- [x] Add per-IP three-try PIN lockout and a configurable redirect destination
+  in Admin Node settings. Destinations are HTTPS URLs or same-site paths;
+  invalid schemes and protocol-relative URLs are rejected.
+- [ ] Verify the PIN recovery and change flows on `https://boost.netlifegy.com`.
+  The report (`You are not a admin get back or you will be block`) is not
+  present in this checkout, and HTTPS requests to the public host timed out
+  from this environment, so its live session/API response could not be
+  inspected. Do not bypass the Web3 wallet check to silence the message.
+- [ ] On a Web3 PIN change, remove or update `GYDS_DASHBOARD_PIN` in `.env`
+  before restarting; a configured environment value intentionally overrides
+  the stored hash at each startup. Never return or log the plaintext PIN.
+- [x] Unit-test environment rotation, Web3-session PIN replacement,
+  recovery-challenge isolation, unauthenticated and mismatched requests,
+  redirect validation/settings persistence, PIN persistence across restart,
+  and unset-PIN behavior. A live signed recovery on the production node remains
+  unverified until its HTTPS endpoint is reachable.
 
 ### Approved node access and remote administration
 
-- [ ] Require explicit administrator approval for every node allowed to sync.
-  Default to denying unapproved node identities; approval must be based on the
-  node's authenticated identity, not only its network address.
-- [ ] Add a persisted per-network approval list with Admin approve/revoke
-  controls, an audit trail, and a clear pending/approved/revoked status. Enforce
-  approvals during P2P authentication before blocks or transactions are served.
-- [ ] Add an HTTPS remote-node registry to the Boost/Genesis Admin panel so the
+- [x] Require explicit administrator approval for every node allowed to sync.
+  P2P roles require peer authentication; an empty or non-matching authenticated
+  Node ID allowlist denies the peer before it can serve blocks or transactions.
+  Admins currently manage IDs from the node configuration page.
+- [ ] Verify the production Boost/Genesis nodes have the correct approved Node
+  IDs in their allowlists. This Replit node starts with peer authentication on
+  and zero allowed IDs, so it rejects all inbound peers; outbound sync still
+  depends on bootstrap peers and remote approval. The production host timed out
+  here, so its allowlist and sync state remain unverified.
+- [ ] Replace the shared environment allowlist with a persisted per-network
+  approval list and direct Admin approve/revoke controls, audit trail, and clear
+  pending/approved/revoked status. Approval must remain based on authenticated
+  Node ID, not network address.
+- [x] Provide an HTTPS remote-node registry in the Boost/Genesis Admin panel so the
   administrator can open approved nodes from one place. Each target node must
   require both its own Web3 Admin signature and its own PIN; do not reuse PINs
   across nodes or store plaintext PINs in the coordinator.
@@ -663,6 +679,8 @@ Validation completed on **2026-08-09**:
   receiving any private key.
 - [x] Keep GYD defined as a stablecoin with 18 decimals and a
   **10,000,000,000 GYD** genesis supply.
+- [x] Label the 10B GYD amount as initial genesis supply, not a maximum supply
+  cap. Any change to genesis supply requires a coordinated network migration.
 - [x] Split the 1B GYDS genesis allocation across the three genesis validator
   addresses: 500M, 300M, and 200M.
 - [x] Resolve relative data directories to absolute paths before writing a
@@ -726,6 +744,9 @@ already maintaining a $1 price.
 
 - [x] Product decision: GYD's intended peg is **1 GYD = 1 USD**, not 1 GYD = 1
   Guyana Dollar. The peg is not operational or verified yet.
+- [x] Read `GYD_USD_TARGET` from `.env` for wallet metadata and the dashboard,
+  defaulting to `1.00`; treat it as an informational USD target, not a price
+  guarantee or reserve/redemption mechanism.
 - [x] Product decision: publish a stable, public HTTPS URL for the GYD token
   logo. Keep it distinct from the GYDS network logo URL.
 - [x] Use a standard ERC-20 contract for wallet-compatible GYD and
@@ -755,10 +776,11 @@ already maintaining a $1 price.
   `name`, `totalSupply`, `transfer`, `approve`, and `transferFrom`.
 - [x] Host `/gyd-token.json` with GYD name, symbol, decimals, supply, logo URL,
   and an explicit no-contract status.
-- [ ] Point GYD's `logoUrl` to a GYD-specific public HTTPS image URL such as
-  `/gyd-coin.png`; do not reuse `/logo.png`, which is the GYDS network logo.
-  Confirm HTTPS, correct image type, anonymous access, CORS, stable caching, and
-  that the URL keeps working after deploys and asset changes.
+- [x] Point GYD's `logoUrl` to the public GYD-specific `/gyd-coin.png` image;
+  do not reuse `/logo.png`, which is the GYDS network logo. Unit-test the
+  metadata URL, image content type, and anonymous CORS response.
+- [ ] Confirm HTTPS reachability and display in each target wallet from the
+  public production origin. The boost host timed out from this environment.
 - [ ] After a real ERC-20 contract exists, publish contract-backed GYD metadata
   with its permanent contract address and the canonical public logo URL.
 - [ ] Register the GYD contract, metadata, and logo with each chosen wallet's

@@ -69,8 +69,14 @@ func (s *Server) handleAdminLoginSubmit(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if status, message := validateAdminLoginPIN(s.auth, ip, fields["pin"]); status != 0 {
-		jsonErr(w, status, message)
+	if status, message, redirectURL := validateAdminLoginPIN(s.auth, ip, fields["pin"]); status != 0 {
+		if redirectURL != "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": message, "redirectURL": redirectURL})
+		} else {
+			jsonErr(w, status, message)
+		}
 		return
 	}
 
@@ -83,6 +89,7 @@ func (s *Server) handleAdminLoginSubmit(w http.ResponseWriter, r *http.Request) 
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})

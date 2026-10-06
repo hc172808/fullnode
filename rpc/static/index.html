@@ -481,7 +481,7 @@
               <span class="coin-symbol">GYD</span>
               <span class="coin-label">USD Target — Not Yet Live</span>
             </div>
-            <p><strong>GYD</strong> is intended to target a value of US$1. Its USD peg, reserve backing, and redemption process are not implemented or independently verified. GYD should not be treated as redeemable or reliably price-stable.</p>
+            <p><strong>GYD</strong> is intended to target <span id="gydUSDTargetAmount">US$1.00</span> per token in U.S. dollars, not the Guyana dollar. Its reserve backing and redemption process are not implemented or independently verified, so GYD should not be treated as redeemable or reliably price-stable.</p>
             <p>GYD is designed for future USD-denominated payments and commerce. The token's current on-chain supply does not prove that USD reserves exist or that holders can redeem GYD for dollars.</p>
             <ul class="coin-uses">
               <li>💸 Everyday payments &amp; commerce</li>
@@ -880,11 +880,29 @@ document.addEventListener('DOMContentLoaded', () => {
   pollNode();
   pollBlocks();
   fetchNodeIdentity();
+  fetchGYDUSDTarget();
   setInterval(pollNode,      5000);
   setInterval(pollBlocks,   10000);
   setInterval(tickCountdown, 1000);
   connectWS();
 });
+
+async function fetchGYDUSDTarget() {
+  const targetEl = document.getElementById('gydUSDTargetAmount');
+  if (!targetEl) return;
+  try {
+    const response = await fetch('/gyd-token.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error('GYD metadata unavailable');
+    const metadata = await response.json();
+    const target = String(metadata.targetValueUSD || '');
+    if (!/^[0-9]{1,24}(?:\.[0-9]{1,8})?$/.test(target)) {
+      throw new Error('Invalid GYD USD target');
+    }
+    targetEl.textContent = `US$${target}`;
+  } catch {
+    targetEl.textContent = 'unavailable';
+  }
+}
 
 // Fetch this node's P2P identity and show it in the stats strip when present.
 async function fetchNodeIdentity() {
@@ -1875,6 +1893,10 @@ async function doUnlock() {
     hideLockOverlay();
   } else {
     msgEl.textContent = (data && data.error) || 'Incorrect PIN.';
+    if (data && data.redirectURL) {
+      window.location.assign(data.redirectURL);
+      return;
+    }
     document.getElementById('enterPin').value = '';
     document.getElementById('enterPin').focus();
   }
