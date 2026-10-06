@@ -830,7 +830,10 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}()
 	go func() {
 		for msg := range sub.ch {
-			conn.WriteJSON(msg)
+			if err := conn.WriteJSON(msg); err != nil {
+				conn.Close()
+				return
+			}
 		}
 	}()
 	for {
@@ -1015,6 +1018,8 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 			if b, err := s.chain.GetByNumber(num); err == nil {
 				resp.Result = blockToRPC(b)
 			}
+		} else {
+			resp.Error = rpcError(-32602, fmt.Sprintf("invalid block number %q", numStr))
 		}
 
 	case "eth_getBlockByHash":
@@ -1031,6 +1036,8 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 			if b, err := s.chain.GetByNumber(num); err == nil {
 				resp.Result = fmt.Sprintf("0x%x", len(b.Transactions))
 			}
+		} else {
+			resp.Error = rpcError(-32602, fmt.Sprintf("invalid block number %q", numStr))
 		}
 
 	case "eth_getBlockTransactionCountByHash":

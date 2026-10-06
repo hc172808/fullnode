@@ -8,6 +8,9 @@ A self-hosted, Ethereum-compatible PoS blockchain full node written in Go. Provi
 - **WebSocket** (port 8546): real-time subscriptions
 
 ## How to run
+
+Requires Go 1.25 or newer. Replit is configured to use Go 1.25.
+
 ```
 GOTOOLCHAIN=local GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_NODE_MODE=full GYDS_DATA_DIR=./data go run . start
 ```

@@ -31,9 +31,11 @@ the deployment failure shown in the uploaded screenshot.
 
 ## Master prompt audit — remaining engineering work
 
-- [ ] P1 — Add automated RPC compatibility tests for chain ID, syncing, blocks,
-  balances, calls, gas estimation, raw transactions, receipts, and WebSocket
-  behavior; required because health alone does not prove RPC compatibility.
+- [x] P1 — Add automated RPC compatibility tests for chain ID, syncing, blocks,
+  balances, calls, gas estimation, signed raw transactions, pending/confirmed
+  receipts, HTTP batch/CORS behavior, and the custom WebSocket block feed.
+  These tests do not claim that the separate Ethereum `eth_subscribe` protocol
+  is implemented.
 - [ ] P1 — Add comprehensive P2P and recovery tests for peer discovery,
   multiple bootnodes, static peers, reconnect, sync, and bootnode failure;
   required to validate multi-node operation rather than only startup.
@@ -742,3 +744,177 @@ Every `ReadWritePaths` value must begin with `/`. Do not manually use
 - [ ] Document the recovery procedure and test restoring a backup.
 - [ ] Do not advertise a stablecoin peg until reserves, redemption, and
   compliance controls are operational.
+
+## Blockchain completion roadmap — implementation is not production approval
+
+This checklist describes the additional engineering needed to assess and harden
+the Go blockchain before treating it as a production-grade public network.
+Complete each item with tests, peer/operator documentation, and independent
+review where security or consensus is involved. A green build, running
+dashboard, or single-node test does not establish production readiness. Keep
+the existing genesis, chain ID, balances, and token policy unchanged unless a
+coordinated network migration is explicitly approved.
+
+### P0 — Consensus, state, and transaction safety
+
+- [ ] Publish a concise protocol specification for block format, transaction
+  encoding, chain ID, genesis hash, validator membership, block timing,
+  execution rules, state roots, fork choice/finality, and upgrade rules. Make
+  implementations and tests agree with that specification.
+- [ ] Independently audit block validation and fork choice. Verify parent links,
+  height, timestamps, validator authorization, duplicate blocks, reorg limits,
+  finality claims, and rejection of conflicting histories.
+- [ ] Make every state transition deterministic across machines and Go/runtime
+  versions. Remove wall-clock, local filesystem, map-iteration, and
+  node-configuration dependence from consensus results; specify timestamp and
+  integer-overflow rules.
+- [ ] Define and enforce a complete signed transaction envelope: chain ID,
+  account nonce, signature recovery, sender, destination, value, data, gas
+  limit/price, replay protection, size bounds, and rejection conditions.
+- [ ] Make mempool admission, replacement, eviction, nonce ordering, fee policy,
+  and pending reads consistent with block execution. Prevent a transaction
+  accepted by RPC from producing a different result when proposed or replayed.
+- [ ] Prove that every node independently re-executes blocks and derives
+  identical account/storage state, receipts, gas accounting, and committed
+  roots. Test bad signatures, wrong chain IDs, underfunded senders, invalid
+  nonces, reverted calls, duplicate transactions, and malformed encodings.
+- [ ] Finish the production EVM path before claiming general Ethereum
+  compatibility: fork rules and precompiles, contract creation, bytecode
+  execution, storage, logs, revert behavior, gas schedules, block context,
+  account/code/storage roots, upgrades, and historical reads. Run suitable
+  Ethereum execution tests and third-party wallet/tooling fixtures.
+- [ ] Decide whether consensus is a custom PoS protocol or an Ethereum
+  consensus-compatible protocol. Document validator selection, quorum/finality,
+  liveness, equivocation, slashing, recovery, and economic assumptions; obtain
+  an independent protocol/security review before production launch.
+- [ ] Add coordinated, signed protocol-upgrade activation (version signaling,
+  activation height, compatibility window, operator notice, and rollback
+  boundary). Do not let a normal Git update silently change consensus behavior.
+
+### P1 — Peer network and node recovery
+
+- [ ] Finish the P2P and recovery test plan above with real multi-process nodes:
+  inbound/outbound handshakes, peer authentication, multiple bootnodes,
+  persistent peers, reconnect, peer disconnect cleanup, bootnode outages,
+  incompatible genesis/chain IDs, and catch-up after restart.
+- [ ] Demonstrate multi-node block and transaction propagation and identical
+  heights, block hashes, receipts, and state roots through restart and network
+  partition/rejoin scenarios. Record reproducible commands and expected output.
+- [ ] Specify and harden the P2P wire protocol: message versioning, framing,
+  size/time limits, flow control, request correlation, duplicate suppression,
+  peer scoring, rate limits, and safe parsing of untrusted messages.
+- [ ] Add protection and tests for connection floods, oversized/malformed
+  messages, unauthorized identities, replayed handshakes, eclipse/Sybil risks,
+  and resource exhaustion. Document which risks remain unsolved.
+- [ ] Add peer discovery only with authenticated/validated records and a clear
+  network identity; make static bootstrap peers and safe fallback behavior
+  continue to work when discovery is unavailable.
+
+### P1 — Storage, restart, and migration
+
+- [ ] Specify the on-disk database schema and versioning. Make migrations
+  atomic, restart-safe, backward-compatible for the supported upgrade window,
+  and safe when interrupted or repeated.
+- [ ] Add crash/restart tests at block commit, transaction indexing, state
+  update, and migration boundaries. On recovery, verify canonical height,
+  block hashes, account state, receipts, and pending-transaction policy.
+- [ ] Test database corruption, disk-full, permission, and I/O failures. Fail
+  visibly and safely; never silently reset a live chain to genesis or continue
+  with an inconsistent partial state.
+- [ ] Document and test offline, encrypted backups and restoration for chain
+  data, configuration, admin recovery, node identity, validator signing
+  material, and any operator-held wallet. Define retention and recovery-time
+  objectives without sending private keys to a third party.
+- [ ] Define archival, pruning, and state-history requirements. Do not prune
+  data needed by wallet balance queries, block/receipt lookups, audits, or
+  reindex/recovery unless the node role clearly documents the limitation.
+
+### P1 — RPC, wallets, and API truthfulness
+
+- [ ] Maintain an explicit RPC support matrix. Implement methods only when
+  their outputs are real and consistent; return documented errors for
+  unsupported execution, filters, subscriptions, historical state, traces, or
+  syncing rather than fabricated success values.
+- [ ] Test standard `eth_subscribe`/`eth_unsubscribe` notifications separately
+  from the existing custom `/api/ws` block-event feed, including reconnect,
+  subscription cleanup, slow consumers, and multiple simultaneous clients.
+- [ ] Complete RPC compatibility for blocks/transactions/receipts, pending vs.
+  confirmed nonce/balance, gas/fee methods, historical tags, filters, logs,
+  errors, and HTTP/WebSocket behavior. Compare outputs with independent
+  Ethereum clients and libraries.
+- [ ] Implement externally safe RPC controls: HTTPS termination, origin and
+  method policy, request/body/time limits, rate limits, abuse monitoring,
+  administrative route isolation, and documented exposure defaults.
+- [ ] Verify canonical chain metadata, HTTPS RPC, WebSocket, explorer, and logo
+  endpoints from the public internet and test wallet onboarding on each named
+  wallet. Keep a manual setup path where wallet APIs are unsupported.
+
+### P1 — Validator keys, access, and operational security
+
+- [ ] Define separate roles and key lifecycles for node identity, validator
+  signing, treasury issuance, dashboard administration, and user wallets.
+  Provide rotation/revocation/recovery procedures and least-privilege access.
+- [ ] Never return or log private keys, PINs, seed phrases, auth challenges, or
+  uploaded secrets. Audit APIs, HTML, errors, telemetry, backups, and access
+  logs for accidental disclosure.
+- [ ] Ensure validator signing keys are not automatically generated, copied
+  across nodes, or stored as plaintext in the dashboard or general-purpose
+  `.env`. Document protected signing/HSM options and limits of the current
+  implementation.
+- [ ] Independently test dashboard/Web3 authentication, session expiration,
+  CSRF/origin policy, authorization on every state-changing endpoint, brute
+  force protections, and recovery without disabling authentication.
+- [ ] Add dependency updates, reproducible builds, signed release artifacts,
+  vulnerability response, and a documented security disclosure process.
+
+### P1 — Monitoring and release readiness
+
+- [ ] Add actionable alerts for RPC/dashboard availability, sync lag, peer
+  health, block production/finality, validator missed duties, reorgs, disk
+  space, memory/CPU, database errors, and repeated restarts. Test alert delivery
+  and avoid logging secrets.
+- [ ] Set production SLOs and run load, soak, restart, disk-growth, and
+  failure-recovery tests at expected transaction/peer counts. Publish measured
+  hardware and bandwidth requirements for each node role.
+- [ ] Provide an operator runbook for node provisioning, genesis verification,
+  firewall/TLS, validator start/stop, upgrades, incident response, backups, and
+  recovery. Verify commands on clean hosts rather than relying on one existing
+  server.
+- [ ] Obtain independent code, cryptography, consensus, and deployment-security
+  reviews; track and resolve findings before mainnet-sensitive releases.
+
+### P2 — User-created ERC-20 token logos and metadata
+
+- [ ] Keep user-created tokens as standard ERC-20 contracts as decided; do not
+  imply the ERC-20 interface itself stores or exposes a logo. `name`, `symbol`,
+  `decimals`, and `totalSupply` do not standardize token images.
+- [ ] Decide how the token-creation website accepts and validates a logo, then
+  stores it durably at a public HTTPS URL or content-addressed location. Do not
+  put large image bytes in contract storage or expose private upload paths.
+- [ ] Define and publish token metadata keyed by chain ID and contract address,
+  including verified name/symbol/decimals, logo URL, metadata revision, and
+  provenance. Specify how updates are authorized and how broken URLs are
+  handled.
+- [ ] Choose a wallet-discovery path: publish a token list/registry and submit
+  assets to the registries used by target wallets, or use a token metadata
+  standard only where the target wallets explicitly support it. A website
+  upload alone does not update a wallet's token list.
+- [ ] Make the token site clearly distinguish “logo uploaded,” “metadata
+  published,” and “wallet registry accepted.” Test visibility by contract
+  address in each target wallet; expect some wallets to require manual
+  import, registry approval, caching delays, or to ignore token logos.
+- [ ] Add abuse controls for impersonation, prohibited images, oversized or
+  deceptive uploads, ownership verification, URL availability, and metadata
+  changes. Preserve a transparent history of metadata updates.
+
+### Definition of “complete”
+
+- [ ] Before calling this chain production-ready, publish a versioned
+  specification and an implementation/limitations matrix; pass automated
+  unit, property, fuzz, integration, multi-node, restart, and compatibility
+  tests; complete independent reviews; test backup restoration and failure
+  recovery; and publish operator and wallet runbooks.
+- [ ] Record every deferred protocol or RPC feature as an explicit limitation.
+  Do not market this Go codebase as fully Ethereum-compatible or as a finished
+  production blockchain until the relevant execution, consensus, security, and
+  multi-node criteria above have been verified.

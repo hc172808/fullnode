@@ -123,11 +123,17 @@ func TestRPCNetworkAndBlockReads(t *testing.T) {
 			t.Fatalf("hash and number lookups disagree: %#v", byHash)
 		}
 	}
-	for _, method := range []string{"eth_getBlockByNumber", "eth_getBlockByHash", "eth_getTransactionByHash", "eth_getTransactionReceipt"} {
-		if got := rpcResult(t, s, method, "0x"+strings.Repeat("f", 64)); got != nil {
+	for method, lookup := range map[string]string{
+		"eth_getBlockByNumber":      "0xff",
+		"eth_getBlockByHash":        "0x" + strings.Repeat("f", 64),
+		"eth_getTransactionByHash":  "0x" + strings.Repeat("f", 64),
+		"eth_getTransactionReceipt": "0x" + strings.Repeat("f", 64),
+	} {
+		if got := rpcResult(t, s, method, lookup); got != nil {
 			t.Fatalf("%s unknown lookup = %#v, want null", method, got)
 		}
 	}
+	requireRPCError(t, rpcRequest(t, s, "eth_getBlockByNumber", "not-a-block"), -32602)
 	if got := rpcResult(t, s, "eth_getBalance", core.GydsGenesis.Alloc[0].Address, "latest"); got != hexutil.EncodeBig(core.GydsGenesis.Alloc[0].Balance) {
 		t.Fatalf("genesis balance = %v", got)
 	}
