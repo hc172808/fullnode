@@ -581,17 +581,14 @@ func runSyncNode(cfg *config.Config) error {
 			}
 		}
 
-		if chain.Height() >= networkHeight {
-			log.Info().
-				Uint64("height", chain.Height()).
-				Uint64("applied", applied).
-				Msg("✓ Catch-up complete — at network head")
-		} else {
-			log.Warn().
-				Uint64("height", chain.Height()).
-				Uint64("target", networkHeight).
-				Msg("Catch-up time limit reached — starting steady-state with partial sync")
+		if err := ensureSyncCaughtUp(chain.Height(), networkHeight); err != nil {
+			log.Error().Err(err).Msg("Sync failed; refusing to start block production")
+			return err
 		}
+		log.Info().
+			Uint64("height", chain.Height()).
+			Uint64("applied", applied).
+			Msg("✓ Catch-up complete — at network head")
 	}
 
 	// ── Phase 3: Steady-state full-node operation ──────────────────────────────
@@ -631,6 +628,17 @@ func connectBootstrapWithRetry(srv *p2p.Server, addr string) error {
 		}
 	}
 	return lastErr
+}
+
+func ensureSyncCaughtUp(localHeight, networkHeight uint64) error {
+	if localHeight < networkHeight {
+		return fmt.Errorf(
+			"sync catch-up incomplete: local height %d is below peer height %d; refusing to start block production",
+			localHeight,
+			networkHeight,
+		)
+	}
+	return nil
 }
 
 // startBootstrapDialers starts outbound dialing only after the P2P listener

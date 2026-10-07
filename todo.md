@@ -163,9 +163,9 @@ validated.
   before dispatch. `config.FromEnv` normalizes the value, and `runNode` rejects
   unsupported modes before startup; whitespace and capitalization variants of
   supported modes are normalized.
-- [ ] Keep `sync` mode from starting block production after an incomplete
-  catch-up. It currently logs that the time limit was reached and starts the
-  PoS engine even when the local height is still below the peer height.
+- [x] Keep `sync` mode from starting block production after an incomplete
+  catch-up; it now returns an error if the local height is still below the peer
+  height when the catch-up deadline expires.
 - [x] Remove validator-key prefixes from logs.
 - [ ] Correct validator status reporting. The validator path does not pass
   `GYDS_VALIDATOR_KEY` to the PoS engine, and it omits `rpcSrv.SetNodeMode`, so
