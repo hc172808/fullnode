@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -69,6 +70,27 @@ func DefaultConfig() *Config {
 	}
 }
 
+// NormalizeNodeMode returns the canonical mode name. Empty values default to
+// full; unsupported values are returned normalized with an error so callers
+// can report them without accidentally selecting a different role.
+func NormalizeNodeMode(mode string) (string, error) {
+	original := mode
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "full"
+	}
+
+	switch mode {
+	case "full", "lite", "rpc", "boost", "genesis", "sync", "validator", "testnode":
+		return mode, nil
+	default:
+		return mode, fmt.Errorf(
+			"unsupported GYDS_NODE_MODE %q (supported: full, lite, rpc, boost, genesis, sync, validator, testnode)",
+			original,
+		)
+	}
+}
+
 // PeerAuthRequired reports whether this node role exposes P2P connections.
 // P2P-capable roles always require an authenticated, explicitly approved peer.
 func PeerAuthRequired(mode string) bool {
@@ -100,9 +122,7 @@ func FromEnv() *Config {
 			cfg.ChainID = id
 		}
 	}
-	if v := os.Getenv("GYDS_NODE_MODE"); v != "" {
-		cfg.NodeMode = v
-	}
+	cfg.NodeMode, _ = NormalizeNodeMode(os.Getenv("GYDS_NODE_MODE"))
 	// The test node is intentionally isolated and uses its own standard ports
 	// unless the operator explicitly overrides them.
 	if strings.EqualFold(cfg.NodeMode, "testnode") {

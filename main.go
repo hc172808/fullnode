@@ -132,6 +132,12 @@ func versionCmd() *cobra.Command {
 
 func runNode() error {
 	cfg := config.FromEnv()
+	mode, err := config.NormalizeNodeMode(cfg.NodeMode)
+	if err != nil {
+		return err
+	}
+	cfg.NodeMode = mode
+
 	genesis, err := core.GenesisForNetwork(cfg.Network)
 	if err != nil {
 		return err
@@ -170,8 +176,10 @@ func runNode() error {
 		return runValidatorNode(cfg)
 	case "testnode":
 		return runTestNode(cfg)
-	default: // "full"
+	case "full":
 		return runFullNode(cfg)
+	default:
+		return fmt.Errorf("unsupported node mode %q", cfg.NodeMode)
 	}
 }
 
@@ -656,11 +664,6 @@ func runValidatorNode(cfg *config.Config) error {
 
 	if cfg.ValidatorKey == "" {
 		log.Warn().Msg("GYDS_VALIDATOR_KEY not set — node will participate in PoS rotation without a dedicated signing key")
-	} else {
-		// Derive address from key for display (no dependency on crypto libs needed;
-		// ethers.js on the dashboard will show the derived address).
-		log.Info().Str("keyPrefix", cfg.ValidatorKey[:min(8, len(cfg.ValidatorKey))]+"…").
-			Msg("Validator signing key loaded")
 	}
 
 	chain := core.NewChain(activeGenesis, cfg.DataDir)
