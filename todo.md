@@ -124,12 +124,12 @@ validated.
 | Role | Current coverage |
 |---|---|
 | Full node | Present as `full`; runs chain storage, P2P, PoS, RPC, and dashboard. |
-| Validator node | Present as `validator`; production consensus safety remains blocked by the P0 work above. |
+| Validator node | Present as `validator`, but its key is not passed to the PoS engine, a key prefix is logged, and dashboard/API mode defaults to `full`; production consensus safety remains blocked by the P0 work above. |
 | Miner node | Not present. This chain is PoS; PoW mining would require a separate protocol decision and design. |
 | Archive node | No separate archive role. Retention, pruning, and historical-state requirements are already tracked under **P1 — Storage, restart, and migration**. |
 | Light node | Partial: `lite` synchronizes headers only and does not validate the full transaction history. It is not yet established as a trust-minimized light client. |
 | Bootnode / discovery node | Partial: `genesis` can seed a network and configured static bootstrap peers are supported; a discovery protocol is not implemented. Discovery is tracked under **P1 — Peer network and node recovery**. |
-| RPC node | Present as `rpc`; it serves the API without P2P or block production. Production edge protection is tracked above. |
+| RPC node | Present as `rpc`; it serves the API without block production, but the current Go path starts P2P. Peer authorization is not required by default; this conflicts with the setup/docs description and needs an explicit policy. |
 | Sequencer node | Not present; this is an L2-specific role and no L2 sequencer is implemented. |
 | Prover node | Not present; no ZK proof-generation service is implemented. |
 | Relayer node | Not present; no cross-network message relay is implemented. |
@@ -157,6 +157,20 @@ validated.
 | Testnet faucet | Not present. |
 | Testnet / devnet nodes | A persistent testnet profile and isolated local `testnode` are present; there is no separately configured shared devnet. |
 
+### Go entry-point findings to address
+
+- [ ] Normalize and validate `GYDS_NODE_MODE` against the supported mode list
+  before dispatch. `config.FromEnv` keeps the raw value, and `runNode` currently
+  sends any unmatched value to `runFullNode`; a typo or different capitalization
+  can start the wrong role instead of failing clearly.
+- [ ] Keep `sync` mode from starting block production after an incomplete
+  catch-up. It currently logs that the time limit was reached and starts the
+  PoS engine even when the local height is still below the peer height.
+- [ ] Remove validator-key prefixes from logs and correct validator status
+  reporting. The validator path does not pass `GYDS_VALIDATOR_KEY` to the PoS
+  engine, and it omits `rpcSrv.SetNodeMode`, so the dashboard/API defaults to
+  reporting `full`. Resolve actual key use under the P0 consensus work above.
+
 ### Follow-up decisions and missing work
 
 - [ ] Decide which optional roles belong in GYDS’s supported architecture.
@@ -169,6 +183,11 @@ validated.
 - [ ] Decide whether GYDS needs a dedicated bootnode role or authenticated peer
   discovery beyond the static bootstrap and genesis-seed behavior already
   tracked under **P1 — Peer network and node recovery**.
+- [ ] Resolve the `rpc` mode P2P policy: `runRPCNode` starts a P2P listener and
+  dials bootstrap peers, while setup/docs say it has no P2P and peer
+  authorization is disabled by default for this mode. Choose isolation or
+  authenticated P2P, then align startup, setup/admin UI, deployment ports,
+  documentation, and tests.
 - [ ] If an L2 or ZK system is in scope, specify its sequencer, prover, and data
   availability responsibilities and trust/failure model before implementation.
 - [ ] If cross-chain features are in scope, specify and security-review the
@@ -354,8 +373,10 @@ Acceptance criteria:
 
 ### Findings from the current implementation
 
-- [x] Confirm every joining node runs `full`, `genesis`, `sync`, `boost`, or
-  `lite` mode. The `rpc` mode intentionally has **no P2P**.
+- [x] Confirm the current `rpc` mode starts a P2P listener and can dial
+  bootstrap peers despite setup/docs describing it as P2P-disabled; peer
+  authorization is not required by default for this mode. Resolve the policy
+  before exposing it.
 - [x] The Go P2P listener uses `:30303`, which listens on all interfaces
   (`0.0.0.0`) rather than only `127.0.0.1`.
 - [x] The HTTP/RPC listener defaults to `GYDS_RPC_HOST=0.0.0.0`; preserve this
@@ -417,10 +438,13 @@ than one GYDS process runs on the same server.
 | Dashboard HTTP | 5000 | all modes except an intentionally disabled deployment | Browser dashboard, setup, guides, REST APIs |
 | JSON-RPC HTTP | 8545 | all modes with RPC enabled | MetaMask, ethers.js, wallet RPC |
 | WebSocket path | 8545 `/api/ws` | all modes with RPC enabled | WebSocket subscriptions; `GYDS_WS_PORT` is legacy compatibility only |
-| P2P TCP | 30303 | full, lite, sync, boost, genesis, validator | Peer handshakes, blocks, transactions |
+| P2P TCP | 30303 | full, lite*, rpc, sync, boost, genesis, validator | Peer handshakes, blocks, transactions |
 | P2P UDP | none currently | no mode | Reserved for future discovery; opening UDP is optional |
 | `genesis` command | no listener | command only | Prints the canonical genesis JSON and exits |
-| `rpc` mode P2P | none | rpc, testnode | RPC-only and isolated test nodes do not join the peer network |
+| P2P TCP exceptions | none | testnode; `lite` without bootstrap peers | Test node is isolated; lite starts P2P only when bootstrap peers are configured. |
+
+`rpc` serves RPC without block production but currently participates in P2P;
+decide and document its peer-authorization policy before public exposure.
 
 For two nodes on one server, use a unique set such as dashboard `5000/5001`,
 RPC `8545/8547`, and P2P `30303/30304`. On separate servers, both nodes can
