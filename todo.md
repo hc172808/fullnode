@@ -113,6 +113,79 @@ the deployment failure shown in the uploaded screenshot.
   external Genesis JSON loading is required; never make JSON replacement
   automatic for an existing chain.
 
+## Node-role and infrastructure coverage audit
+
+Compared with the uploaded node-role list. “Present” means a code path or UI
+exists; it does not mean the feature is production-ready or independently
+validated.
+
+### Node roles
+
+| Role | Current coverage |
+|---|---|
+| Full node | Present as `full`; runs chain storage, P2P, PoS, RPC, and dashboard. |
+| Validator node | Present as `validator`; production consensus safety remains blocked by the P0 work above. |
+| Miner node | Not present. This chain is PoS; PoW mining would require a separate protocol decision and design. |
+| Archive node | No separate archive role. Retention, pruning, and historical-state requirements are already tracked under **P1 — Storage, restart, and migration**. |
+| Light node | Partial: `lite` synchronizes headers only and does not validate the full transaction history. It is not yet established as a trust-minimized light client. |
+| Bootnode / discovery node | Partial: `genesis` can seed a network and configured static bootstrap peers are supported; a discovery protocol is not implemented. Discovery is tracked under **P1 — Peer network and node recovery**. |
+| RPC node | Present as `rpc`; it serves the API without P2P or block production. Production edge protection is tracked above. |
+| Sequencer node | Not present; this is an L2-specific role and no L2 sequencer is implemented. |
+| Prover node | Not present; no ZK proof-generation service is implemented. |
+| Relayer node | Not present; no cross-network message relay is implemented. |
+| Bridge node | Not present. A bridge-related transaction type alone is not a working cross-chain bridge. |
+| Oracle node | Not present; no external-data feed or oracle service is implemented. |
+| Governance node | Not present as a node role; no separate governance-node service is implemented. |
+| Indexing node/service | No separate indexer service or indexer database is included. The node’s own storage/RPC is not a standalone search index. |
+| Data-availability node | Not present; no separate data-availability layer or service is implemented. |
+| Other existing modes | `boost`, `sync`, and isolated `testnode` modes are present; these do not add the missing roles above. |
+
+### Supporting infrastructure
+
+| Component | Current coverage |
+|---|---|
+| Load balancers / API gateway | Not included in the node. Public RPC reverse-proxy, HTTPS, authentication, and method restrictions are tracked above. |
+| RPC/API server | Built-in JSON-RPC, WebSocket, and dashboard APIs are present; a separate scalable API tier is not. |
+| Databases / indexing servers | Embedded node storage is present; no separate indexer/search database service is included. |
+| Monitoring / alerting | Dashboard health is present; external monitoring and alert delivery are tracked above. |
+| Backup nodes / recovery | No distinct backup-node role. Backup and restore requirements are tracked above. |
+| Geographic distribution | No deployment topology or multi-region failover is included in this repository. |
+| Seed / discovery infrastructure | Static bootstrap peers and a genesis seeding mode are present; peer discovery is tracked above. |
+| Key management / HSM | No HSM integration is present; protected validator-key handling is tracked under **P1 — Validator keys, access, and operational security**. |
+| Block explorer | The node dashboard includes explorer views and links to the configured public explorer; a separately operated indexed explorer service is not included here. |
+| Wallet infrastructure | A dashboard wallet is present; a separate wallet service or custody platform is not. |
+| Testnet faucet | Not present. |
+| Testnet / devnet nodes | A persistent testnet profile and isolated local `testnode` are present; there is no separately configured shared devnet. |
+
+### Follow-up decisions and missing work
+
+- [ ] Decide which optional roles belong in GYDS’s supported architecture.
+  Explicitly mark unneeded roles out of scope rather than implying every
+  blockchain needs miners, sequencers, provers, bridges, or oracles.
+- [ ] Confirm that GYDS remains PoS-only. If PoW mining is required, specify and
+  review a separate consensus protocol before planning a miner implementation.
+- [ ] Define whether `lite` is only a lower-storage header-sync mode or must
+  become a verifiable light client; specify its trust model and required proofs.
+- [ ] Decide whether GYDS needs a dedicated bootnode role or authenticated peer
+  discovery beyond the static bootstrap and genesis-seed behavior already
+  tracked under **P1 — Peer network and node recovery**.
+- [ ] If an L2 or ZK system is in scope, specify its sequencer, prover, and data
+  availability responsibilities and trust/failure model before implementation.
+- [ ] If cross-chain features are in scope, specify and security-review the
+  bridge, relayer, oracle inputs, message validation, and failure/recovery model
+  before implementation.
+- [ ] Decide whether governance requires on-chain proposals/voting or a distinct
+  node role; document authorization and how decisions become consensus state.
+- [ ] Decide whether to operate a dedicated indexer and public explorer. Define
+  indexed data, query APIs, database/rebuild behavior, and how it stays aligned
+  with the canonical chain.
+- [ ] Decide whether to provide a testnet faucet and a shared devnet. If needed,
+  define issuance limits/abuse controls and keep devnet data and identity
+  separate from mainnet, testnet, and disposable `testnode` data.
+- [ ] Define the production topology for any required RPC/API replicas, load
+  balancing, geographic redundancy, and recovery targets; do not treat a
+  single node or a dashboard health check as high availability.
+
 ## Current requested work
 
 - [x] Keep exactly two operational scripts: one safe reset script and one Git

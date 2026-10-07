@@ -1,0 +1,57 @@
+debug the nodes, to see if all of this is in there, Core blockchain nodes
+Full node — stores and verifies the blockchain and transactions.
+Validator node — participates in consensus and helps secure the network.
+Miner node — used by Proof-of-Work blockchains to mine blocks.
+Archive node — keeps the complete historical state/data of the blockchain.
+Light node — stores less data and relies on full nodes for some information.
+Bootnode / discovery node — helps new nodes find and connect to other nodes.
+RPC node — provides an interface for wallets, apps, and developers to interact with the blockchain.
+Sequencer node — used by some Layer-2 networks to order transactions.
+Prover node — generates cryptographic proofs, especially for zero-knowledge systems.
+Relayer node — moves messages or information between different networks.
+Bridge node — helps facilitate cross-chain communication/assets.
+Oracle node — supplies external information such as prices, weather, or market data.
+Governance node — participates in protocol governance where the network uses such a role.
+Indexing node/service — organizes blockchain data so applications can search it efficiently.
+Data-availability node — helps store/provide transaction data for systems that use separate data-availability layers, Infrastructure around the nodes
+
+You'd also potentially need:
+
+Load balancers
+API servers
+Database/indexing servers
+Monitoring nodes
+Backup nodes
+Geographically distributed nodes
+Seed/discovery infrastructure
+Key-management/HSM infrastructure
+Block explorers
+Wallet infrastructure
+Faucet infrastructure for test networks
+Testnet nodes
+Devnet nodes
+Simple architecture
+                    USERS
+                      │
+              Wallets / dApps
+                      │
+                      ▼
+                 RPC NODES
+                      │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+      FULL NODES              INDEXERS
+          │                       │
+          ▼                       ▼
+    VALIDATOR NODES          DATABASES
+          │
+          ▼
+       CONSENSUS
+          │
+          ▼
+       BLOCKCHAIN
+          │
+     ┌────┼────┐
+     ▼    ▼    ▼
+   Oracle Bridge Relayer
+    Nodes  Nodes  Nodes, add all what i mist out to my todo.mf file so later i can continue
