@@ -4,7 +4,9 @@
 
 **Status: not ready for a public production launch.** The public RPC responds
 with mainnet chain ID `198282`, but reports `net_peerCount = 0`; block production
-on one node does not prove that nodes share a canonical chain.
+on one node does not prove that nodes share a canonical chain. RPC mode now
+intentionally has no P2P, so its peer count does not measure connectivity among
+the separate genesis and full nodes.
 
 - [x] Identify the configured bootstrap value as invalid: it used a misspelled
   `tpc://` scheme, the HTTPS RPC hostname, and no P2P port. Do not assume the
@@ -38,6 +40,35 @@ on one node does not prove that nodes share a canonical chain.
   activation/migration gates pass. The public RPC answering `eth_chainId`
   confirms API availability only, not production execution, consensus safety,
   or a functioning multi-node network.
+
+## Priority: bring up one genesis node and its full-node peers
+
+Start with the persistent testnet (`GYDS_NETWORK=testnet`, chain ID `198281`).
+Do not create a new mainnet genesis or reuse/wipe the current mainnet data to
+test node startup; production remains blocked on the consensus and EVM gates
+above. The configured Replit workflow currently runs one node process, not a
+genesis/full-node pair.
+
+- [ ] Decide whether the genesis and full nodes will run on separate hosts or
+  as separate services with unique ports and data directories. Never share a
+  data directory or `node.key` between nodes.
+- [ ] Start one genesis node from the existing testnet genesis:
+  `GYDS_NETWORK=testnet`, `GYDS_NODE_MODE=genesis`, and no bootstrap peers.
+  Give it persistent storage, set its public
+  `GYDS_P2P_ADVERTISE_HOST`, and make its TCP P2P port reachable.
+- [ ] Record the genesis node's chain ID, genesis hash, node ID, and public
+  `host:30303` address. Keep the same baked-in genesis on every joining node.
+- [ ] Start the first full node on the same testnet profile with its own
+  persistent data directory and node key. Configure its bootstrap address to
+  the genesis node's public P2P address, not the wallet/RPC URL.
+- [ ] For a full node joining after the chain already has blocks, use `sync`
+  mode for catch-up; it starts steady-state block production only after
+  reaching the peer height. A fresh full node can use `full` mode directly.
+- [ ] Enable peer authorization and explicitly approve each participating
+  node ID on the other nodes. An empty allowlist rejects all peers.
+- [ ] Verify live authorized peer counts, identical chain ID/genesis hash,
+  block propagation and heights, then restart each node and verify that its
+  identity and peer configuration persist.
 
 ### Mining vs. minting terminology
 
@@ -129,7 +160,7 @@ validated.
 | Archive node | No separate archive role. Retention, pruning, and historical-state requirements are already tracked under **P1 — Storage, restart, and migration**. |
 | Light node | Partial: `lite` synchronizes headers only and does not validate the full transaction history. It is not yet established as a trust-minimized light client. |
 | Bootnode / discovery node | Partial: `genesis` can seed a network and configured static bootstrap peers are supported; a discovery protocol is not implemented. Discovery is tracked under **P1 — Peer network and node recovery**. |
-| RPC node | Present as `rpc`; it serves the API without block production, but the current Go path starts P2P. Peer authorization is not required by default; this conflicts with the setup/docs description and needs an explicit policy. |
+| RPC node | Present as `rpc`; serves the API and dashboard without block production or a P2P listener. It does not join the genesis/full-node peer network. |
 | Sequencer node | Not present; this is an L2-specific role and no L2 sequencer is implemented. |
 | Prover node | Not present; no ZK proof-generation service is implemented. |
 | Relayer node | Not present; no cross-network message relay is implemented. |
@@ -184,11 +215,9 @@ validated.
 - [ ] Decide whether GYDS needs a dedicated bootnode role or authenticated peer
   discovery beyond the static bootstrap and genesis-seed behavior already
   tracked under **P1 — Peer network and node recovery**.
-- [ ] Resolve the `rpc` mode P2P policy: `runRPCNode` starts a P2P listener and
-  dials bootstrap peers, while setup/docs say it has no P2P and peer
-  authorization is disabled by default for this mode. Choose isolation or
-  authenticated P2P, then align startup, setup/admin UI, deployment ports,
-  documentation, and tests.
+- [x] Resolve the `rpc` mode P2P policy by disabling its listener and bootstrap
+  dialing; startup and the admin/setup descriptions now consistently say RPC
+  mode has no P2P.
 - [ ] If an L2 or ZK system is in scope, specify its sequencer, prover, and data
   availability responsibilities and trust/failure model before implementation.
 - [ ] If cross-chain features are in scope, specify and security-review the
@@ -374,10 +403,8 @@ Acceptance criteria:
 
 ### Findings from the current implementation
 
-- [x] Confirm the current `rpc` mode starts a P2P listener and can dial
-  bootstrap peers despite setup/docs describing it as P2P-disabled; peer
-  authorization is not required by default for this mode. Resolve the policy
-  before exposing it.
+- [x] Resolve the mismatch between `rpc` mode and setup/docs: RPC mode now
+  serves APIs without starting P2P or dialing bootstrap peers.
 - [x] The Go P2P listener uses `:30303`, which listens on all interfaces
   (`0.0.0.0`) rather than only `127.0.0.1`.
 - [x] The HTTP/RPC listener defaults to `GYDS_RPC_HOST=0.0.0.0`; preserve this
@@ -439,13 +466,13 @@ than one GYDS process runs on the same server.
 | Dashboard HTTP | 5000 | all modes except an intentionally disabled deployment | Browser dashboard, setup, guides, REST APIs |
 | JSON-RPC HTTP | 8545 | all modes with RPC enabled | MetaMask, ethers.js, wallet RPC |
 | WebSocket path | 8545 `/api/ws` | all modes with RPC enabled | WebSocket subscriptions; `GYDS_WS_PORT` is legacy compatibility only |
-| P2P TCP | 30303 | full, lite*, rpc, sync, boost, genesis, validator | Peer handshakes, blocks, transactions |
+| P2P TCP | 30303 | full, lite*, sync, boost, genesis, validator | Peer handshakes, blocks, transactions |
 | P2P UDP | none currently | no mode | Reserved for future discovery; opening UDP is optional |
 | `genesis` command | no listener | command only | Prints the canonical genesis JSON and exits |
 | P2P TCP exceptions | none | testnode; `lite` without bootstrap peers | Test node is isolated; lite starts P2P only when bootstrap peers are configured. |
 
-`rpc` serves RPC without block production but currently participates in P2P;
-decide and document its peer-authorization policy before public exposure.
+`rpc` serves RPC without block production or P2P. Use `full`, `sync`, or
+`genesis` when a node must join or seed the peer network.
 
 For two nodes on one server, use a unique set such as dashboard `5000/5001`,
 RPC `8545/8547`, and P2P `30303/30304`. On separate servers, both nodes can

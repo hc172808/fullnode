@@ -270,11 +270,9 @@ func runLiteNode(cfg *config.Config) error {
 }
 
 // ── RPC Node ──────────────────────────────────────────────────────────────────
-// RPC node. No block production, but P2P remains enabled so the node has a
-// durable identity and can connect to peers while serving JSON-RPC and the
-// dashboard.
+// RPC node. Serves JSON-RPC and the dashboard without block production or P2P.
 func runRPCNode(cfg *config.Config) error {
-	log.Info().Msg("Mode: RPC Node — API-only, P2P enabled, no block production")
+	log.Info().Msg("Mode: RPC Node — API-only, no P2P, no block production")
 
 	chain := core.NewChain(activeGenesis, cfg.DataDir)
 	log.Info().Uint64("height", chain.Height()).Msg("Chain loaded for RPC serving")
@@ -282,23 +280,10 @@ func runRPCNode(cfg *config.Config) error {
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
 
-	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-	p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
-	p2pSrv.SetMaxPeers(cfg.MaxPeers)
-	p2pSrv.SetNodeMode(cfg.NodeMode)
-	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
-	wireBlockProvider(p2pSrv, chain)
-	wireAuth(p2pSrv, cfg)
-	rpcSrv.SetP2P(p2pSrv)
-	if err := p2pSrv.Start(); err != nil {
-		return fmt.Errorf("rpc P2P listener failed: %w", err)
-	}
-	startBootstrapDialers(p2pSrv, cfg.P2PBootstrap)
-
 	log.Info().
 		Int("rpcPort", cfg.RPCPort).
 		Int("dashPort", cfg.DashboardPort).
-		Msg("RPC node online — serving JSON-RPC, dashboard, and P2P")
+		Msg("RPC node online — serving JSON-RPC and dashboard without P2P")
 
 	return serveAndWait(rpcSrv, chain, nil)
 }

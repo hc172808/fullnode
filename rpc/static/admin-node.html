@@ -36,7 +36,7 @@
         <div class="fields">
           <div class="field"><label>Node role</label><select id="nodeMode">
             <option value="full">Full Node</option><option value="lite">Lite Node</option><option value="rpc">RPC Node</option><option value="boost">Boost Node</option><option value="genesis">Genesis Node</option><option value="sync">Sync Node</option><option value="validator">Validator Node</option><option value="testnode">Test Node</option>
-          </select><span class="hint">RPC mode serves APIs without producing blocks, while P2P remains available for identity and syncing. Sync catches up after restart.</span></div>
+          </select><span class="hint">RPC mode serves APIs without producing blocks or joining the P2P network. Use Sync to catch up from peers, or Full for a P2P node that produces blocks.</span></div>
           <div class="field"><label>Network profile</label><select id="networkProfile" onchange="setNetworkProfile(true)"><option value="mainnet">GYDS Mainnet</option><option value="testnet">GYDS Testnet</option></select><span class="hint">Switching profiles restarts the node. Mainnet stays in its existing data directory; testnet uses a separate directory. The disposable Test Node remains chain ID 31337.</span></div>
           <div class="field"><label>Chain ID</label><input id="chainId" type="number" min="1" readonly/></div>
           <div class="field"><label>Network name</label><input id="networkName" readonly/></div>
