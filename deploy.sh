@@ -258,6 +258,19 @@ case "$GYDS_NODE_MODE" in
   *) die "GYDS_NODE_MODE='${GYDS_NODE_MODE}' is not a recognised node mode." ;;
 esac
 
+# Match firewall exposure to the listeners that the selected role starts.
+# Lite only starts P2P when it has bootstrap peers; RPC and testnode stay
+# isolated from the public P2P port.
+P2P_FIREWALL_ENABLED=false
+case "$GYDS_NODE_MODE" in
+  full|boost|genesis|sync|validator) P2P_FIREWALL_ENABLED=true ;;
+  lite)
+    if [[ -n "${GYDS_BOOTSTRAP_NODES:-}" ]]; then
+      P2P_FIREWALL_ENABLED=true
+    fi
+    ;;
+esac
+
 # Keep testnode private even if an operator copied a production .env.
 if [[ "$GYDS_NODE_MODE" == "testnode" ]]; then
   GYDS_RPC_HOST="127.0.0.1"
@@ -669,15 +682,36 @@ if $SKIP_FIREWALL || [[ "${GYDS_ENABLE_FIREWALL}" != "true" ]]; then
   warn "Firewall configuration skipped."
 elif [[ $EUID -ne 0 ]]; then
   warn "Firewall configuration requires root. When ready, run:"
-  warn "  sudo bash setup-firewall.sh \\"
-  warn "    --ssh-port ${GYDS_SSH_PORT} \\"
-  warn "    --dashboard-port ${GYDS_DASHBOARD_PORT} \\"
-  warn "    --rpc-port ${GYDS_RPC_PORT} \\"
-  warn "    --ws-port ${GYDS_WS_PORT} \\"
-  warn "    --p2p-port ${GYDS_P2P_PORT}"
+  _manual_firewall_args=(
+    --ssh-port "${GYDS_SSH_PORT}"
+    --dashboard-port "${GYDS_DASHBOARD_PORT}"
+    --rpc-port "${GYDS_RPC_PORT}"
+    --ws-port "${GYDS_WS_PORT}"
+    --data-dir "${GYDS_DATA_DIR}"
+  )
+  if $P2P_FIREWALL_ENABLED; then
+    _manual_firewall_args+=(--p2p-port "${GYDS_P2P_PORT}")
+  else
+    _manual_firewall_args+=(--no-p2p)
+  fi
+  printf -v _manual_firewall_command '%q ' sudo bash "${SCRIPT_DIR}/setup-firewall.sh" "${_manual_firewall_args[@]}"
+  warn "  ${_manual_firewall_command}"
 elif ! command -v ufw &>/dev/null; then
   warn "ufw is not installed. Install it with: sudo apt install ufw"
-  warn "Then run: sudo bash setup-firewall.sh"
+  _missing_ufw_args=(
+    --ssh-port "${GYDS_SSH_PORT}"
+    --dashboard-port "${GYDS_DASHBOARD_PORT}"
+    --rpc-port "${GYDS_RPC_PORT}"
+    --ws-port "${GYDS_WS_PORT}"
+    --data-dir "${GYDS_DATA_DIR}"
+  )
+  if $P2P_FIREWALL_ENABLED; then
+    _missing_ufw_args+=(--p2p-port "${GYDS_P2P_PORT}")
+  else
+    _missing_ufw_args+=(--no-p2p)
+  fi
+  printf -v _missing_ufw_command '%q ' sudo bash "${SCRIPT_DIR}/setup-firewall.sh" "${_missing_ufw_args[@]}"
+  warn "After installing UFW, run: ${_missing_ufw_command}"
 else
   # Keep deployment limited to the UFW network boundary.
   _firewall_args=(
@@ -685,9 +719,13 @@ else
     --dashboard-port "${GYDS_DASHBOARD_PORT}"
     --rpc-port "${GYDS_RPC_PORT}"
     --ws-port "${GYDS_WS_PORT}"
-    --p2p-port "${GYDS_P2P_PORT}"
     --data-dir "${GYDS_DATA_DIR}"
   )
+  if $P2P_FIREWALL_ENABLED; then
+    _firewall_args+=(--p2p-port "${GYDS_P2P_PORT}")
+  else
+    _firewall_args+=(--no-p2p)
+  fi
   if [[ "${GYDS_ENABLE_FAIL2BAN:-true}" != "true" ]]; then
     _firewall_args+=(--no-fail2ban)
   fi

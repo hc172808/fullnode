@@ -10,7 +10,8 @@
 #    --dashboard-port PORT  Dashboard web UI port (default: 5000; use 8080 if desired)
 #    --rpc-port PORT        JSON-RPC port (default: 8545)
 #    --ws-port PORT         WebSocket port (default: 8546)
-#    --p2p-port PORT        P2P gossip port (default: 30303)
+#    --p2p-port PORT        P2P TCP port (default: 30303)
+#    --no-p2p               Do not open a P2P firewall port
 #    --data-dir DIR         Node data directory for access logs
 #    --ufw-only             Configure UFW only; do not install/start optional services
 #    --status               Show active firewall rules and fail2ban bans, then exit
@@ -25,6 +26,7 @@ DASHBOARD_PORT="${DASHBOARD_PORT:-5000}"
 RPC_PORT="${RPC_PORT:-8545}"
 WS_PORT="${WS_PORT:-8546}"
 P2P_PORT="${P2P_PORT:-30303}"
+P2P_ENABLED=true
 DATA_DIR="${DATA_DIR:-/var/lib/gyds-fullnode}"
 FAIL2BAN_ENABLED=true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     --rpc-port)       RPC_PORT="$2";       shift 2 ;;
     --ws-port)        WS_PORT="$2";        shift 2 ;;
     --p2p-port)       P2P_PORT="$2";       shift 2 ;;
+    --no-p2p)         P2P_ENABLED=false;    shift ;;
     --data-dir)       DATA_DIR="$2";       shift 2 ;;
     --no-fail2ban)    FAIL2BAN_ENABLED=false; shift ;;
     --ufw-only)       FAIL2BAN_ENABLED=false; shift ;;
@@ -103,8 +106,9 @@ ufw allow   443/tcp                  comment "HTTPS"
 ufw allow   "${DASHBOARD_PORT}/tcp"  comment "GYDS Dashboard"
 ufw allow   "${RPC_PORT}/tcp"        comment "GYDS JSON-RPC"
 ufw allow   "${WS_PORT}/tcp"         comment "GYDS WebSocket"
-ufw allow   "${P2P_PORT}/tcp"        comment "GYDS P2P (TCP)"
-ufw allow   "${P2P_PORT}/udp"        comment "GYDS P2P (UDP)"
+if $P2P_ENABLED; then
+  ufw allow "${P2P_PORT}/tcp" comment "GYDS P2P (TCP)"
+fi
 ufw allow   51820/udp                comment "WireGuard VPN"
 
 for _blocked in 23 2375 3306 5432 6379 27017; do
@@ -123,7 +127,11 @@ log "SSH        : port ${SSH_PORT}/tcp  (rate-limited)"
 log "Dashboard  : port ${DASHBOARD_PORT}/tcp"
 log "JSON-RPC   : port ${RPC_PORT}/tcp"
 log "WebSocket  : port ${WS_PORT}/tcp"
-log "P2P        : port ${P2P_PORT}/tcp + udp"
+if $P2P_ENABLED; then
+  log "P2P        : port ${P2P_PORT}/tcp"
+else
+  log "P2P        : disabled"
+fi
 
 # ── Sysctl hardening ──────────────────────────────────────────
 log "Applying sysctl network hardening..."
@@ -264,7 +272,11 @@ echo ""
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║        GYDS Full Node — Firewall Hardened            ║"
 echo "╚══════════════════════════════════════════════════════╝"
-echo "  Ports open:  SSH:${SSH_PORT}  Dashboard:${DASHBOARD_PORT}  RPC:${RPC_PORT}  WS:${WS_PORT}  P2P:${P2P_PORT}"
+if $P2P_ENABLED; then
+  echo "  Ports open:  SSH:${SSH_PORT}  Dashboard:${DASHBOARD_PORT}  RPC:${RPC_PORT}  WS:${WS_PORT}  P2P_TCP:${P2P_PORT}"
+else
+  echo "  Ports open:  SSH:${SSH_PORT}  Dashboard:${DASHBOARD_PORT}  RPC:${RPC_PORT}  WS:${WS_PORT}  P2P:disabled"
+fi
 if $FAIL2BAN_ENABLED; then
   echo "  fail2ban: active (sshd, RPC flood/bad-RPC, scanner, recidive jails)"
 else
