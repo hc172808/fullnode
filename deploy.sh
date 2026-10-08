@@ -386,45 +386,55 @@ install_go() {
   local tarball="go${target_ver}.linux-${arch}.tar.gz"
   local url="https://go.dev/dl/${tarball}"
   local tmp_tar="/tmp/${tarball}"
-  local tmp_sha="/tmp/${tarball}.sha256"
 
   info "Downloading Go ${target_ver} (linux/${arch})..."
   curl -fsSL --max-time 180 --retry 3 "$url" -o "$tmp_tar" \
     || die "Failed to download Go from: ${url}"
 
-  # Verify SHA256 checksum when available.
+  # Read the archive checksum from Go's official release metadata. A .sha256
+  # URL may return an HTML page, so never compare its raw response as a hash.
   info "Verifying download integrity..."
-  if curl -fsSL --max-time 15 "${url}.sha256" -o "$tmp_sha" 2>/dev/null && [[ -s "$tmp_sha" ]]; then
-    local expected actual
-    expected=$(cat "$tmp_sha")
-    actual=$(sha256sum "$tmp_tar" | awk '{print $1}')
-    if [[ "$expected" != "$actual" ]]; then
-      rm -f "$tmp_tar" "$tmp_sha"
-      die "SHA256 checksum mismatch for ${tarball}. The download may be corrupted — please retry."
-    fi
-    log "Checksum verified"
-  else
-    warn "Could not retrieve checksum file — skipping integrity verification."
+  local expected actual
+  expected=$(
+    curl -fsSL --max-time 30 'https://go.dev/dl/?mode=json&include=all' \
+      | jq -er --arg version "go${target_ver}" --arg filename "$tarball" '
+          [ .[] | select(.version == $version) | .files[]
+            | select(.filename == $filename) | .sha256 ]
+          | if length == 1 then .[0] else error("missing or ambiguous release checksum") end
+        '
+  ) || {
+    rm -f "$tmp_tar"
+    die "Could not obtain the official SHA256 checksum for ${tarball}; refusing to install an unverified Go archive."
+  }
+  if ! [[ "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
+    rm -f "$tmp_tar"
+    die "Go release metadata returned an invalid SHA256 checksum for ${tarball}."
   fi
+  actual=$(sha256sum "$tmp_tar" | awk '{print $1}')
+  if [[ "$expected" != "$actual" ]]; then
+    rm -f "$tmp_tar"
+    die "SHA256 checksum mismatch for ${tarball}. The download may be corrupted — please retry."
+  fi
+  log "Checksum verified"
 
   # Extract to a temporary location and test the binary before replacing the live install.
   info "Extracting Go ${target_ver}..."
   local tmp_extract="/tmp/go-extract-$$"
   mkdir -p "$tmp_extract"
   if ! tar -C "$tmp_extract" -xzf "$tmp_tar"; then
-    rm -rf "$tmp_extract" "$tmp_tar" "$tmp_sha"
+    rm -rf "$tmp_extract" "$tmp_tar"
     die "Failed to extract Go archive."
   fi
 
   # Verify the extracted binary works before removing the existing install.
   if ! "$tmp_extract/go/bin/go" version &>/dev/null; then
-    rm -rf "$tmp_extract" "$tmp_tar" "$tmp_sha"
+    rm -rf "$tmp_extract" "$tmp_tar"
     die "Extracted Go binary failed self-test. The archive may be incomplete."
   fi
 
   rm -rf /usr/local/go
   mv "$tmp_extract/go" /usr/local/go
-  rm -rf "$tmp_extract" "$tmp_tar" "$tmp_sha"
+  rm -rf "$tmp_extract" "$tmp_tar"
 
   export PATH="/usr/local/go/bin:$PATH"
 
