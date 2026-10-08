@@ -11,5 +11,5 @@ for the genesis and full nodes. Keep the existing mainnet data untouched.
 
 **How to apply:** prioritize genesis/full-node setup, startup, P2P reachability,
 and synchronization work. Use the testnet data directory and distinct local
-node identities on each server; do not start or reset nodes on the current
-mainnet data.
+node identities on each server. Advertise a public IP or DNS name reachable by
+all peers; do not start or reset nodes on the current mainnet data.

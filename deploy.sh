@@ -281,6 +281,43 @@ if [[ "$GYDS_NODE_MODE" == "testnode" ]]; then
   info "Testnode ports forced to dashboard=15000 rpc=18545 ws=18546 p2p=31337"
 fi
 
+validate_public_advertise_ip() {
+  local host="$1"
+  local octet a_raw b_raw c_raw d_raw a b c
+
+  # DNS names are accepted as configured; validate literal IPv4 addresses so
+  # private, link-local, loopback, and carrier-grade NAT addresses cannot be
+  # advertised as Internet-reachable peers.
+  [[ "$host" =~ ^[0-9.]+$ ]] || return 0
+  if [[ ! "$host" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+    die "GYDS_P2P_ADVERTISE_HOST='${host}' is not a valid public IPv4 address or DNS name."
+  fi
+
+  a_raw="${BASH_REMATCH[1]}"
+  b_raw="${BASH_REMATCH[2]}"
+  c_raw="${BASH_REMATCH[3]}"
+  d_raw="${BASH_REMATCH[4]}"
+  for octet in "$a_raw" "$b_raw" "$c_raw" "$d_raw"; do
+    if (( 10#$octet > 255 )); then
+      die "GYDS_P2P_ADVERTISE_HOST='${host}' contains an IPv4 octet greater than 255."
+    fi
+  done
+
+  a=$((10#$a_raw))
+  b=$((10#$b_raw))
+  c=$((10#$c_raw))
+  if (( a == 0 || a == 10 || a == 127 || a >= 224 ||
+        (a == 169 && b == 254) ||
+        (a == 172 && b >= 16 && b <= 31) ||
+        (a == 192 && b == 168) ||
+        (a == 100 && b >= 64 && b <= 127) ||
+        (a == 192 && b == 0 && (c == 0 || c == 2)) ||
+        (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) ||
+        (a == 203 && b == 0 && c == 113) )); then
+    die "GYDS_P2P_ADVERTISE_HOST='${host}' is private or reserved. Set a public IPv4 address or DNS name reachable by all peers."
+  fi
+}
+
 # A production peer must advertise an address other nodes can actually dial.
 # Bind addresses such as 0.0.0.0 and loopback are valid listeners but invalid
 # bootstrap/enode endpoints, so fail before installing a service that cannot
@@ -295,6 +332,7 @@ case "$GYDS_NODE_MODE" in
         die "GYDS_P2P_ADVERTISE_HOST must be a public IP or DNS name, not ${GYDS_P2P_ADVERTISE_HOST}."
         ;;
     esac
+    validate_public_advertise_ip "$GYDS_P2P_ADVERTISE_HOST"
     ;;
 esac
 
