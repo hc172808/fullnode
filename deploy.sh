@@ -281,16 +281,15 @@ if [[ "$GYDS_NODE_MODE" == "testnode" ]]; then
   info "Testnode ports forced to dashboard=15000 rpc=18545 ws=18546 p2p=31337"
 fi
 
-validate_public_advertise_ip() {
+validate_advertise_ipv4() {
   local host="$1"
   local octet a_raw b_raw c_raw d_raw a b c
 
-  # DNS names are accepted as configured; validate literal IPv4 addresses so
-  # private, link-local, loopback, and carrier-grade NAT addresses cannot be
-  # advertised as Internet-reachable peers.
+  # DNS names are accepted as configured. Private IPv4 is allowed only with
+  # an explicit opt-in for peers on a shared, routable private network.
   [[ "$host" =~ ^[0-9.]+$ ]] || return 0
   if [[ ! "$host" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
-    die "GYDS_P2P_ADVERTISE_HOST='${host}' is not a valid public IPv4 address or DNS name."
+    die "GYDS_P2P_ADVERTISE_HOST='${host}' is not a valid IPv4 address or DNS name."
   fi
 
   a_raw="${BASH_REMATCH[1]}"
@@ -306,38 +305,44 @@ validate_public_advertise_ip() {
   a=$((10#$a_raw))
   b=$((10#$b_raw))
   c=$((10#$c_raw))
-  if (( a == 0 || a == 10 || a == 127 || a >= 224 ||
-        (a == 169 && b == 254) ||
+  if (( (a == 10) ||
         (a == 172 && b >= 16 && b <= 31) ||
-        (a == 192 && b == 168) ||
-        (a == 100 && b >= 64 && b <= 127) ||
-        (a == 192 && b == 0 && (c == 0 || c == 2)) ||
-        (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) ||
-        (a == 203 && b == 0 && c == 113) )); then
-    die "GYDS_P2P_ADVERTISE_HOST='${host}' is private or reserved. Set a public IPv4 address or DNS name reachable by all peers."
+        (a == 192 && b == 168) )); then
+    if [[ "${GYDS_P2P_ALLOW_PRIVATE_ADVERTISE:-false}" == "true" ]]; then
+      warn "Advertising private P2P address ${host}; confirm every peer can route to it on TCP ${GYDS_P2P_PORT}."
+    else
+      die "GYDS_P2P_ADVERTISE_HOST='${host}' is private. Set GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true only when all peers share a routable private network."
+    fi
+  elif (( a == 0 || a == 127 || a >= 224 ||
+          (a == 169 && b == 254) ||
+          (a == 100 && b >= 64 && b <= 127) ||
+          (a == 192 && b == 0 && (c == 0 || c == 2)) ||
+          (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) ||
+          (a == 203 && b == 0 && c == 113) )); then
+    die "GYDS_P2P_ADVERTISE_HOST='${host}' is reserved or non-routable."
   fi
 }
 
 # A production peer must advertise an address other nodes can actually dial.
 # Bind addresses such as 0.0.0.0 and loopback are valid listeners but invalid
 # bootstrap/enode endpoints, so fail before installing a service that cannot
-# join the network correctly.
+# join the network correctly. Private VPC addresses require an explicit opt-in.
 case "$GYDS_NODE_MODE" in
   full|lite|boost|genesis|sync|validator)
     if [[ -z "${GYDS_P2P_ADVERTISE_HOST:-}" ]]; then
-      die "GYDS_P2P_ADVERTISE_HOST is required for ${GYDS_NODE_MODE} mode. Set it to this server's public IP or DNS name."
+      die "GYDS_P2P_ADVERTISE_HOST is required for ${GYDS_NODE_MODE} mode. Set it to an IP or DNS name reachable by all peers."
     fi
     case "${GYDS_P2P_ADVERTISE_HOST}" in
       0.0.0.0|127.0.0.1|localhost|::|\\:\\:1)
-        die "GYDS_P2P_ADVERTISE_HOST must be a public IP or DNS name, not ${GYDS_P2P_ADVERTISE_HOST}."
+        die "GYDS_P2P_ADVERTISE_HOST must be reachable by peers, not ${GYDS_P2P_ADVERTISE_HOST}."
         ;;
     esac
-    validate_public_advertise_ip "$GYDS_P2P_ADVERTISE_HOST"
+    validate_advertise_ipv4 "$GYDS_P2P_ADVERTISE_HOST"
     ;;
 esac
 
 if [[ "$GYDS_NODE_MODE" == "sync" && -z "${GYDS_BOOTSTRAP_NODES:-}" ]]; then
-  die "GYDS_BOOTSTRAP_NODES is required for sync mode. Use the genesis node's public host:${GYDS_P2P_PORT}."
+  die "GYDS_BOOTSTRAP_NODES is required for sync mode. Use the genesis node's reachable host:${GYDS_P2P_PORT}."
 fi
 
 if [[ -n "${GYDS_EXTERNAL_URL:-}" && "${GYDS_EXTERNAL_URL}" != https://* ]]; then
@@ -432,7 +437,7 @@ install_go() {
   # Read the archive checksum from Go's official release metadata. A .sha256
   # URL may return an HTML page, so never compare its raw response as a hash.
   info "Verifying download integrity..."
-  local expected actual
+  local expected actual archive_bytes
   expected=$(
     curl -fsSL --max-time 30 'https://go.dev/dl/?mode=json&include=all' \
       | jq -er --arg version "go${target_ver}" --arg filename "$tarball" '
@@ -450,8 +455,9 @@ install_go() {
   fi
   actual=$(sha256sum "$tmp_tar" | awk '{print $1}')
   if [[ "$expected" != "$actual" ]]; then
+    archive_bytes=$(wc -c < "$tmp_tar" | tr -d '[:space:]')
     rm -f "$tmp_tar"
-    die "SHA256 checksum mismatch for ${tarball}. The download may be corrupted — please retry."
+    die "SHA256 checksum mismatch for ${tarball} (expected ${expected}, got ${actual}, ${archive_bytes} bytes). Refusing to install; check that this server has the updated deploy.sh and that no proxy or download filter is altering the archive."
   fi
   log "Checksum verified"
 

@@ -54,14 +54,14 @@ genesis/full-node pair.
   may be used on both servers, but never share the directory or key.
 - [ ] Start one genesis node from the existing testnet genesis using
   `GYDS_NETWORK=testnet`, `GYDS_NODE_MODE=genesis`, and no bootstrap peers.
-  Give it persistent storage, set its public `GYDS_P2P_ADVERTISE_HOST`, and
-  allow inbound TCP `30303` in both the host firewall and provider security
-  group.
-- [ ] Record the genesis node's chain ID, genesis hash, node ID, and public
+  Give it persistent storage, set `GYDS_P2P_ADVERTISE_HOST` to its address on
+  the shared private network, and allow TCP `30303` between the two VPC hosts
+  in both host firewalls and the provider security group.
+- [ ] Record the genesis node's chain ID, genesis hash, node ID, and reachable
   `host:30303` address. Keep the same baked-in genesis on every joining node.
 - [ ] Start the first full node on the same testnet profile with its own
   persistent data directory and node key. Configure its bootstrap address to
-  the genesis node's public P2P address, not the wallet/RPC URL.
+  the genesis node's reachable P2P address, not the wallet/RPC URL.
 - [ ] For a full node joining after the chain already has blocks, use `sync`
   mode for catch-up; it starts steady-state block production only after
   reaching the peer height. A fresh full node can use `full` mode directly.
@@ -309,8 +309,9 @@ unimplemented JSON-RPC method, not a `127.0.0.1` connectivity failure.
 
 ### Implementation checklist
 
-- [x] Add `GYDS_P2P_ADVERTISE_HOST` to configuration. It must be the genesis
-  server's public IP or DNS name, not `0.0.0.0` or `127.0.0.1`.
+- [x] Add `GYDS_P2P_ADVERTISE_HOST` to configuration. It must be reachable by
+  all peers, not `0.0.0.0` or `127.0.0.1`. Private IPv4 requires
+  `GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true`.
 - [x] Add the advertised P2P port configuration, defaulting to
   `GYDS_P2P_PORT=30303`.
 - [x] Extend the RPC/P2P interface so RPC can read the local node ID,
@@ -320,7 +321,7 @@ unimplemented JSON-RPC method, not a `127.0.0.1` connectivity failure.
   and reachable P2P endpoint. Keep the response format stable for node
   operators and tooling.
 - [x] Keep the P2P bind address on all interfaces (`:30303`, equivalent to
-  `0.0.0.0:30303`) while advertising only the public address.
+  `0.0.0.0:30303`) while advertising the peer-reachable VPC address.
 - [x] Add a useful error when `GYDS_P2P_ADVERTISE_HOST` is empty for a node
   that is expected to accept remote peers.
 - [x] Implement `net_peerCount` using the live P2P peer count instead of the
@@ -337,32 +338,37 @@ unimplemented JSON-RPC method, not a `127.0.0.1` connectivity failure.
 Genesis node:
 
 ```env
+GYDS_NETWORK=testnet
 GYDS_NODE_MODE=genesis
-GYDS_CHAIN_ID=198282
+GYDS_DATA_DIR=/var/lib/gyds-fullnode-testnet
 GYDS_RPC_HOST=0.0.0.0
 GYDS_RPC_PORT=8545
 GYDS_P2P_PORT=30303
-GYDS_P2P_ADVERTISE_HOST=GENESIS_PUBLIC_IP_OR_DNS
+GYDS_P2P_ADVERTISE_HOST=10.0.0.2
+GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true
 ```
 
-Persistent testnet nodes use `GYDS_NETWORK=testnet`, which selects chain ID
-`198281` and a separate testnet data directory. Do not use the disposable
-test-node chain ID as the persistent testnet identity.
+`GYDS_NETWORK=testnet` selects chain ID `198281` and a separate testnet data
+directory. Do not use the disposable test-node chain ID as the persistent
+testnet identity.
 
-Joining node:
+Joining node (final configuration after peer enrollment):
 
 ```env
+GYDS_NETWORK=testnet
 GYDS_NODE_MODE=sync
-GYDS_CHAIN_ID=198282
+GYDS_DATA_DIR=/var/lib/gyds-fullnode-testnet
 GYDS_RPC_HOST=0.0.0.0
 GYDS_RPC_PORT=8545
 GYDS_P2P_PORT=30303
-GYDS_BOOTSTRAP_NODES=GENESIS_PUBLIC_IP_OR_DNS:30303
-GYDS_P2P_ADVERTISE_HOST=JOINING_NODE_PUBLIC_IP_OR_DNS
+GYDS_BOOTSTRAP_NODES=10.0.0.2:30303
+GYDS_P2P_ADVERTISE_HOST=10.0.0.16
+GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true
 ```
 
-`GYDS_BOOTSTRAP_NODES` must contain a real public `host:port`. Do not use the
-HTTPS RPC URL, `127.0.0.1`, or `0.0.0.0` for node-to-node peering.
+`GYDS_BOOTSTRAP_NODES` must contain the genesis node's reachable `host:port`.
+Do not use the HTTPS RPC URL, `127.0.0.1`, or `0.0.0.0` for node-to-node
+peering.
 
 ### Verification after implementation
 
@@ -384,7 +390,7 @@ sudo ss -lntp | grep -E ':(30303|8545)\b'
 Run from each joining node:
 
 ```bash
-nc -vz GENESIS_PUBLIC_IP_OR_DNS 30303
+nc -vz 10.0.0.2 30303
 curl -sS http://127.0.0.1:8545/api/peers | jq
 sudo journalctl -u gyds-fullnode -n 200 --no-pager \
   | grep -Ei 'p2p|peer|bootstrap|dial|handshake|auth|reconnect'
@@ -411,22 +417,23 @@ Acceptance criteria:
 - [x] The HTTP/RPC listener defaults to `GYDS_RPC_HOST=0.0.0.0`; preserve this
   behavior for externally reachable nodes.
 - [x] Treat `0.0.0.0` as a bind address only. Do **not** advertise
-  `0.0.0.0:30303` to peers. Bootstrap nodes must use the real public IP or DNS
-  name of the genesis node, for example `203.0.113.10:30303`.
+  `0.0.0.0:30303` to peers. Bootstrap nodes must use an address reachable by
+  every peer. On the selected shared VPC, use the genesis address
+  `10.0.0.2:30303` and set `GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true`.
 - [ ] Verify that the genesis node and joining nodes use the same selected
   network ID (mainnet `198282` or persistent testnet `198281`) and the same
   genesis hash.
 - [ ] Verify that every node has a unique persisted `<dataDir>/node.key`.
   Never copy the genesis node's `node.key` to another server.
-- [ ] Check that the joining node has `GYDS_BOOTSTRAP_NODES=<genesis-public-ip>:30303`
+- [ ] Check that the joining node has
+  `GYDS_BOOTSTRAP_NODES=<genesis-reachable-host>:30303`
   and is not using the wallet/RPC URL as its bootstrap address.
-- [ ] Open TCP and UDP `30303` on the genesis server and confirm the hosting
-  provider's firewall/security group also allows it. The current Go transport
-  uses TCP; UDP is still useful if discovery is added later.
+- [ ] Allow TCP `30303` between the two VPC hosts in their server firewalls and
+  confirm the hosting provider's firewall/security group allows it.
 - [ ] Test the path from each joining node to the genesis node:
 
   ```bash
-  nc -vz GENESIS_PUBLIC_IP 30303
+  nc -vz 10.0.0.2 30303
   curl -sS http://127.0.0.1:8545/api/peers | jq
   journalctl -u gyds-fullnode -n 200 --no-pager | grep -Ei 'p2p|peer|bootstrap|dial|handshake|auth'
   ```
@@ -435,7 +442,7 @@ Acceptance criteria:
 
 - [x] Add a configurable advertised P2P host, for example
   `GYDS_P2P_ADVERTISE_HOST`, separate from the listener bind address. The
-  advertised endpoint must be `public-host:30303`, never `0.0.0.0:30303`.
+  advertised endpoint must be reachable by peers, never `0.0.0.0:30303`.
 - [x] Add a stable `net_enode` or equivalent RPC response containing this
   node's public node ID and advertised P2P endpoint. The current
   `net_enode` request returns no useful result because it is not implemented in
@@ -481,12 +488,16 @@ must join or seed the peer network.
 For two nodes on one server, use a unique set such as dashboard `5000/5001`,
 RPC `8545/8547`, and P2P `30303/30304`. On separate servers, both nodes can
 use the defaults. The joining node's `GYDS_BOOTSTRAP_NODES` must point to the
-genesis node's public P2P address, not its RPC or dashboard URL.
+genesis node's reachable P2P address, not its RPC or dashboard URL.
 
-The selected launch is the persistent testnet on separate servers. These are
-per-server `.env` values; `/var/lib/gyds-fullnode-testnet` is local persistent
-storage on each server, not a shared mount. Use the same repository revision
-and baked-in genesis on both servers. Use `deploy.sh --env .env` for this
+The selected launch is the persistent testnet on separate servers in a shared
+private network: genesis `10.0.0.2`, joining node `10.0.0.16`. The endpoints
+must be routable between those servers on TCP `30303`. These are per-server
+`.env` values.
+`/var/lib/gyds-fullnode-testnet` is local persistent storage on each server,
+not a shared mount. Use the same repository revision and baked-in genesis on
+both servers. Set `GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true` on each server when
+using its private VPC address. Use `deploy.sh --env .env` for this
 network-aware launch. Do not use the older `setup-fullnode-server.sh` here: it
 defaults to the mainnet chain ID, does not apply the testnet data-directory
 profile, and opens TCP+UDP P2P without regard to node mode.
@@ -500,7 +511,8 @@ GYDS_DATA_DIR=/var/lib/gyds-fullnode-testnet
 GYDS_DASHBOARD_PORT=5000
 GYDS_RPC_PORT=8545
 GYDS_P2P_PORT=30303
-GYDS_P2P_ADVERTISE_HOST=GENESIS_PUBLIC_HOST
+GYDS_P2P_ADVERTISE_HOST=10.0.0.2
+GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true
 GYDS_BOOTSTRAP_NODES=
 GYDS_PEER_AUTH=true
 GYDS_ALLOWED_NODES=FULL_NODE_ID
@@ -515,8 +527,9 @@ GYDS_DATA_DIR=/var/lib/gyds-fullnode-testnet
 GYDS_DASHBOARD_PORT=5000
 GYDS_RPC_PORT=8545
 GYDS_P2P_PORT=30303
-GYDS_P2P_ADVERTISE_HOST=FULL_NODE_PUBLIC_HOST
-GYDS_BOOTSTRAP_NODES=GENESIS_PUBLIC_HOST:30303
+GYDS_P2P_ADVERTISE_HOST=10.0.0.16
+GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true
+GYDS_BOOTSTRAP_NODES=10.0.0.2:30303
 GYDS_PEER_AUTH=true
 GYDS_ALLOWED_NODES=GENESIS_NODE_ID
 ```
@@ -530,8 +543,10 @@ Peer enrollment and startup:
 2. Read its node ID from
    `curl -sS http://127.0.0.1:8545/api/node-id | jq -r .nodeId`.
 3. On the joining server, temporarily set `GYDS_NODE_MODE=lite`, keep its own
-   data directory and advertised public host, and set
-   `GYDS_BOOTSTRAP_NODES=GENESIS_PUBLIC_HOST:30303`. Leave its allowlist empty
+   data directory and private VPC address, set
+   `GYDS_P2P_ALLOW_PRIVATE_ADVERTISE=true`, and set
+   `GYDS_P2P_ADVERTISE_HOST=10.0.0.16` and
+   `GYDS_BOOTSTRAP_NODES=10.0.0.2:30303`. Leave its allowlist empty
    and install with `sudo bash deploy.sh --env .env`. Lite mode does not produce
    blocks and keeps its dashboard available while the unapproved peer is
    rejected; read this server's ID from the same `/api/node-id` endpoint. Its
@@ -542,9 +557,10 @@ Peer enrollment and startup:
    finished configuration with
    `sudo bash deploy.sh --env .env --update`. This installs the allowlists
    before the joining node attempts authenticated sync.
-5. Allow inbound TCP `30303` in both the host firewall and cloud security group
-   on each peer. UDP is not used by current P2P discovery and does not need to
-   be opened. Keep the dashboard/RPC exposure limited to the intended clients.
+5. Allow TCP `30303` between `10.0.0.2` and `10.0.0.16` in both host firewalls
+   and the provider security group. UDP is not used by current P2P discovery
+   and does not need to be opened. Keep the dashboard/RPC exposure limited to
+   the intended clients.
 6. Verify `net_enode`, `net_peerCount`, `/api/peers`, chain ID, genesis hash,
    and `eth_blockNumber` on both nodes. Confirm the sync node catches up, then
    restart both nodes and verify their identities and peer configuration
@@ -570,7 +586,7 @@ an HTTP preview URL cannot be used as a bootstrap peer.
   from the GYDS network logo, with public CORS and caching.
 - [ ] Verify the logo and metadata from the public HTTPS RPC origin in each
   target wallet.
-- [ ] Verify joining-node synchronization against a reachable public P2P host.
+- [ ] Verify joining-node synchronization against the reachable VPC P2P host.
 
 ### Correct RPC diagnostics
 
@@ -689,9 +705,9 @@ curl -sS http://127.0.0.1:8545/api/peers | jq
 On each joining server:
 
 ```bash
-grep -E '^(GYDS_NETWORK|GYDS_NODE_MODE|GYDS_CHAIN_ID|GYDS_DATA_DIR|GYDS_P2P_PORT|GYDS_RPC_PORT|GYDS_P2P_ADVERTISE_HOST|GYDS_BOOTSTRAP_NODES|GYDS_PEER_AUTH|GYDS_ALLOWED_NODES)=' /opt/gyds-fullnode/.env
+grep -E '^(GYDS_NETWORK|GYDS_NODE_MODE|GYDS_CHAIN_ID|GYDS_DATA_DIR|GYDS_P2P_PORT|GYDS_RPC_PORT|GYDS_P2P_ADVERTISE_HOST|GYDS_P2P_ALLOW_PRIVATE_ADVERTISE|GYDS_BOOTSTRAP_NODES|GYDS_PEER_AUTH|GYDS_ALLOWED_NODES)=' /opt/gyds-fullnode/.env
 sudo ufw status | grep 30303
-nc -vz GENESIS_PUBLIC_IP 30303
+nc -vz 10.0.0.2 30303
 sudo journalctl -u gyds-fullnode -n 200 --no-pager | grep -Ei 'bootstrap|connected|handshake|auth|peer|dial|failed'
 curl -sS http://127.0.0.1:8545/api/node-id | jq
 curl -sS http://127.0.0.1:8545/api/peers | jq
