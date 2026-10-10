@@ -9,12 +9,25 @@ A self-hosted, Ethereum-compatible PoS blockchain full node written in Go. Provi
 
 ## How to run
 
-Requires Go 1.25 or newer. Replit is configured to use Go 1.25.
+Requires Go 1.25 or newer. Replit is configured to use the `go-1.25` module.
 
 ```
 GOTOOLCHAIN=local GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_NODE_MODE=full GYDS_DATA_DIR=./data go run . start
 ```
 Or use the "Start application" workflow (already configured).
+
+The workflow loads `.env` when present and runs `GOTOOLCHAIN=local go run . start`
+with the dashboard forced to port 5000 for Replit Preview. With no `.env`, the
+node uses its existing defaults: full mode, chain ID 198282, and `./data` storage.
+Open `/setup` in Preview to configure the node; wallet and validator credentials
+must be supplied or generated through the existing setup flow, not invented.
+Running the dashboard does not by itself confirm synchronization with peers.
+
+To check the imported project:
+```bash
+GOTOOLCHAIN=local go test ./...
+curl https://$REPLIT_DEV_DOMAIN/health
+```
 
 ## Node modes (set via GYDS_NODE_MODE)
 | Mode | Description |
