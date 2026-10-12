@@ -60,7 +60,7 @@
       </section>
       <aside class="card">
         <div class="peer-head"><h2>Connected nodes</h2><span class="count" id="peerCount">0 connected</span></div>
-        <div class="sub">Live authorized P2P connections. Refreshes every 5 seconds.</div>
+        <div class="sub">Live authorized P2P connections, not just saved peer addresses. Refreshes every 5 seconds.</div>
         <div class="presence">
           <div class="metric"><div class="metric-label">Sync status</div><div class="metric-value" id="syncStatus">Checking…</div></div>
           <div class="metric"><div class="metric-label">Local height</div><div class="metric-value" id="localHeight">—</div></div>
@@ -210,9 +210,12 @@ async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configN
           ?'Node ID unavailable — RPC mode has P2P disabled. Choose Full, Lite, Sync, Boost, Genesis, or Validator to enable P2P.'
           :'Node ID unavailable — start a P2P-enabled node and configure its data directory.';
       }
-      $('peerList').innerHTML=peers.length
-        ?peers.map(x=>`<div class="peer"><div class="peer-top"><span class="peer-id">${esc(x.nodeId||x.addr)}</span><span class="peer-mode">${esc(x.nodeMode||'unknown')}</span><button class="btn ghost" style="padding:4px 8px;font-size:10px" onclick="removePeer('${encodeURIComponent(x.addr)}')">Remove</button></div><div class="peer-meta">${esc(x.addr)} · height ${Number(x.height||0).toLocaleString()} · ${x.authorized?'authorized':'pending'}</div></div>`).join('')
-        :'<div class="empty">No connected nodes yet. Add a peer above, then click Apply &amp; Restart Node.</div>';
+       const configured=String(cfg.bootstrapNodes||'').split(/[,\n\r]+/).map(cleanPeerAddress).filter(Boolean);
+       $('peerList').innerHTML=peers.length
+         ?peers.map(x=>`<div class="peer"><div class="peer-top"><span class="peer-id">${esc(x.nodeId||x.addr)}</span><span class="peer-mode">${esc(x.nodeMode||'unknown')}</span><button class="btn ghost" style="padding:4px 8px;font-size:10px" onclick="removePeer('${encodeURIComponent(x.addr)}')">Remove</button></div><div class="peer-meta">${esc(x.addr)} · height ${Number(x.height||0).toLocaleString()} · ${x.authorized?'authorized':'pending'}</div></div>`).join('')
+         :configured.length
+           ?`<div class="empty"><strong>Saved peers (${configured.length}):</strong> ${configured.map(esc).join(', ')}<br>No live authorized connection yet. Check that the peer is reachable, both nodes use the same chain and genesis, and each operator allows the other node ID. Check the node service logs for handshake errors.</div>`
+           :'<div class="empty">No peers saved. Add a peer, then click Apply &amp; Restart Node.</div>';
     }catch(e){
       $('peerList').innerHTML='<div class="empty">Unable to load peer status.</div>';
       $('syncStatus').textContent='Unavailable';

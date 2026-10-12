@@ -51,9 +51,10 @@ type Server struct {
 	subs     map[string]*subscriber
 	subsMu   sync.RWMutex
 
-	dashPort   int
-	dashRouter *mux.Router
-	dashServer *http.Server
+	dashPort         int
+	dashboardEnabled bool
+	dashRouter       *mux.Router
+	dashServer       *http.Server
 
 	rpcPort   int
 	rpcRouter *mux.Router
@@ -113,12 +114,13 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
 	}
 
 	s := &Server{
-		chain:       chain,
-		dashPort:    dashPort,
-		rpcPort:     rpcPort,
-		externalURL: externalURL,
-		nodeMode:    "full",
-		dataDir:     dataDir,
+		chain:            chain,
+		dashPort:         dashPort,
+		dashboardEnabled: true,
+		rpcPort:          rpcPort,
+		externalURL:      externalURL,
+		nodeMode:         "full",
+		dataDir:          dataDir,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -131,6 +133,16 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
 	s.setupDashboardRoutes()
 	s.setupRPCRoutes()
 	return s
+}
+
+// SetDashboardEnabled controls whether the separate browser dashboard listener
+// is started. JSON-RPC remains available when the dashboard is disabled.
+func (s *Server) SetDashboardEnabled(enabled bool) {
+	s.dashboardEnabled = enabled
+}
+
+func (s *Server) DashboardEnabled() bool {
+	return s.dashboardEnabled
 }
 
 // SetP2P wires the P2P server so the RPC layer can connect to imported nodes.

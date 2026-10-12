@@ -12,6 +12,7 @@
 #    --ws-port PORT         WebSocket port (default: 8546)
 #    --p2p-port PORT        P2P TCP port (default: 30303)
 #    --no-p2p               Do not open a P2P firewall port
+#    --no-dashboard         Do not open the dashboard UI port
 #    --data-dir DIR         Node data directory for access logs
 #    --ufw-only             Configure UFW only; do not install/start optional services
 #    --status               Show active firewall rules and fail2ban bans, then exit
@@ -27,6 +28,7 @@ RPC_PORT="${RPC_PORT:-8545}"
 WS_PORT="${WS_PORT:-8546}"
 P2P_PORT="${P2P_PORT:-30303}"
 P2P_ENABLED=true
+DASHBOARD_ENABLED=true
 DATA_DIR="${DATA_DIR:-/var/lib/gyds-fullnode}"
 FAIL2BAN_ENABLED=true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     --ws-port)        WS_PORT="$2";        shift 2 ;;
     --p2p-port)       P2P_PORT="$2";       shift 2 ;;
     --no-p2p)         P2P_ENABLED=false;    shift ;;
+    --no-dashboard)   DASHBOARD_ENABLED=false; shift ;;
     --data-dir)       DATA_DIR="$2";       shift 2 ;;
     --no-fail2ban)    FAIL2BAN_ENABLED=false; shift ;;
     --ufw-only)       FAIL2BAN_ENABLED=false; shift ;;
@@ -103,7 +106,9 @@ ufw default allow outgoing
 ufw limit   "${SSH_PORT}/tcp"        comment "SSH (rate-limited)"
 ufw allow   80/tcp                   comment "HTTP"
 ufw allow   443/tcp                  comment "HTTPS"
-ufw allow   "${DASHBOARD_PORT}/tcp"  comment "GYDS Dashboard"
+if $DASHBOARD_ENABLED; then
+  ufw allow "${DASHBOARD_PORT}/tcp" comment "GYDS Dashboard"
+fi
 ufw allow   "${RPC_PORT}/tcp"        comment "GYDS JSON-RPC"
 ufw allow   "${WS_PORT}/tcp"         comment "GYDS WebSocket"
 if $P2P_ENABLED; then
@@ -124,7 +129,11 @@ fi
 
 log "UFW active"
 log "SSH        : port ${SSH_PORT}/tcp  (rate-limited)"
-log "Dashboard  : port ${DASHBOARD_PORT}/tcp"
+if $DASHBOARD_ENABLED; then
+  log "Dashboard  : port ${DASHBOARD_PORT}/tcp"
+else
+  log "Dashboard  : disabled"
+fi
 log "JSON-RPC   : port ${RPC_PORT}/tcp"
 log "WebSocket  : port ${WS_PORT}/tcp"
 if $P2P_ENABLED; then

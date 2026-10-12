@@ -163,6 +163,15 @@ set +a
 GYDS_CHAIN_ID="${GYDS_CHAIN_ID:-198282}"
 GYDS_NODE_MODE="${GYDS_NODE_MODE:-full}"
 GYDS_DASHBOARD_PORT="${GYDS_DASHBOARD_PORT:-5000}"
+_dashboard_setting_was_configured="${GYDS_DASHBOARD_ENABLED+x}"
+GYDS_DASHBOARD_ENABLED="${GYDS_DASHBOARD_ENABLED:-true}"
+if [[ "$_dashboard_setting_was_configured" != "x" && -f "${INSTALL_DIR}/.env" ]]; then
+  _saved_dashboard_enabled="$(sed -n 's/^GYDS_DASHBOARD_ENABLED=//p' "${INSTALL_DIR}/.env" | tail -n 1 | tr -d "\"'[:space:]")"
+  if [[ -n "$_saved_dashboard_enabled" ]]; then
+    GYDS_DASHBOARD_ENABLED="$_saved_dashboard_enabled"
+    _dashboard_setting_was_configured=x
+  fi
+fi
 GYDS_RPC_PORT="${GYDS_RPC_PORT:-8545}"
 GYDS_WS_PORT="${GYDS_WS_PORT:-8546}"
 GYDS_P2P_PORT="${GYDS_P2P_PORT:-30303}"
@@ -172,6 +181,23 @@ GYDS_LOG_LEVEL="${GYDS_LOG_LEVEL:-info}"
 GYDS_LOG_FORMAT="${GYDS_LOG_FORMAT:-json}"
 GYDS_SSH_PORT="${GYDS_SSH_PORT:-22}"
 GYDS_STORAGE_LIMIT_GB="${GYDS_STORAGE_LIMIT_GB:-50}"
+
+# Offer a dashboard choice during a fresh interactive install. Automation and
+# upgrades remain non-interactive; an explicit environment value always wins.
+if [[ -t 0 && "$_dashboard_setting_was_configured" != "x" && \
+      ! -f "${INSTALL_DIR}/.env" ]] && ! $IS_UPDATE; then
+  read -r -p "Install the web dashboard UI too? [Y/n]: " _dashboard_choice
+  case "${_dashboard_choice,,}" in
+    n|no) GYDS_DASHBOARD_ENABLED=false ;;
+    ""|y|yes) GYDS_DASHBOARD_ENABLED=true ;;
+    *) die "Answer yes or no to the dashboard UI question." ;;
+  esac
+fi
+case "${GYDS_DASHBOARD_ENABLED,,}" in
+  true|1|yes|on) GYDS_DASHBOARD_ENABLED=true ;;
+  false|0|no|off) GYDS_DASHBOARD_ENABLED=false ;;
+  *) die "GYDS_DASHBOARD_ENABLED must be true or false." ;;
+esac
 
 GYDS_NETWORK_CONFIGURED="${GYDS_NETWORK:-}"
 if [[ -n "$GYDS_NETWORK_CONFIGURED" ]]; then
@@ -270,6 +296,11 @@ case "$GYDS_NODE_MODE" in
     fi
     ;;
 esac
+if [[ "$GYDS_DASHBOARD_ENABLED" == "true" ]]; then
+  DASHBOARD_FIREWALL_ENABLED=true
+else
+  DASHBOARD_FIREWALL_ENABLED=false
+fi
 
 # Keep testnode private even if an operator copied a production .env.
 if [[ "$GYDS_NODE_MODE" == "testnode" ]]; then
@@ -661,6 +692,11 @@ if [[ $EUID -eq 0 ]]; then
   log "Binary installed to: ${BINARY_PATH}"
 
   mkdir -p "$INSTALL_DIR"
+  # Admin Node applies settings by atomically replacing the runtime .env.
+  # Keep the file owner-only while allowing the service group to create and
+  # rename its temporary file inside this directory.
+  chown root:"$APP_GROUP" "$INSTALL_DIR"
+  chmod 2770 "$INSTALL_DIR"
   if [[ ! -f "${INSTALL_DIR}/.env" ]] || $IS_UPDATE; then
     cp "$ENV_FILE" "${INSTALL_DIR}/.env"
     chmod 640 "${INSTALL_DIR}/.env"
@@ -697,6 +733,13 @@ if [[ $EUID -eq 0 ]]; then
   else
     printf 'GYDS_NODE_MODE=%s\n' "$GYDS_NODE_MODE" >> "${INSTALL_DIR}/.env"
   fi
+  if grep -q '^GYDS_DASHBOARD_ENABLED=' "${INSTALL_DIR}/.env"; then
+    sed -i "s|^GYDS_DASHBOARD_ENABLED=.*|GYDS_DASHBOARD_ENABLED=${GYDS_DASHBOARD_ENABLED}|" "${INSTALL_DIR}/.env"
+  else
+    printf 'GYDS_DASHBOARD_ENABLED=%s\n' "$GYDS_DASHBOARD_ENABLED" >> "${INSTALL_DIR}/.env"
+  fi
+  chown root:"$APP_GROUP" "${INSTALL_DIR}/.env"
+  chmod 640 "${INSTALL_DIR}/.env"
 
   mkdir -p "$LOG_DIR"
   chown "${APP_USER}:${APP_USER}" "$LOG_DIR"       2>/dev/null || true
@@ -748,6 +791,9 @@ elif [[ $EUID -ne 0 ]]; then
   else
     _manual_firewall_args+=(--no-p2p)
   fi
+  if ! $DASHBOARD_FIREWALL_ENABLED; then
+    _manual_firewall_args+=(--no-dashboard)
+  fi
   printf -v _manual_firewall_command '%q ' sudo bash "${SCRIPT_DIR}/setup-firewall.sh" "${_manual_firewall_args[@]}"
   warn "  ${_manual_firewall_command}"
 elif ! command -v ufw &>/dev/null; then
@@ -764,6 +810,9 @@ elif ! command -v ufw &>/dev/null; then
   else
     _missing_ufw_args+=(--no-p2p)
   fi
+  if ! $DASHBOARD_FIREWALL_ENABLED; then
+    _missing_ufw_args+=(--no-dashboard)
+  fi
   printf -v _missing_ufw_command '%q ' sudo bash "${SCRIPT_DIR}/setup-firewall.sh" "${_missing_ufw_args[@]}"
   warn "After installing UFW, run: ${_missing_ufw_command}"
 else
@@ -779,6 +828,9 @@ else
     _firewall_args+=(--p2p-port "${GYDS_P2P_PORT}")
   else
     _firewall_args+=(--no-p2p)
+  fi
+  if ! $DASHBOARD_FIREWALL_ENABLED; then
+    _firewall_args+=(--no-dashboard)
   fi
   if [[ "${GYDS_ENABLE_FAIL2BAN:-true}" != "true" ]]; then
     _firewall_args+=(--no-fail2ban)
@@ -818,6 +870,8 @@ Environment=GYDS_WS_PORT=${GYDS_WS_PORT}
 Environment=GYDS_P2P_PORT=${GYDS_P2P_PORT}
 Environment=GYDS_DATA_DIR=${GYDS_DATA_DIR}
 Environment=GYDS_NODE_MODE=${GYDS_NODE_MODE}
+Environment=GYDS_DASHBOARD_ENABLED=${GYDS_DASHBOARD_ENABLED}
+Environment=GYDS_ENV_FILE=${INSTALL_DIR}/.env
 ExecStart=${BINARY_PATH} start
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
@@ -837,7 +891,7 @@ LockPersonality=true
 RestrictNamespaces=true
 RestrictRealtime=true
 SystemCallArchitectures=native
-ReadWritePaths=${GYDS_DATA_DIR} ${LOG_DIR}
+ReadWritePaths=${GYDS_DATA_DIR} ${LOG_DIR} ${INSTALL_DIR}
 
 # Logging
 StandardOutput=append:${LOG_DIR}/node.log
@@ -952,12 +1006,16 @@ if ! $_rpc_healthy; then
 fi
 
 # Dashboard check
-_dash_code=$(curl -s -o /dev/null -w "%{http_code}" \
-  "http://localhost:${GYDS_DASHBOARD_PORT}/" 2>/dev/null || echo "000")
-if [[ "$_dash_code" =~ ^(200|301|302)$ ]]; then
-  log "Dashboard is reachable on port ${GYDS_DASHBOARD_PORT}"
+if $DASHBOARD_FIREWALL_ENABLED; then
+  _dash_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    "http://localhost:${GYDS_DASHBOARD_PORT}/" 2>/dev/null || echo "000")
+  if [[ "$_dash_code" =~ ^(200|301|302)$ ]]; then
+    log "Dashboard is reachable on port ${GYDS_DASHBOARD_PORT}"
+  else
+    warn "Dashboard not responding on port ${GYDS_DASHBOARD_PORT} (HTTP ${_dash_code})."
+  fi
 else
-  warn "Dashboard not responding on port ${GYDS_DASHBOARD_PORT} (HTTP ${_dash_code})."
+  info "Dashboard UI is disabled; only the node APIs are installed."
 fi
 
 # WebSocket check (curl sends an upgrade request and expects HTTP 101)
@@ -983,8 +1041,12 @@ echo -e "║       ✓  GYDS Chain Full Node — Deployed Successfully         �
 echo -e "╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  ${BOLD}Endpoints${NC}"
-echo -e "  Dashboard :  http://${_host_ip}:${GYDS_DASHBOARD_PORT}/"
-echo -e "  Setup     :  http://${_host_ip}:${GYDS_DASHBOARD_PORT}/setup"
+if $DASHBOARD_FIREWALL_ENABLED; then
+  echo -e "  Dashboard :  http://${_host_ip}:${GYDS_DASHBOARD_PORT}/"
+  echo -e "  Setup     :  http://${_host_ip}:${GYDS_DASHBOARD_PORT}/setup"
+else
+  echo -e "  Dashboard :  disabled"
+fi
 echo -e "  JSON-RPC  :  http://${_host_ip}:${GYDS_RPC_PORT}/"
 echo -e "  WebSocket :  ws://${_host_ip}:${GYDS_WS_PORT}/"
 echo -e "  P2P       :  ${_host_ip}:${GYDS_P2P_PORT}"

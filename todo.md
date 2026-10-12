@@ -127,6 +127,8 @@ the deployment failure shown in the uploaded screenshot.
   convergence, process restart recovery, automated retry behavior, and peer
   discovery if/when a discovery protocol is implemented. Current tests do not
   prove production multi-host connectivity or complete chain synchronization.
+- [x] Add coverage for retrying an unavailable bootstrap peer and restoring
+  persisted native chain state and the transaction index after reopening.
 - [ ] P1 — Add production monitoring and alerting for node/RPC availability,
   sync lag, peer count, validator duties, disk, CPU, RAM, network, and
   repeated restarts; current dashboard health is not external alerting.

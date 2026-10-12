@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"sync/atomic"
+	"testing"
+	"time"
+)
 
 func TestEnsureSyncCaughtUp(t *testing.T) {
 	tests := []struct {
@@ -22,5 +28,49 @@ func TestEnsureSyncCaughtUp(t *testing.T) {
 					tt.localHeight, tt.networkHeight, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestBootstrapRetryLoopRetriesUntilPeerIsConnected(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var attempts atomic.Int32
+	var connected atomic.Bool
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		bootstrapRetryLoop(
+			ctx,
+			"peer.example:30303",
+			func(string) bool { return connected.Load() },
+			func(string) error {
+				if attempts.Add(1) == 1 {
+					return errors.New("peer temporarily offline")
+				}
+				connected.Store(true)
+				return nil
+			},
+			time.Millisecond,
+			4*time.Millisecond,
+		)
+	}()
+
+	deadline := time.After(time.Second)
+	for !connected.Load() {
+		select {
+		case <-deadline:
+			cancel()
+			t.Fatalf("bootstrap retry did not recover after %d dial attempts", attempts.Load())
+		case <-time.After(time.Millisecond):
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("bootstrap retry loop did not stop after cancellation")
+	}
+	if got := attempts.Load(); got < 2 {
+		t.Fatalf("dial attempts = %d, want at least 2", got)
 	}
 }

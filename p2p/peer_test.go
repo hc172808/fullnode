@@ -217,6 +217,9 @@ func TestTCPMultipleBootstrapPeersServeBlocksAndReconnect(t *testing.T) {
 		return local.PeerCount() == 2 && primary.PeerCount() == 1 &&
 			secondary.PeerCount() == 1 && local.MaxPeerHeight() == 12
 	})
+	if !local.IsConnectedTo(primaryAddr) || !local.IsConnectedTo("tcp://"+secondaryAddr) {
+		t.Fatal("connected bootstrap endpoints were not recognized")
+	}
 	peers := local.Peers()
 	if len(peers) != 2 {
 		t.Fatalf("local peer list has %d entries, want two", len(peers))
@@ -256,6 +259,9 @@ func TestTCPMultipleBootstrapPeersServeBlocksAndReconnect(t *testing.T) {
 	waitForPeerState(t, "primary disconnect cleanup", func() bool {
 		return local.PeerCount() == 1 && primary.PeerCount() == 0
 	})
+	if local.IsConnectedTo(primaryAddr) {
+		t.Fatal("disconnected bootstrap endpoint is still reported as connected")
+	}
 	if err := local.ConnectTo(primaryAddr); err != nil {
 		t.Fatalf("reconnect to primary bootstrap: %v", err)
 	}

@@ -707,6 +707,23 @@ func (s *Server) Peers() []PeerStatus {
 	return out
 }
 
+// IsConnectedTo reports whether an authorized live peer is connected at the
+// configured host:port. DNS names are resolved before comparison so bootstrap
+// entries can be checked against the actual remote socket endpoint.
+func (s *Server) IsConnectedTo(addr string) bool {
+	expected, err := net.ResolveTCPAddr("tcp", NormalizeAddr(addr))
+	if err != nil {
+		return false
+	}
+	for _, peer := range s.Peers() {
+		actual, err := net.ResolveTCPAddr("tcp", peer.Addr)
+		if err == nil && expected.Port == actual.Port && expected.IP.Equal(actual.IP) {
+			return true
+		}
+	}
+	return false
+}
+
 // NormalizeAddr strips the optional tcp:// scheme from a peer address.
 func NormalizeAddr(addr string) string {
 	addr = strings.TrimPrefix(addr, "tcp://")

@@ -20,10 +20,11 @@ type Config struct {
 	P2PBootstrap     []string
 	MaxPeers         int
 
-	RPCPort       int
-	RPCHost       string
-	RPCEnabled    bool
-	DashboardPort int
+	RPCPort          int
+	RPCHost          string
+	RPCEnabled       bool
+	DashboardEnabled bool
+	DashboardPort    int
 
 	WSPort    int
 	WSEnabled bool
@@ -57,6 +58,7 @@ func DefaultConfig() *Config {
 		MaxPeers:         25,
 		RPCPort:          8545,
 		DashboardPort:    5000,
+		DashboardEnabled: true,
 		RPCHost:          "0.0.0.0",
 		RPCEnabled:       true,
 		WSPort:           8546,
@@ -150,6 +152,11 @@ func FromEnv() *Config {
 	if v := os.Getenv("GYDS_DASHBOARD_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.DashboardPort = p
+		}
+	}
+	if v := os.Getenv("GYDS_DASHBOARD_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(strings.TrimSpace(v)); err == nil {
+			cfg.DashboardEnabled = enabled
 		}
 	}
 	if v := os.Getenv("GYDS_WS_PORT"); v != "" {

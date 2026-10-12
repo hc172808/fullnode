@@ -197,6 +197,7 @@ func runFullNode(cfg *config.Config) error {
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
+	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -242,6 +243,7 @@ func runLiteNode(cfg *config.Config) error {
 	// Lite nodes serve RPC and dashboard but do NOT produce blocks.
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), liteDataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
+	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
 
 	// Connect to bootstrap peers for header sync only.
 	if len(cfg.P2PBootstrap) > 0 {
@@ -279,6 +281,7 @@ func runRPCNode(cfg *config.Config) error {
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
+	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
 
 	log.Info().
 		Int("rpcPort", cfg.RPCPort).
@@ -307,6 +310,7 @@ func runBoostNode(cfg *config.Config) error {
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
+	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -369,6 +373,7 @@ func runGenesisNode(cfg *config.Config) error {
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
+	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
 			Uint64("number", b.Header.Number).
@@ -582,6 +587,7 @@ func runSyncNode(cfg *config.Config) error {
 
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
+	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
 	rpcSrv.SetP2P(p2pSrv)
 
 	engine.OnNewBlock(func(b *core.Block) {
@@ -630,16 +636,84 @@ func ensureSyncCaughtUp(localHeight, networkHeight uint64) error {
 // has been started. This keeps the dashboard and RPC available while a
 // bootstrap host is slow or temporarily offline.
 func startBootstrapDialers(srv *p2p.Server, addrs []string) {
-	if len(addrs) == 0 {
-		return
+	for _, addr := range addrs {
+		go func(addr string) {
+			bootstrapRetryLoop(
+				context.Background(),
+				addr,
+				srv.IsConnectedTo,
+				func(peerAddr string) error {
+					return connectBootstrapWithRetry(srv, peerAddr)
+				},
+				time.Second,
+				30*time.Second,
+			)
+		}(addr)
 	}
-	go func() {
-		for _, addr := range addrs {
-			if err := connectBootstrapWithRetry(srv, addr); err != nil {
-				log.Warn().Err(err).Str("addr", addr).Msg("Bootstrap connection unavailable; peer can retry from the operator")
+}
+
+// bootstrapRetryLoop keeps a configured peer alive and retries temporary
+// startup/network failures with exponential backoff. The callbacks keep this
+// loop directly testable without requiring external hosts.
+func bootstrapRetryLoop(
+	ctx context.Context,
+	addr string,
+	connected func(string) bool,
+	connect func(string) error,
+	initialDelay, maxDelay time.Duration,
+) {
+	if initialDelay <= 0 {
+		initialDelay = time.Second
+	}
+	if maxDelay < initialDelay {
+		maxDelay = initialDelay
+	}
+	delay := initialDelay
+	for {
+		if !connected(addr) {
+			err := connect(addr)
+			if err != nil {
+				log.Warn().Err(err).Str("addr", addr).Dur("retryIn", delay).Msg("Bootstrap peer unavailable; retrying")
+			} else if !waitForBootstrapConnection(ctx, addr, connected, 5*time.Second) {
+				log.Warn().Str("addr", addr).Dur("retryIn", delay).Msg("Bootstrap TCP dial did not complete an authorized peer handshake; retrying")
+			}
+		} else {
+			delay = initialDelay
+		}
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		if delay < maxDelay {
+			delay *= 2
+			if delay > maxDelay {
+				delay = maxDelay
 			}
 		}
-	}()
+	}
+}
+
+func waitForBootstrapConnection(ctx context.Context, addr string, connected func(string) bool, timeout time.Duration) bool {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if connected(addr) {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-deadline.C:
+			return connected(addr)
+		case <-ticker.C:
+		}
+	}
 }
 
 // ── Validator Node ────────────────────────────────────────────────────────────
@@ -740,6 +814,7 @@ func runTestNode(cfg *config.Config) error {
 
 	rpcSrv := rpc.NewServer(chain, testCfg.DashboardPort, testCfg.RPCPort, int(testCfg.BlockTime.Seconds()), testCfg.DataDir, testCfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(testCfg.NodeMode)
+	rpcSrv.SetDashboardEnabled(testCfg.DashboardEnabled)
 	// Enforce loopback-only binding so the test node is never reachable externally.
 	rpcSrv.SetLoopbackOnly()
 
@@ -772,7 +847,11 @@ func min(a, b int) int {
 
 func serveAndWait(rpcSrv *rpc.Server, chain *core.Chain, engine *consensus.PoSEngine) error {
 	errCh := make(chan error, 2)
-	go func() { errCh <- rpcSrv.StartDashboard() }()
+	if rpcSrv.DashboardEnabled() {
+		go func() { errCh <- rpcSrv.StartDashboard() }()
+	} else {
+		log.Info().Msg("Dashboard UI disabled; JSON-RPC remains available")
+	}
 	go func() { errCh <- rpcSrv.StartRPC() }()
 
 	sig := make(chan os.Signal, 1)

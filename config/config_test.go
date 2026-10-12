@@ -48,6 +48,18 @@ func TestFromEnvNormalizesNodeModeBeforeApplyingTestnodePorts(t *testing.T) {
 	}
 }
 
+func TestDashboardEnabledDefaultsToTrueAndCanBeDisabled(t *testing.T) {
+	t.Setenv("GYDS_DASHBOARD_ENABLED", "")
+	if cfg := FromEnv(); !cfg.DashboardEnabled {
+		t.Fatal("DashboardEnabled defaults to false, want true")
+	}
+
+	t.Setenv("GYDS_DASHBOARD_ENABLED", "false")
+	if cfg := FromEnv(); cfg.DashboardEnabled {
+		t.Fatal("DashboardEnabled = true after explicit false")
+	}
+}
+
 func TestFromEnvSelectsIsolatedTestnetProfile(t *testing.T) {
 	t.Setenv("GYDS_NETWORK", "testnet")
 	t.Setenv("GYDS_CHAIN_ID", "198282")

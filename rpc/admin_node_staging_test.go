@@ -24,6 +24,42 @@ func TestParseBootstrapPeersNormalizesAndDeduplicates(t *testing.T) {
 	}
 }
 
+func TestUpdateEnvFileAtomicallyPreservesUnrelatedSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(path, []byte("GYDS_WALLET_ADDRESS=keep-this\nGYDS_NODE_MODE=full\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GYDS_ENV_FILE", path)
+
+	if err := updateEnvFile(map[string]string{
+		"GYDS_NODE_MODE":       "sync",
+		"GYDS_BOOTSTRAP_NODES": "seed.example.net:30303",
+	}); err != nil {
+		t.Fatalf("updateEnvFile: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(raw)
+	for _, expected := range []string{
+		"GYDS_WALLET_ADDRESS=keep-this",
+		"GYDS_NODE_MODE='sync'",
+		"GYDS_BOOTSTRAP_NODES='seed.example.net:30303'",
+	} {
+		if !strings.Contains(content, expected) {
+			t.Errorf("updated env file missing %q: %s", expected, content)
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Fatalf("updated env permissions = %04o, want 0600", got)
+	}
+}
+
 func TestStagedBootstrapChangesCanBeAppliedOrDiscarded(t *testing.T) {
 	s := &Server{}
 	if err := s.stageBootstrapPeer("mainnet", "tcp://new.example.com:30303"); err != nil {
