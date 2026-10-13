@@ -20,15 +20,16 @@ import (
 // ── Errors ───────────────────────────────────────────────────────────────────
 
 var (
-	ErrTokenNotFound      = errors.New("token: token not found")
-	ErrAccountNotFound    = errors.New("token: token account not found")
-	ErrInsufficientFunds  = errors.New("token: insufficient funds")
-	ErrUnauthorized       = errors.New("token: unauthorized")
-	ErrInvalidAmount      = errors.New("token: amount must be > 0")
-	ErrMintAuthorityFixed = errors.New("token: mint authority is frozen")
-	ErrOverflow           = errors.New("token: arithmetic overflow")
-	ErrBadDecimals        = errors.New("token: decimals must be <= 18")
-	ErrAllowanceExceeded  = errors.New("token: transfer amount exceeds allowance")
+	ErrTokenNotFound        = errors.New("token: token not found")
+	ErrAccountNotFound      = errors.New("token: token account not found")
+	ErrInsufficientFunds    = errors.New("token: insufficient funds")
+	ErrUnauthorized         = errors.New("token: unauthorized")
+	ErrInvalidAmount        = errors.New("token: amount must be > 0")
+	ErrMintAuthorityFixed   = errors.New("token: mint authority is frozen")
+	ErrFreezeAuthorityFixed = errors.New("token: freeze authority is fixed")
+	ErrOverflow             = errors.New("token: arithmetic overflow")
+	ErrBadDecimals          = errors.New("token: decimals must be <= 18")
+	ErrAllowanceExceeded    = errors.New("token: transfer amount exceeds allowance")
 )
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ type TokenInfo struct {
 	Symbol        string   `json:"symbol"`
 	Decimals      uint8    `json:"decimals"`
 	TotalSupply   *big.Int `json:"totalSupply"`
-	MintAuthority string   `json:"mintAuthority"`    // "" means mint is frozen
+	MintAuthority string   `json:"mintAuthority"`   // "" means mint is frozen
 	FreezeAuth    string   `json:"freezeAuthority"` // "" means no freeze
 	Creator       string   `json:"creator"`
 	CreatedAt     int64    `json:"createdAt"`
@@ -52,18 +53,18 @@ type TokenInfo struct {
 
 // TokenAccount holds a user's balance for a specific token.
 type TokenAccount struct {
-	TokenID  TokenID  `json:"tokenId"`
-	Owner    string   `json:"owner"`
-	Balance  *big.Int `json:"balance"`
-	Frozen   bool     `json:"frozen"`
-	Delegate string   `json:"delegate,omitempty"`
+	TokenID   TokenID  `json:"tokenId"`
+	Owner     string   `json:"owner"`
+	Balance   *big.Int `json:"balance"`
+	Frozen    bool     `json:"frozen"`
+	Delegate  string   `json:"delegate,omitempty"`
 	Allowance *big.Int `json:"allowance,omitempty"`
 }
 
 // EventLog is emitted for every state change.
 type EventLog struct {
 	TokenID   TokenID  `json:"tokenId"`
-	Event     string   `json:"event"` // Transfer, Mint, Burn, Approve, Freeze
+	Event     string   `json:"event"` // Transfer, Mint, Burn, Approve, Freeze, Unfreeze, SetMintAuthority, SetFreezeAuthority
 	From      string   `json:"from,omitempty"`
 	To        string   `json:"to,omitempty"`
 	Amount    *big.Int `json:"amount,omitempty"`
@@ -200,12 +201,12 @@ func (p *Program) Transfer(tokenId, from, to string, amount *big.Int, blockNum u
 	}
 
 	p.emit(EventLog{
-		TokenID:  tokenId,
-		Event:    "Transfer",
-		From:     from,
-		To:       to,
-		Amount:   new(big.Int).Set(amount),
-		BlockNum: blockNum,
+		TokenID:   tokenId,
+		Event:     "Transfer",
+		From:      from,
+		To:        to,
+		Amount:    new(big.Int).Set(amount),
+		BlockNum:  blockNum,
 		Timestamp: time.Now().Unix(),
 	})
 	return nil
@@ -402,22 +403,85 @@ func (p *Program) FreezeAccount(tokenId, freezeAuth, target string, freeze bool,
 		return err
 	}
 	acc.Frozen = freeze
-	return p.saveAccount(*acc)
+	if err := p.saveAccount(*acc); err != nil {
+		return err
+	}
+	event := "Unfreeze"
+	if freeze {
+		event = "Freeze"
+	}
+	p.emit(EventLog{
+		TokenID:   tokenId,
+		Event:     event,
+		From:      freezeAuth,
+		To:        target,
+		Authority: freezeAuth,
+		BlockNum:  blockNum,
+		Timestamp: time.Now().Unix(),
+	})
+	return nil
 }
 
-// SetMintAuthority transfers or revokes mint authority.
-func (p *Program) SetMintAuthority(tokenId, currentAuth, newAuth string) error {
+// SetMintAuthority transfers or permanently revokes mint authority.
+// An empty newAuth revokes the authority; a revoked authority cannot be restored.
+func (p *Program) SetMintAuthority(tokenId, currentAuth, newAuth string, blockNum uint64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	info, err := p.getToken(tokenId)
 	if err != nil {
 		return err
 	}
+	if info.MintAuthority == "" {
+		return ErrMintAuthorityFixed
+	}
 	if info.MintAuthority != currentAuth {
 		return ErrUnauthorized
 	}
 	info.MintAuthority = newAuth
-	return p.saveToken(*info)
+	if err := p.saveToken(*info); err != nil {
+		return err
+	}
+	p.emit(EventLog{
+		TokenID:   tokenId,
+		Event:     "SetMintAuthority",
+		From:      currentAuth,
+		To:        newAuth,
+		Authority: currentAuth,
+		BlockNum:  blockNum,
+		Timestamp: time.Now().Unix(),
+	})
+	return nil
+}
+
+// SetFreezeAuthority transfers or permanently revokes freeze authority.
+// An empty newAuth revokes the authority; a revoked authority cannot be restored.
+func (p *Program) SetFreezeAuthority(tokenId, currentAuth, newAuth string, blockNum uint64) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	info, err := p.getToken(tokenId)
+	if err != nil {
+		return err
+	}
+	if info.FreezeAuth == "" {
+		return ErrFreezeAuthorityFixed
+	}
+	if info.FreezeAuth != currentAuth {
+		return ErrUnauthorized
+	}
+	info.FreezeAuth = newAuth
+	if err := p.saveToken(*info); err != nil {
+		return err
+	}
+	p.emit(EventLog{
+		TokenID:   tokenId,
+		Event:     "SetFreezeAuthority",
+		From:      currentAuth,
+		To:        newAuth,
+		Authority: currentAuth,
+		BlockNum:  blockNum,
+		Timestamp: time.Now().Unix(),
+	})
+	return nil
 }
 
 // ── Queries ──────────────────────────────────────────────────────────────────
@@ -456,7 +520,7 @@ func (p *Program) GetAllowance(tokenId, owner, spender string) (*big.Int, error)
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
-func tokenKey(id TokenID) []byte     { return []byte("token/info/" + id) }
+func tokenKey(id TokenID) []byte { return []byte("token/info/" + id) }
 func accountKey(tid, owner string) []byte {
 	return []byte(fmt.Sprintf("token/acc/%s/%s", tid, owner))
 }
