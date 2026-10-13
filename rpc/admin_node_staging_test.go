@@ -60,6 +60,37 @@ func TestUpdateEnvFileAtomicallyPreservesUnrelatedSettings(t *testing.T) {
 	}
 }
 
+func TestUpdateEnvFileIgnoresStaleTemporaryFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	staleTemp := path + ".admin.tmp"
+	if err := os.WriteFile(path, []byte("GYDS_NODE_MODE=full\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(staleTemp, []byte("stale temporary configuration"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GYDS_ENV_FILE", path)
+
+	if err := updateEnvFile(map[string]string{"GYDS_NODE_MODE": "sync"}); err != nil {
+		t.Fatalf("updateEnvFile with stale temporary file: %v", err)
+	}
+	staleContent, err := os.ReadFile(staleTemp)
+	if err != nil {
+		t.Fatalf("read stale temporary file: %v", err)
+	}
+	if string(staleContent) != "stale temporary configuration" {
+		t.Fatalf("stale temporary file was modified: %q", staleContent)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read updated environment file: %v", err)
+	}
+	if !strings.Contains(string(updated), "GYDS_NODE_MODE='sync'") {
+		t.Fatalf("environment file was not updated: %s", updated)
+	}
+}
+
 func TestStagedBootstrapChangesCanBeAppliedOrDiscarded(t *testing.T) {
 	s := &Server{}
 	if err := s.stageBootstrapPeer("mainnet", "tcp://new.example.com:30303"); err != nil {

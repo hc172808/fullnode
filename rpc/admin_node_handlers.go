@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -341,12 +342,33 @@ func updateEnvFile(updates map[string]string) error {
 		}
 	}
 	content := strings.Join(lines, "\n") + "\n"
-	tmp := envPath + ".admin.tmp"
-	if err := os.WriteFile(tmp, []byte(content), 0600); err != nil {
-		return err
+	tmpFile, err := os.CreateTemp(filepath.Dir(envPath), ".env.admin.tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary node configuration file in %s: %w", filepath.Dir(envPath), err)
 	}
-	if err := os.Rename(tmp, envPath); err != nil {
+	tmp := tmpFile.Name()
+	closed := false
+	defer func() {
+		if !closed {
+			_ = tmpFile.Close()
+		}
 		_ = os.Remove(tmp)
+	}()
+	if err := tmpFile.Chmod(0600); err != nil {
+		return fmt.Errorf("secure temporary node configuration file: %w", err)
+	}
+	if _, err := tmpFile.Write([]byte(content)); err != nil {
+		return fmt.Errorf("write temporary node configuration file: %w", err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		return fmt.Errorf("flush temporary node configuration file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		closed = true
+		return fmt.Errorf("close temporary node configuration file: %w", err)
+	}
+	closed = true
+	if err := os.Rename(tmp, envPath); err != nil {
 		return err
 	}
 	return os.Chmod(envPath, 0600)
@@ -415,7 +437,11 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 		updates["GYDS_WALLET_PRIVATE_KEY"] = strings.TrimSpace(c.WalletPrivateKey)
 	}
 	if err := updateEnvFile(updates); err != nil {
-		jsonErr(w, http.StatusInternalServerError, "could not save node configuration: "+err.Error())
+		message := "could not save node configuration: " + err.Error()
+		if os.IsPermission(err) {
+			message += "; the gyds service account needs write access to the installation directory. From the updated project checkout, run `sudo bash deploy.sh --env /opt/gyds-fullnode/.env --no-firewall` to repair permissions without replacing the installed configuration."
+		}
+		jsonErr(w, http.StatusInternalServerError, message)
 		return
 	}
 	if err := config.SaveBootstrapNodes(c.DataDir, bootstrapPeers); err != nil {

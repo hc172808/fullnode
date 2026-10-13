@@ -741,6 +741,12 @@ if [[ $EUID -eq 0 ]]; then
   chown root:"$APP_GROUP" "${INSTALL_DIR}/.env"
   chmod 640 "${INSTALL_DIR}/.env"
 
+  # Verify the service account can create the same kind of temporary file the
+  # admin settings handler uses for atomic .env replacement.
+  _env_write_probe=$(runuser -u "$APP_USER" -- mktemp "${INSTALL_DIR}/.env-write-check.XXXXXX") \
+    || die "The ${APP_USER} service account cannot create files in ${INSTALL_DIR}; admin configuration saves would fail."
+  rm -f "$_env_write_probe"
+
   mkdir -p "$LOG_DIR"
   chown "${APP_USER}:${APP_USER}" "$LOG_DIR"       2>/dev/null || true
   chown "${APP_USER}:${APP_USER}" "$GYDS_DATA_DIR" 2>/dev/null || true
