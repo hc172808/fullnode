@@ -1131,9 +1131,14 @@ coordinated network migration is explicitly approved.
   validator-set/stake updates. Specify validator selection, quorum/finality,
   liveness, equivocation, slashing, recovery, and economic assumptions; obtain
   an independent protocol/security review before production launch.
-- [ ] Prototype the new engine only on isolated testnet data. Do not change the
-  existing persistent testnet or mainnet genesis/history until every operator
-  approves and coordinates a migration.
+- [x] Build an isolated single-validator CometBFT v0.40.0 smoke prototype in a
+  separate Go module, with a temp-only home, loopback P2P/RPC, and a 2B GYDS
+  genesis. It starts, commits empty blocks, answers `/supply`, and recovers its
+  height after restart.
+- [ ] Add a multi-validator test cluster, signed transaction validation, and
+  deterministic GYDS execution. The single-validator smoke test does not prove
+  distributed BFT safety or production readiness. Keep existing mainnet and
+  persistent-testnet genesis/history unchanged until a migration is approved.
 - [ ] Add coordinated, signed protocol-upgrade activation (version signaling,
   activation height, compatibility window, operator notice, and rollback
   boundary). Do not let a normal Git update silently change consensus behavior.

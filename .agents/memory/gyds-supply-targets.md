@@ -7,7 +7,9 @@ The user requested initial native GYDS supplies of 3,000,000,000 GYDS on
 mainnet and 2,000,000,000 GYDS on persistent testnet chain ID 198281. This is a
 target for a coordinated genesis/migration, not permission to reset existing
 chain data. The current code still specifies 1,000,000,000 GYDS for both
-canonical profiles; disposable chain ID 31337 is separate.
+canonical profiles; the isolated CometBFT prototype uses 2B GYDS without
+changing either canonical profile. The user chose to preserve existing chain
+histories while staging these targets. Disposable chain ID 31337 is separate.
 
 **Why:** the user explicitly stated these supply targets.
 
