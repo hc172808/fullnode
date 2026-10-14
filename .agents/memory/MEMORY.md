@@ -16,3 +16,4 @@
 - [GYD USD target and token logos](gyd-usd-target-and-token-logos.md) — configure the USD target in `.env` as informational metadata; keep token and network logos distinct
 - [Genesis and full-node launch priority](node-launch-priority.md) — prioritize bringing up the genesis node and its full-node peers
 - [Go archive checksum verification](go-checksum-verification.md) — verify against Go's release JSON and report expected/actual hashes on mismatch
+- [Consensus engine direction](consensus-engine-direction.md) — use a mature BFT engine; keep GYDS validator economics and network migration decisions explicit

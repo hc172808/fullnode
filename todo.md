@@ -1109,10 +1109,17 @@ coordinated network migration is explicitly approved.
   execution, storage, logs, revert behavior, gas schedules, block context,
   account/code/storage roots, upgrades, and historical reads. Run suitable
   Ethereum execution tests and third-party wallet/tooling fixtures.
-- [ ] Decide whether consensus is a custom PoS protocol or an Ethereum
-  consensus-compatible protocol. Document validator selection, quorum/finality,
+- [x] Select the consensus direction: adopt a mature BFT engine rather than
+  extending the current custom proposer or moving to Ethereum consensus.
+- [ ] Select and review the concrete engine and GYDS application integration.
+  CometBFT v0.40.0 is the leading candidate: its release supports this project's
+  Go 1.25 baseline, while GYDS must still implement deterministic execution and
+  validator-set/stake updates. Specify validator selection, quorum/finality,
   liveness, equivocation, slashing, recovery, and economic assumptions; obtain
   an independent protocol/security review before production launch.
+- [ ] Prototype the new engine only on isolated testnet data. Do not change the
+  existing persistent testnet or mainnet genesis/history until every operator
+  approves and coordinates a migration.
 - [ ] Add coordinated, signed protocol-upgrade activation (version signaling,
   activation height, compatibility window, operator notice, and rollback
   boundary). Do not let a normal Git update silently change consensus behavior.
