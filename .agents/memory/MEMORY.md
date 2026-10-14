@@ -17,3 +17,4 @@
 - [Genesis and full-node launch priority](node-launch-priority.md) — prioritize bringing up the genesis node and its full-node peers
 - [Go archive checksum verification](go-checksum-verification.md) — verify against Go's release JSON and report expected/actual hashes on mismatch
 - [Consensus engine direction](consensus-engine-direction.md) — use a mature BFT engine; keep GYDS validator economics and network migration decisions explicit
+- [GYDS supply targets](gyds-supply-targets.md) — requested 3B mainnet and 2B persistent-testnet genesis supplies require coordinated migration

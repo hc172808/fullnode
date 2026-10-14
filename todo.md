@@ -745,6 +745,18 @@ Validation completed on **2026-08-09**:
 
 - [x] Set the native GYDS genesis supply to exactly **1,000,000,000 GYDS**.
 
+### Requested native GYDS genesis targets — pending coordinated migration
+
+- [ ] Target **3,000,000,000 GYDS** for mainnet and **2,000,000,000 GYDS**
+  for persistent testnet chain ID `198281`.
+- [ ] Keep disposable developer chain ID `31337` separate from persistent
+  testnet; no change to its supply has been requested.
+- [ ] Confirm whether to scale the current `50/30/20` allocation split
+  proportionally or provide different recipient addresses and amounts.
+- [ ] Do not change existing genesis profiles or chain data until a coordinated
+  migration plan is approved. The running local mainnet already has stored
+  blocks, and changing its genesis changes its hash.
+
 ## Plan 9 — Wallet persistence, branding, and the two-coin model
 
 ### Confirmed behavior
@@ -760,8 +772,9 @@ Validation completed on **2026-08-09**:
   ERC-20 contract address on Ethereum.
 - [x] Document that GYD currently has no contract address and is not yet
   wallet-importable as a standard ERC-20 token.
-- [x] Document the current genesis supplies: 1,000,000,000 GYDS and
-  10,000,000,000 GYD.
+- [x] Document the current code's genesis supplies: 1,000,000,000 GYDS and
+  10,000,000,000 GYD. The requested future GYDS targets are 3B mainnet and
+  2B persistent testnet, pending coordinated migration.
 - [ ] Verify `/gyds-network.json`, `/gyd-token.json`, and `/logo.png` from the
   public HTTPS RPC origin in each target wallet. Metadata availability does
   not guarantee that a wallet will display the icon.
@@ -861,8 +874,9 @@ Validation completed on **2026-08-09**:
   **10,000,000,000 GYD** genesis supply.
 - [x] Label the 10B GYD amount as initial genesis supply, not a maximum supply
   cap. Any change to genesis supply requires a coordinated network migration.
-- [x] Split the 1B GYDS genesis allocation across the three genesis validator
-  addresses: 500M, 300M, and 200M.
+- [x] Current code splits its 1B GYDS genesis allocation across three genesis
+  addresses: 500M, 300M, and 200M. See the pending target and allocation
+  confirmation above before changing those amounts.
 - [x] Resolve relative data directories to absolute paths before writing a
   systemd unit.
 - [x] Reject whitespace/newline data paths that cannot be represented safely in
