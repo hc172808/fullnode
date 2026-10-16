@@ -129,6 +129,11 @@ the deployment failure shown in the uploaded screenshot.
   prove production multi-host connectivity or complete chain synchronization.
 - [x] Add coverage for retrying an unavailable bootstrap peer and restoring
   persisted native chain state and the transaction index after reopening.
+- [x] Verify authenticated local TCP transfer of real native chain blocks,
+  account balances/nonces, history and transaction indexes; reopen the follower
+  with its original identity, catch up after the source advances, and verify
+  state again after reopening. This does not cover EVM state-root convergence,
+  separate-process restart, discovery, or production multi-host connectivity.
 - [ ] P1 — Add production monitoring and alerting for node/RPC availability,
   sync lag, peer count, validator duties, disk, CPU, RAM, network, and
   repeated restarts; current dashboard health is not external alerting.

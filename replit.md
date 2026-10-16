@@ -17,11 +17,20 @@ GOTOOLCHAIN=local GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_NODE_MODE=ful
 Or use the "Start application" workflow (already configured).
 
 The workflow loads `.env` when present and runs `GOTOOLCHAIN=local go run . start`
-with the dashboard forced to port 5000 for Replit Preview. With no `.env`, the
-node uses its existing defaults: full mode, chain ID 198282, and `./data` storage.
+with the dashboard forced to port 5000 for Replit Preview. Unless explicitly
+configured otherwise, the workflow selects persistent testnet: full mode,
+chain ID 198281, and `./data/testnet` storage. Existing mainnet data in `./data`
+is left untouched. Direct CLI defaults remain mainnet; for the same safe local
+profile, prefix the command above with `GYDS_NETWORK=testnet`.
 Open `/setup` in Preview to configure the node; wallet and validator credentials
 must be supplied or generated through the existing setup flow, not invented.
 Running the dashboard does not by itself confirm synchronization with peers.
+Peer authorization remains enabled; a node with no approved peers runs alone.
+The local authenticated replay/reopen test can be run with:
+`GOTOOLCHAIN=local go test ./p2p -run TestAuthenticatedChainReplayAndRestartRecovery -v`.
+It checks native balances, nonces, history, transaction indexes, and persistent
+node identity over real local TCP connections, not public-network connectivity,
+EVM state-root convergence, consensus safety, or separate-process recovery.
 
 To check the imported project:
 ```bash
