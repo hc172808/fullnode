@@ -210,8 +210,9 @@
           <select id="networkProfile" onchange="selectNetwork(this.value)">
             <option value="mainnet">GYDS Mainnet</option>
             <option value="testnet">GYDS Testnet — isolated</option>
+            <option value="testnet3b">GYDS Testnet 3B — new network</option>
           </select>
-          <div class="field-hint">Mainnet uses chain ID 198282 and keeps its current data. Testnet uses 198281 with a separate data directory.</div>
+          <div class="field-hint">Mainnet (198282) and the existing testnet (198281) are unchanged. The new 198284 testnet has separate data, 3B GYDS at genesis, and zero GYD at genesis.</div>
         </div>
         <div class="field">
           <label>Chain ID</label>
@@ -743,10 +744,11 @@ function goStep(n) {
 function selectNetwork(profile) {
   const profiles = {
     mainnet: { chainId: '198282', name: 'GYDS Chain', dataDir: './data' },
-    testnet: { chainId: '198281', name: 'GYDS Testnet', dataDir: './data/testnet' }
+    testnet: { chainId: '198281', name: 'GYDS Testnet', dataDir: './data/testnet' },
+    testnet3b: { chainId: '198284', name: 'GYDS Testnet 3B', dataDir: './data/testnet3b' }
   };
   if (!profiles[profile]) return;
-  const previousDefault = networkProfile === 'testnet' ? './data/testnet' : './data';
+  const previousDefault = profiles[networkProfile]?.dataDir || './data';
   const dataDir = document.getElementById('dataDir');
   networkProfile = profile;
   document.getElementById('networkProfile').value = profile;

@@ -132,8 +132,8 @@ var GydsTestGenesis = &GenesisConfig{
 }
 
 // GenesisForNetwork returns the immutable genesis profile selected by the
-// operator. The existing mainnet genesis remains unchanged; the persistent
-// testnet receives its own chain ID and timestamp so its genesis hash differs.
+// operator. Existing mainnet and testnet profiles remain unchanged; each
+// persistent testnet profile receives its own chain ID and timestamp.
 func GenesisForNetwork(network string) (*GenesisConfig, error) {
 	switch strings.ToLower(strings.TrimSpace(network)) {
 	case "mainnet":
@@ -144,8 +144,28 @@ func GenesisForNetwork(network string) (*GenesisConfig, error) {
 		testnet.NetworkName = "GYDS Testnet"
 		testnet.Timestamp = GydsGenesis.Timestamp + 1
 		return &testnet, nil
+	case "testnet3b":
+		testnet := *GydsTestGenesis
+		testnet.ChainID = 198284
+		testnet.NetworkName = "GYDS Testnet 3B"
+		testnet.Timestamp = GydsGenesis.Timestamp + 2
+		testnet.Alloc = []GenesisAlloc{
+			{Address: "0x0000000000000000000000000000000000000001", Balance: e18M(1500)},
+			{Address: "0x0000000000000000000000000000000000000002", Balance: e18M(900)},
+			{Address: "0x0000000000000000000000000000000000000003", Balance: e18M(600)},
+		}
+		// GYD is defined for wallet metadata, but is not pre-issued on this
+		// network. Issuance requires a separate, authorized minting design.
+		testnet.Tokens = []TokenDefinition{{
+			Symbol:       "GYD",
+			Name:         "GYD Stablecoin",
+			Decimals:     18,
+			IsStablecoin: true,
+			TotalSupply:  big.NewInt(0),
+		}}
+		return &testnet, nil
 	default:
-		return nil, fmt.Errorf("unsupported GYDS_NETWORK %q (expected mainnet or testnet)", network)
+		return nil, fmt.Errorf("unsupported GYDS_NETWORK %q (expected mainnet, testnet, or testnet3b)", network)
 	}
 }
 

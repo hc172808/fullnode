@@ -192,8 +192,11 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	case "testnet":
 		cfg.ChainID = "198281"
 		cfg.NetworkName = "GYDS Testnet"
+	case "testnet3b":
+		cfg.ChainID = "198284"
+		cfg.NetworkName = "GYDS Testnet 3B"
 	default:
-		jsonErr(w, http.StatusBadRequest, "network must be mainnet or testnet")
+		jsonErr(w, http.StatusBadRequest, "network must be mainnet, testnet, or testnet3b")
 		return
 	}
 	cfg.NodeMode = def(cfg.NodeMode, "full")

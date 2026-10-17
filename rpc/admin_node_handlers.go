@@ -394,8 +394,15 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 		}
 		c.ChainID = 198281
 		c.NetworkName = "GYDS Testnet"
+	case "testnet3b":
+		if c.NodeMode == "testnode" {
+			jsonErr(w, http.StatusBadRequest, "the disposable Test Node always uses chain ID 31337; select another node mode for the persistent testnet")
+			return
+		}
+		c.ChainID = 198284
+		c.NetworkName = "GYDS Testnet 3B"
 	default:
-		jsonErr(w, http.StatusBadRequest, "network must be mainnet or testnet")
+		jsonErr(w, http.StatusBadRequest, "network must be mainnet, testnet, or testnet3b")
 		return
 	}
 	c.DataDir = config.ProfileDataDir(c.Network, c.DataDir)

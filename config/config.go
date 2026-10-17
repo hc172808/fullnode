@@ -118,6 +118,10 @@ func FromEnv() *Config {
 			cfg.ChainID = 198281
 			cfg.NetworkName = "GYDS Testnet"
 			cfg.DataDir = "./data/testnet"
+		case "testnet3b":
+			cfg.ChainID = 198284
+			cfg.NetworkName = "GYDS Testnet 3B"
+			cfg.DataDir = "./data/testnet3b"
 		}
 	} else if v := os.Getenv("GYDS_CHAIN_ID"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
@@ -245,34 +249,73 @@ func FromEnv() *Config {
 	return cfg
 }
 
-// ProfileDataDir maps a configured base directory to an isolated profile
-// directory, and maps the testnet suffix back when returning to mainnet.
+// ProfileDataDir maps a configured base directory to an isolated network
+// profile directory and maps profile-specific paths back to their shared base.
 func ProfileDataDir(network, configuredDir string) string {
-	cleanDir := filepath.Clean(strings.TrimSpace(configuredDir))
-	switch network {
-	case "testnet":
-		switch cleanDir {
-		case ".", "data", "/var/lib/gyds-fullnode":
-			if filepath.IsAbs(cleanDir) {
-				return "/var/lib/gyds-fullnode-testnet"
+	network = strings.ToLower(strings.TrimSpace(network))
+	rawDir := strings.TrimSpace(configuredDir)
+	if rawDir == "" {
+		return configuredDir
+	}
+	cleanDir := filepath.Clean(rawDir)
+	if network != "mainnet" && network != "testnet" && network != "testnet3b" {
+		return configuredDir
+	}
+
+	baseDir, currentProfile, separator := stripProfileSuffix(cleanDir)
+	if network == "mainnet" {
+		if currentProfile == "" {
+			return configuredDir
+		}
+		if baseDir == "data" {
+			return "./data"
+		}
+		if baseDir == "." || baseDir == "" {
+			return "./data"
+		}
+		return baseDir
+	}
+	if currentProfile == network {
+		return cleanDir
+	}
+	if currentProfile != "" {
+		if baseDir == "data" {
+			return filepath.Join("./data", network)
+		}
+		if baseDir == "." || baseDir == "" {
+			return filepath.Join("./data", network)
+		}
+		if baseDir == "/var/lib/gyds-fullnode" {
+			return baseDir + "-" + network
+		}
+		if separator == "-" {
+			return baseDir + "-" + network
+		}
+		return filepath.Join(baseDir, network)
+	}
+
+	switch cleanDir {
+	case ".", "data":
+		return filepath.Join("./data", network)
+	case "/var/lib/gyds-fullnode":
+		return cleanDir + "-" + network
+	default:
+		return filepath.Join(cleanDir, network)
+	}
+}
+
+func stripProfileSuffix(dir string) (baseDir, profile, separator string) {
+	for _, known := range []string{"testnet3b", "testnet"} {
+		for _, sep := range []string{string(filepath.Separator), "-"} {
+			suffix := sep + known
+			if strings.HasSuffix(dir, suffix) {
+				base := strings.TrimSuffix(dir, suffix)
+				if base == "" {
+					base = "."
+				}
+				return base, known, sep
 			}
-			return "./data/testnet"
-		}
-		if strings.HasSuffix(cleanDir, "/testnet") || strings.HasSuffix(cleanDir, "-testnet") {
-			return cleanDir
-		}
-		return filepath.Join(cleanDir, "testnet")
-	case "mainnet":
-		if strings.HasSuffix(cleanDir, "/testnet") {
-			mainnetDir := strings.TrimSuffix(cleanDir, "/testnet")
-			if mainnetDir == "data" {
-				return "./data"
-			}
-			return mainnetDir
-		}
-		if strings.HasSuffix(cleanDir, "-testnet") {
-			return strings.TrimSuffix(cleanDir, "-testnet")
 		}
 	}
-	return configuredDir
+	return dir, "", ""
 }

@@ -303,37 +303,84 @@ esac
 
 GYDS_NETWORK_CONFIGURED="${GYDS_NETWORK:-}"
 if [[ -n "$GYDS_NETWORK_CONFIGURED" ]]; then
+  profile_data_dir() {
+    local profile="$1"
+    local path="${2:-/var/lib/gyds-fullnode}"
+    local base="$path"
+    local separator="/"
+    local known suffix
+
+    case "$path" in
+      ""|.|data|./data)
+        base="./data"
+        ;;
+      /var/lib/gyds-fullnode)
+        base="/var/lib/gyds-fullnode"
+        separator="-"
+        ;;
+      *)
+        for known in testnet3b testnet; do
+          if [[ "$path" == "/var/lib/gyds-fullnode-$known" ]]; then
+            base="/var/lib/gyds-fullnode"
+            separator="-"
+            break
+          fi
+          suffix="/$known"
+          if [[ "$path" == *"$suffix" ]]; then
+            base="${path%"$suffix"}"
+            separator="/"
+            break
+          fi
+          suffix="-$known"
+          if [[ "$path" == *"$suffix" ]]; then
+            base="${path%"$suffix"}"
+            separator="-"
+            break
+          fi
+        done
+        ;;
+    esac
+
+    if [[ "$profile" == "mainnet" ]]; then
+      if [[ "$base" == "data" || "$base" == "." ]]; then
+        printf './data'
+      else
+        printf '%s' "$base"
+      fi
+    elif [[ "$base" == "/var/lib/gyds-fullnode" ]]; then
+      printf '%s-%s' "$base" "$profile"
+    elif [[ "$base" == "./data" || "$base" == "data" || "$base" == "." ]]; then
+      printf './data/%s' "$profile"
+    elif [[ "$separator" == "-" ]]; then
+      printf '%s-%s' "$base" "$profile"
+    else
+      printf '%s/%s' "${base%/}" "$profile"
+    fi
+  }
+
   case "${GYDS_NETWORK,,}" in
     mainnet)
       GYDS_NETWORK="mainnet"
       GYDS_CHAIN_ID="198282"
       GYDS_NETWORK_NAME="GYDS Chain"
-      if [[ "$GYDS_DATA_DIR" == "/var/lib/gyds-fullnode-testnet" || "$GYDS_DATA_DIR" == "./data/testnet" ]]; then
-        GYDS_DATA_DIR="/var/lib/gyds-fullnode"
-      fi
+      GYDS_DATA_DIR="$(profile_data_dir mainnet "$GYDS_DATA_DIR")"
       ;;
     testnet)
       GYDS_NETWORK="testnet"
       GYDS_CHAIN_ID="198281"
       GYDS_NETWORK_NAME="GYDS Testnet"
-      case "$GYDS_DATA_DIR" in
-        /var/lib/gyds-fullnode) GYDS_DATA_DIR="/var/lib/gyds-fullnode-testnet" ;;
-        ./data|./data/testnet) GYDS_DATA_DIR="/var/lib/gyds-fullnode-testnet" ;;
-        */testnet|*-testnet) ;;
-        *) GYDS_DATA_DIR="${GYDS_DATA_DIR%/}/testnet" ;;
-      esac
+      GYDS_DATA_DIR="$(profile_data_dir testnet "$GYDS_DATA_DIR")"
+      ;;
+    testnet3b)
+      GYDS_NETWORK="testnet3b"
+      GYDS_CHAIN_ID="198284"
+      GYDS_NETWORK_NAME="GYDS Testnet 3B"
+      GYDS_DATA_DIR="$(profile_data_dir testnet3b "$GYDS_DATA_DIR")"
       ;;
     *)
-      die "GYDS_NETWORK='${GYDS_NETWORK}' is not recognized (use mainnet or testnet)."
+      die "GYDS_NETWORK='${GYDS_NETWORK}' is not recognized (use mainnet, testnet, or testnet3b)."
       ;;
   esac
-  if [[ "$GYDS_NETWORK" == "mainnet" ]]; then
-    case "$GYDS_DATA_DIR" in
-      /var/lib/gyds-fullnode-testnet) GYDS_DATA_DIR="/var/lib/gyds-fullnode" ;;
-      */testnet) GYDS_DATA_DIR="${GYDS_DATA_DIR%/testnet}" ;;
-      *-testnet) GYDS_DATA_DIR="${GYDS_DATA_DIR%-testnet}" ;;
-    esac
-  fi
 fi
 
 if [[ -n "$DASHBOARD_PORT_OVERRIDE" ]]; then
@@ -723,7 +770,9 @@ step "Configuring Storage"
 if ! mkdir -p "$GYDS_DATA_DIR" 2>/dev/null; then
   if [[ $EUID -ne 0 ]]; then
       warn "Cannot create ${GYDS_DATA_DIR} (requires root). Falling back to a local data directory"
-      if [[ "${GYDS_NETWORK:-mainnet}" == "testnet" ]]; then
+      if [[ "${GYDS_NETWORK:-mainnet}" == "testnet3b" ]]; then
+        GYDS_DATA_DIR="${SCRIPT_DIR}/data/testnet3b"
+      elif [[ "${GYDS_NETWORK:-mainnet}" == "testnet" ]]; then
         GYDS_DATA_DIR="${SCRIPT_DIR}/data/testnet"
       else
         GYDS_DATA_DIR="${SCRIPT_DIR}/data"

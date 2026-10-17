@@ -37,7 +37,7 @@
           <div class="field"><label>Node role</label><select id="nodeMode">
             <option value="full">Full Node</option><option value="lite">Lite Node</option><option value="rpc">RPC Node</option><option value="boost">Boost Node</option><option value="genesis">Genesis Node</option><option value="sync">Sync Node</option><option value="validator">Validator Node</option><option value="testnode">Test Node</option>
           </select><span class="hint">RPC mode serves APIs without producing blocks or joining the P2P network. Use Sync to catch up from peers, or Full for a P2P node that produces blocks.</span></div>
-          <div class="field"><label>Network profile</label><select id="networkProfile" onchange="setNetworkProfile(true)"><option value="mainnet">GYDS Mainnet</option><option value="testnet">GYDS Testnet</option></select><span class="hint">Switching profiles restarts the node. Mainnet stays in its existing data directory; testnet uses a separate directory. The disposable Test Node remains chain ID 31337.</span></div>
+          <div class="field"><label>Network profile</label><select id="networkProfile" onchange="setNetworkProfile(true)"><option value="mainnet">GYDS Mainnet</option><option value="testnet">GYDS Testnet (198281)</option><option value="testnet3b">GYDS Testnet 3B (198284)</option></select><span class="hint">The new 198284 network has a separate data directory, 3B GYDS at genesis (50/30/20), and zero GYD at genesis. Existing network data is kept separate; the disposable Test Node remains chain ID 31337.</span></div>
           <div class="field"><label>Chain ID</label><input id="chainId" type="number" min="1" readonly/></div>
           <div class="field"><label>Network name</label><input id="networkName" readonly/></div>
           <div class="field"><label>Block time (seconds)</label><input id="blockTime" type="number" min="1"/></div>
@@ -110,28 +110,44 @@
 const $=id=>document.getElementById(id);
 let activeNetworkProfile='mainnet';
 function show(id,msg,type){const e=$(id);e.textContent=msg;e.className='notice show '+type}
+function profileDataDir(path,profile){
+  path=(path||'').trim().replace(/\/+$/,'');
+  const root='/var/lib/gyds-fullnode';
+  if(!path||path==='.'||path==='data'||path==='./data'||path===root){
+    if(profile==='mainnet')return path.startsWith('/')?root:'./data';
+    return path.startsWith('/')?root+'-'+profile:'./data/'+profile;
+  }
+  let base=path,separator='/';
+  for(const known of ['testnet3b','testnet']){
+    if(base===root+'-'+known){base=root;separator='-';break}
+    if(base==='./data/'+known||base==='data/'+known){base='./data';separator='/';break}
+    if(base.endsWith('-'+known)){base=base.slice(0,-known.length-1);separator='-';break}
+    if(base.endsWith('/'+known)){base=base.slice(0,-known.length-1);separator='/';break}
+  }
+  if(profile==='mainnet')return base==='data'?'./data':base;
+  if(base===root)return base+'-'+profile;
+  if(base==='data'||base==='.'||base==='')return './data/'+profile;
+  return separator==='-'?base+'-'+profile:base+'/'+profile;
+}
 function setNetworkProfile(changing){
   const next=$('networkProfile').value;
   const dataDir=$('dataDir');
   let path=dataDir.value.trim().replace(/\/+$/,'');
   if(changing && next!==activeNetworkProfile){
-    if(next==='testnet'){
-      if(!path||path==='.'||path==='data'||path==='/var/lib/gyds-fullnode') path=path.startsWith('/')?'/var/lib/gyds-fullnode-testnet':'./data/testnet';
-      else if(!path.endsWith('/testnet')&&!path.endsWith('-testnet')) path+='/testnet';
-    }else{
-      if(path.endsWith('/testnet')) path=path.slice(0,-8)||'./data';
-      else if(path.endsWith('-testnet')) path=path.slice(0,-8)||'./data';
-    }
-    dataDir.value=path;
+    dataDir.value=profileDataDir(path,next);
   }
   activeNetworkProfile=next;
-  const selected=next==='testnet'?{id:198281,name:'GYDS Testnet'}:{id:198282,name:'GYDS Chain'};
+  const selected={
+    mainnet:{id:198282,name:'GYDS Chain'},
+    testnet:{id:198281,name:'GYDS Testnet'},
+    testnet3b:{id:198284,name:'GYDS Testnet 3B'}
+  }[next]||{id:198282,name:'GYDS Chain'};
   $('chainId').value=selected.id;
   $('networkName').value=selected.name;
 }
 async function loadConfig(){try{const r=await fetch('/admin/node/config');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load config');
   for(const [id,key] of Object.entries({nodeMode:'nodeMode',chainId:'chainId',networkName:'networkName',blockTime:'blockTime',dataDir:'dataDir',walletAddress:'walletAddress',rpcPort:'rpcPort',wsPort:'wsPort',p2pPort:'p2pPort',maxPeers:'maxPeers',p2pAdvertiseHost:'p2pAdvertiseHost',bootstrapNodes:'bootstrapNodes',allowedNodes:'allowedNodes',logLevel:'logLevel',logFormat:'logFormat'}))$(id).value=d[key]??'';
-  activeNetworkProfile=d.network==='testnet'?'testnet':'mainnet';$('networkProfile').value=activeNetworkProfile;setNetworkProfile(false);
+  activeNetworkProfile=['testnet','testnet3b'].includes(d.network)?d.network:'mainnet';$('networkProfile').value=activeNetworkProfile;setNetworkProfile(false);
    $('peerAuth').checked=true;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
  }catch(e){show('configNotice',e.message,'err')}}
  async function loadPinStatus(){try{const r=await fetch('/api/lock/status');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not check PIN status');$('pinStatus').textContent=d.pinSet?'PIN enabled':'No PIN set';}catch(e){$('pinStatus').textContent='Status unavailable';show('pinNotice',e.message,'err')}}

@@ -82,6 +82,22 @@ func TestFromEnvSelectsIsolatedTestnetProfile(t *testing.T) {
 	}
 }
 
+func TestFromEnvSelectsIsolatedThreeBTestnetProfile(t *testing.T) {
+	t.Setenv("GYDS_NETWORK", "testnet3b")
+	t.Setenv("GYDS_CHAIN_ID", "198281")
+	t.Setenv("GYDS_NETWORK_NAME", "stale testnet name")
+	t.Setenv("GYDS_DATA_DIR", "./data")
+	t.Setenv("GYDS_BOOTSTRAP_NODES", "")
+
+	cfg := FromEnv()
+	if cfg.Network != "testnet3b" || cfg.ChainID != 198284 || cfg.NetworkName != "GYDS Testnet 3B" {
+		t.Fatalf("unexpected 3B profile: network=%q chainId=%d name=%q", cfg.Network, cfg.ChainID, cfg.NetworkName)
+	}
+	if cfg.DataDir != "./data/testnet3b" {
+		t.Fatalf("DataDir = %q, want isolated ./data/testnet3b", cfg.DataDir)
+	}
+}
+
 func TestFromEnvSwitchesBackToMainnetDataDirectory(t *testing.T) {
 	t.Setenv("GYDS_NETWORK", "mainnet")
 	t.Setenv("GYDS_DATA_DIR", "/var/lib/gyds-fullnode-testnet")
@@ -93,5 +109,27 @@ func TestFromEnvSwitchesBackToMainnetDataDirectory(t *testing.T) {
 	}
 	if cfg.DataDir != "/var/lib/gyds-fullnode" {
 		t.Fatalf("DataDir = %q, want preserved mainnet directory", cfg.DataDir)
+	}
+}
+
+func TestProfileDataDirSwitchesBetweenIsolatedNetworks(t *testing.T) {
+	tests := []struct {
+		network string
+		dir     string
+		want    string
+	}{
+		{network: "testnet3b", dir: "/var/lib/gyds-fullnode", want: "/var/lib/gyds-fullnode-testnet3b"},
+		{network: "testnet3b", dir: "/var/lib/gyds-fullnode-testnet", want: "/var/lib/gyds-fullnode-testnet3b"},
+		{network: "testnet", dir: "/var/lib/gyds-fullnode-testnet3b", want: "/var/lib/gyds-fullnode-testnet"},
+		{network: "mainnet", dir: "/var/lib/gyds-fullnode-testnet3b", want: "/var/lib/gyds-fullnode"},
+		{network: "testnet3b", dir: "./data/testnet", want: "./data/testnet3b"},
+		{network: "mainnet", dir: "./data/testnet3b", want: "./data"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.network+"_"+tt.dir, func(t *testing.T) {
+			if got := ProfileDataDir(tt.network, tt.dir); got != tt.want {
+				t.Fatalf("ProfileDataDir(%q, %q) = %q, want %q", tt.network, tt.dir, got, tt.want)
+			}
+		})
 	}
 }
