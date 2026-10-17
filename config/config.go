@@ -268,22 +268,22 @@ func ProfileDataDir(network, configuredDir string) string {
 			return configuredDir
 		}
 		if baseDir == "data" {
-			return "./data"
+			return preserveDotPrefix(rawDir, "./data")
 		}
 		if baseDir == "." || baseDir == "" {
-			return "./data"
+			return preserveDotPrefix(rawDir, "./data")
 		}
-		return baseDir
+		return preserveDotPrefix(rawDir, baseDir)
 	}
 	if currentProfile == network {
-		return cleanDir
+		return preserveDotPrefix(rawDir, cleanDir)
 	}
 	if currentProfile != "" {
 		if baseDir == "data" {
-			return filepath.Join("./data", network)
+			return preserveDotPrefix(rawDir, filepath.Join("./data", network))
 		}
 		if baseDir == "." || baseDir == "" {
-			return filepath.Join("./data", network)
+			return preserveDotPrefix(rawDir, filepath.Join("./data", network))
 		}
 		if baseDir == "/var/lib/gyds-fullnode" {
 			return baseDir + "-" + network
@@ -291,17 +291,25 @@ func ProfileDataDir(network, configuredDir string) string {
 		if separator == "-" {
 			return baseDir + "-" + network
 		}
-		return filepath.Join(baseDir, network)
+		return preserveDotPrefix(rawDir, filepath.Join(baseDir, network))
 	}
 
 	switch cleanDir {
 	case ".", "data":
-		return filepath.Join("./data", network)
+		return preserveDotPrefix(rawDir, filepath.Join("./data", network))
 	case "/var/lib/gyds-fullnode":
 		return cleanDir + "-" + network
 	default:
-		return filepath.Join(cleanDir, network)
+		return preserveDotPrefix(rawDir, filepath.Join(cleanDir, network))
 	}
+}
+
+func preserveDotPrefix(input, resolved string) string {
+	dotPrefix := "." + string(filepath.Separator)
+	if strings.HasPrefix(input, dotPrefix) && !filepath.IsAbs(resolved) && !strings.HasPrefix(resolved, dotPrefix) {
+		return dotPrefix + resolved
+	}
+	return resolved
 }
 
 func stripProfileSuffix(dir string) (baseDir, profile, separator string) {

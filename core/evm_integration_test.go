@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -102,5 +104,100 @@ func TestSignedEVMTransactionSurvivesBlockAndRestart(t *testing.T) {
 	}
 	if _, ok := reopened.GetTransaction(hash); !ok {
 		t.Fatal("confirmed EVM transaction was not restored after restart")
+	}
+}
+
+func TestSignedContractCreationPersistsAddressAndCode(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+	chainID := big.NewInt(31337)
+	genesis := &GenesisConfig{
+		ChainID:            chainID.Int64(),
+		NetworkName:        "EVM contract creation test",
+		EVMActivationBlock: 1,
+		GasLimit:           30_000_000,
+		Difficulty:         big.NewInt(1),
+		Validators:         []string{sender.Hex()},
+		Alloc: []GenesisAlloc{{
+			Address: sender.Hex(),
+			Balance: new(big.Int).Mul(big.NewInt(5), big.NewInt(1_000_000_000_000_000_000)),
+		}},
+	}
+	dataDir := t.TempDir()
+	chain := NewChain(genesis, dataDir)
+
+	// Init code returns a one-byte STOP runtime. This tests actual CREATE
+	// execution and persistent code storage without depending on a Solidity
+	// compiler or claiming ERC-20 compatibility.
+	initCode := common.FromHex("0x6001600c60003960016000f300")
+	unsigned := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     0,
+		GasTipCap: big.NewInt(1_000_000_000),
+		GasFeeCap: big.NewInt(3_000_000_000),
+		Gas:       200_000,
+		Value:     big.NewInt(0),
+		Data:      initCode,
+	})
+	signed, err := types.SignTx(unsigned, types.LatestSignerForChainID(chainID), key)
+	if err != nil {
+		chain.Close()
+		t.Fatal(err)
+	}
+	raw, err := signed.MarshalBinary()
+	if err != nil {
+		chain.Close()
+		t.Fatal(err)
+	}
+	hash, err := chain.SubmitRawTransaction(raw)
+	if err != nil {
+		chain.Close()
+		t.Fatalf("submit contract creation: %v", err)
+	}
+	block := NewBlock(chain.Head().Header, sender.Hex(), chain.PendingTransactions(10))
+	if err := chain.InsertBlock(block); err != nil {
+		chain.Close()
+		t.Fatalf("include contract creation: %v", err)
+	}
+
+	confirmed, ok := chain.GetTransaction(hash)
+	if !ok || confirmed.Status != "success" {
+		chain.Close()
+		t.Fatalf("contract creation did not succeed: tx=%#v", confirmed)
+	}
+	var receipt struct {
+		ContractAddress string `json:"contractAddress"`
+	}
+	if err := json.Unmarshal(confirmed.Receipt, &receipt); err != nil {
+		chain.Close()
+		t.Fatalf("decode contract creation receipt: %v", err)
+	}
+	if !common.IsHexAddress(receipt.ContractAddress) || common.HexToAddress(receipt.ContractAddress) == (common.Address{}) {
+		chain.Close()
+		t.Fatal("contract creation receipt has no contract address")
+	}
+	contractAddress := common.HexToAddress(receipt.ContractAddress)
+	code, err := chain.EVMCode(contractAddress.Hex())
+	if err != nil {
+		chain.Close()
+		t.Fatal(err)
+	}
+	if !bytes.Equal(code, []byte{0x00}) {
+		chain.Close()
+		t.Fatalf("deployed runtime code = %x, want 00", code)
+	}
+	chain.Close()
+
+	reopened := NewChain(genesis, dataDir)
+	defer reopened.Close()
+	recoveredCode, err := reopened.EVMCode(contractAddress.Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(recoveredCode, []byte{0x00}) {
+		t.Fatalf("reopened runtime code = %x, want 00", recoveredCode)
 	}
 }

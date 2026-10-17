@@ -821,6 +821,10 @@ Validation completed on **2026-08-09**:
   context, persistence, and historical reads. The implementation uses
   go-ethereum EVM components, but activated test/custom chains do not establish
   that the persistent production networks are enabled or fully compatible.
+  - [x] On an isolated activated 31337 chain, execute a signed contract-creation
+    transaction, verify its receipt address and runtime bytecode, then reopen
+    LevelDB and verify the bytecode persisted. This smoke test does not establish
+    ERC-20 compatibility or production-network readiness.
 - [ ] Implement and test ERC-20 `name`, `symbol`, `decimals`, `totalSupply`,
   `balanceOf`, `transfer`, `approve`, `allowance`, `transferFrom`, `mint`, and
   `burn` behavior with standard ABI encoding and event logs.
