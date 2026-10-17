@@ -809,6 +809,8 @@ Validation completed on **2026-08-09**:
   GYD balances into the ERC-20, rather than minting a second 10B supply.
 - [x] Operator selected a multisig treasury contract for mint authority. Do not
   use the dashboard login wallet or a node-local key as the production treasury.
+- [x] Confirmed that no multisig treasury is currently deployed on mainnet and
+  no public authority address is available.
 - [x] Code audit confirmed the mainnet EVM activation height is unset; chain
   startup initializes EVM only when an activation height is configured.
 - [x] Code audit confirmed EVM activation seeds native GYDS balances but does
@@ -820,6 +822,8 @@ Validation completed on **2026-08-09**:
 - [ ] Verify the multisig's public address, deployed code, threshold, signer
   governance, and mainnet compatibility before binding it as the contract
   authority. Never request or store multisig signer keys.
+- [ ] Create or select a mainnet-compatible multisig only after the EVM and
+  consensus migration gates pass; do not deploy it through the current preview.
 - [ ] Snapshot actual mainnet GYD balances at an agreed block and reconcile them
   to exactly 10B before migration. Genesis allocations alone are not a substitute
   for an operator-approved live-state snapshot.
@@ -1186,10 +1190,13 @@ coordinated network migration is explicitly approved.
   separate Go module, with a temp-only home, loopback P2P/RPC, and a 2B GYDS
   genesis. It starts, commits empty blocks, answers `/supply`, and recovers its
   height after restart.
-- [ ] Add a multi-validator test cluster, signed transaction validation, and
-  deterministic GYDS execution. The single-validator smoke test does not prove
-  distributed BFT safety or production readiness. Keep existing mainnet and
-  persistent-testnet genesis/history unchanged until a migration is approved.
+- [x] Add an isolated three-validator CometBFT cluster smoke test. It confirms
+  each local validator connects to both peers and commits matching block and
+  app hashes. This covers empty-block consensus only, not GYDS transactions or
+  distributed BFT safety under faults.
+- [ ] Add signed transaction validation and deterministic GYDS execution to
+  the isolated prototype. Keep existing mainnet and persistent-testnet
+  genesis/history unchanged until a migration is reviewed and approved.
 - [ ] Add coordinated, signed protocol-upgrade activation (version signaling,
   activation height, compatibility window, operator notice, and rollback
   boundary). Do not let a normal Git update silently change consensus behavior.

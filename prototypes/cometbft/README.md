@@ -5,9 +5,11 @@ fullnode. It uses CometBFT v0.40.0, chain ID `198281`, and a 2,000,000,000
 GYDS genesis allocation for testing.
 
 It must not connect to existing GYDS peers or reuse the production `data/`
-directory. It does not yet implement signed GYDS transactions, EVM execution,
-staking economics, validator updates, or a multi-validator testnet. Do not use
-it for funds or production.
+directory. The test suite starts a temporary three-validator cluster and checks
+peer connectivity plus matching empty-block hashes. This is only a consensus
+smoke test: the runnable prototype remains single-validator and does not
+implement signed GYDS transactions, EVM execution, staking economics, validator
+updates, or an operator-facing testnet. Do not use it for funds or production.
 
 Run it from this directory with:
 
