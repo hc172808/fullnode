@@ -10,14 +10,17 @@
 #    --dashboard-port PORT  Dashboard web UI port (default: 5000)
 #    --no-firewall     Skip firewall configuration
 #    --no-service      Run in the foreground instead of installing a systemd service
-#    --update          Rebuild the binary and restart the service (preserves chain data)
+#    --update          Rebuild from this checkout (preserves existing config and chain data)
+#                      For a Git pull, use: sudo gyds-fullnode-update
 #    --rebuild         Full clean rebuild: remove cached build artifacts before building
+#    --reset-data      Archive the configured data directory and start with empty node data
+#    --confirm-reset-data TEXT  Confirm a non-interactive reset by passing RESET
 #    --uninstall       Remove the GYDS fullnode service, binary, and installation files
 #    --status          Show the current service status and chain health
 #    --help            Show this help message
 #
 #  Prerequisites:
-#    - Go 1.21 or later (installed automatically if missing or outdated)
+#    - Go 1.25 or later (installed automatically if missing or outdated)
 #    - systemd (required for service management)
 #    - ufw (required for firewall hardening)
 #    - A configured .env file (copy .env.example to .env and edit it),
@@ -40,6 +43,66 @@ error() { echo -e "${RED}[$(date '+%H:%M:%S')] ✗ ERROR:${NC} $*" >&2; }
 step()  { echo -e "\n${BOLD}${CYAN}━━━  $*  ━━━${NC}\n"; }
 die()   { error "$*"; exit 1; }
 
+archive_chain_data_for_reset() {
+  $RESET_DATA || return 0
+  [[ $EUID -eq 0 ]] || die "Resetting server data requires root."
+
+  local data_real script_real install_real log_real backup_base backup_dir suffix
+  data_real="$(realpath -m -- "$GYDS_DATA_DIR")" \
+    || die "Could not resolve configured data directory: $GYDS_DATA_DIR"
+  script_real="$(realpath -m -- "$SCRIPT_DIR")" \
+    || die "Could not resolve application directory: $SCRIPT_DIR"
+  install_real="$(realpath -m -- "$INSTALL_DIR")" \
+    || die "Could not resolve install directory: $INSTALL_DIR"
+  log_real="$(realpath -m -- "$LOG_DIR")" \
+    || die "Could not resolve log directory: $LOG_DIR"
+
+  [[ "$data_real" != "/" ]] || die "Refusing to reset the filesystem root."
+  [[ ! -L "$GYDS_DATA_DIR" ]] || die "Refusing to reset a symlinked data directory: $GYDS_DATA_DIR"
+  for protected in /etc /opt /usr /usr/local /var /var/lib /var/log /home "$script_real" "$install_real" "$log_real"; do
+    [[ "$data_real" != "$protected" && "$protected" != "$data_real/"* ]] ||
+      die "Refusing unsafe data directory that contains a protected path: $data_real"
+  done
+  case "$data_real" in
+    "$script_real"/*)
+      [[ "$data_real" == "$script_real/data" || "$data_real" == "$script_real"/data/* ]] ||
+        die "Within the source checkout, only its data/ directory may be reset: $data_real"
+      ;;
+  esac
+  [[ ! -e "$data_real" || -d "$data_real" ]] ||
+    die "Configured data path exists but is not a directory: $data_real"
+
+  command -v systemctl >/dev/null 2>&1 ||
+    die "Cannot safely reset data without systemd to verify and stop the managed node."
+  if systemctl is-active --quiet gyds-fullnode-compose 2>/dev/null; then
+    die "Docker Compose service is active. Stop it and reset its named volume using the Docker deployment procedure; deploy.sh only manages the native service."
+  fi
+  if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
+    systemctl stop gyds-fullnode || die "Could not stop gyds-fullnode before archiving its data."
+  fi
+
+  if [[ -d "$data_real" ]]; then
+    backup_base="${data_real}.backup-$(date -u '+%Y%m%d_%H%M%S')"
+    backup_dir="$backup_base"
+    suffix=1
+    while [[ -e "$backup_dir" ]]; do
+      backup_dir="${backup_base}-${suffix}"
+      suffix=$((suffix + 1))
+    done
+    mv -- "$data_real" "$backup_dir" ||
+      die "Could not archive existing data; it has not been deleted: $data_real"
+    log "Existing blockchain data archived at: $backup_dir"
+  else
+    info "No existing blockchain data directory was present to archive."
+  fi
+
+  mkdir -p -- "$data_real" || die "Could not create fresh data directory: $data_real"
+  if id "$APP_USER" >/dev/null 2>&1 && getent group "$APP_GROUP" >/dev/null 2>&1; then
+    chown "$APP_USER:$APP_GROUP" "$data_real"
+  fi
+  log "Starting with fresh blockchain data at: $data_real"
+}
+
 banner() {
   echo -e "${CYAN}"
   echo "  ██████╗ ██╗   ██╗██████╗ ███████╗"
@@ -55,6 +118,7 @@ banner() {
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 ENV_FILE=".env"
+ENV_FILE_EXPLICIT=false
 SKIP_FIREWALL=false
 SKIP_SERVICE=false
 IS_UPDATE=false
@@ -62,6 +126,8 @@ IS_REBUILD=false
 UNINSTALL=false
 SHOW_STATUS=false
 DASHBOARD_PORT_OVERRIDE=""
+RESET_DATA=false
+RESET_CONFIRMATION=""
 
 APP_NAME="gyds-fullnode"
 APP_USER="gyds"
@@ -75,12 +141,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --env)          ENV_FILE="$2"; shift 2 ;;
+    --env)          ENV_FILE="$2"; ENV_FILE_EXPLICIT=true; shift 2 ;;
     --dashboard-port) DASHBOARD_PORT_OVERRIDE="$2"; shift 2 ;;
     --no-firewall)  SKIP_FIREWALL=true; shift ;;
     --no-service)   SKIP_SERVICE=true; shift ;;
     --update)       IS_UPDATE=true; shift ;;
     --rebuild)      IS_REBUILD=true; IS_UPDATE=true; shift ;;
+    --reset-data)   RESET_DATA=true; shift ;;
+    --confirm-reset-data)
+      [[ $# -ge 2 ]] || die "--confirm-reset-data requires the word RESET."
+      RESET_CONFIRMATION="$2"; shift 2 ;;
     --uninstall)    UNINSTALL=true; shift ;;
     --status)       SHOW_STATUS=true; shift ;;
     --help|-h)
@@ -91,7 +161,39 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if $RESET_DATA && $IS_UPDATE; then
+  die "Do not combine --reset-data with --update/--rebuild. Perform these as separate, deliberate operations."
+fi
+if $RESET_DATA && { $UNINSTALL || $SHOW_STATUS; }; then
+  die "Do not combine --reset-data with --uninstall or --status."
+fi
+if [[ -n "$RESET_CONFIRMATION" && "$RESET_CONFIRMATION" != "RESET" ]]; then
+  die "Reset confirmation must be the exact word RESET."
+fi
+if [[ -n "$RESET_CONFIRMATION" ]] && ! $RESET_DATA; then
+  die "--confirm-reset-data requires --reset-data."
+fi
+if $RESET_DATA; then
+  [[ $EUID -eq 0 ]] || die "Resetting server data requires root. Run: sudo bash deploy.sh --reset-data"
+  if [[ "$RESET_CONFIRMATION" != "RESET" ]]; then
+    [[ -t 0 ]] || die "Reset confirmation required in non-interactive mode. Pass --confirm-reset-data RESET explicitly."
+    echo -e "${RED}This archives the configured mainnet/testnet data, including chain history, node identity, admin state, and local keystores. The active node will start with fresh data.${NC}"
+    read -r -p "Type RESET to continue, or anything else to keep existing data: " _reset_confirmation
+    [[ "$_reset_confirmation" == "RESET" ]] || {
+      RESET_DATA=false
+      info "Existing blockchain data will be preserved."
+    }
+  fi
+fi
+
 banner
+
+# A local rebuild must use the installed operator configuration by default.
+# A caller can explicitly pass --env FILE when they intentionally want to
+# install new settings alongside the code update.
+if $IS_UPDATE && ! $ENV_FILE_EXPLICIT && [[ -f "${INSTALL_DIR}/.env" ]]; then
+  ENV_FILE="${INSTALL_DIR}/.env"
+fi
 
 # ── Status ────────────────────────────────────────────────────────────────────
 if $SHOW_STATUS; then
@@ -436,13 +538,13 @@ fi
 
 # ── Go installation ───────────────────────────────────────────────────────────
 GO_MIN_MAJOR=1
-GO_MIN_MINOR=21
+GO_MIN_MINOR=25
 
 # Fetch the latest stable Go version string from go.dev.
 fetch_latest_go_version() {
   curl -fsSL --max-time 15 "https://go.dev/VERSION?m=text" 2>/dev/null \
     | head -1 | sed 's/^go//' \
-    || echo "1.22.5"
+    || echo "1.25.0"
 }
 
 # Download, verify, and install Go at the given version.
@@ -697,8 +799,12 @@ if [[ $EUID -eq 0 ]]; then
   # rename its temporary file inside this directory.
   chown root:"$APP_GROUP" "$INSTALL_DIR"
   chmod 2770 "$INSTALL_DIR"
-  if [[ ! -f "${INSTALL_DIR}/.env" ]] || $IS_UPDATE; then
-    cp "$ENV_FILE" "${INSTALL_DIR}/.env"
+  if [[ ! -f "${INSTALL_DIR}/.env" ]] || $ENV_FILE_EXPLICIT; then
+    _env_source_real="$(realpath -m -- "$ENV_FILE")"
+    _env_target_real="$(realpath -m -- "${INSTALL_DIR}/.env")"
+    if [[ "$_env_source_real" != "$_env_target_real" ]]; then
+      cp "$ENV_FILE" "${INSTALL_DIR}/.env"
+    fi
     chmod 640 "${INSTALL_DIR}/.env"
     chown root:"$APP_USER" "${INSTALL_DIR}/.env" 2>/dev/null || true
     log "Configuration installed to: ${INSTALL_DIR}/.env"
@@ -923,6 +1029,7 @@ SYSTEMD
       || die "Generated systemd service is invalid. Review ${SERVICE_FILE}."
   fi
 
+  archive_chain_data_for_reset
   if systemctl is-active --quiet gyds-fullnode 2>/dev/null; then
     systemctl restart gyds-fullnode && log "Service restarted"
   elif systemctl is-enabled --quiet gyds-fullnode 2>/dev/null; then
@@ -979,6 +1086,7 @@ fi
 # ── Foreground mode ───────────────────────────────────────────────────────────
 if $SKIP_SERVICE; then
   step "Starting Node (foreground)"
+  archive_chain_data_for_reset
   info "Starting ${APP_NAME} directly. Press Ctrl+C to stop."
   echo ""
   exec "${BINARY_PATH}" start
@@ -1062,6 +1170,7 @@ echo -e "  Status   :  sudo systemctl status gyds-fullnode"
 echo -e "  Logs     :  sudo journalctl -u gyds-fullnode -f"
 echo -e "  Stop     :  sudo systemctl stop gyds-fullnode"
 echo -e "  Restart  :  sudo systemctl restart gyds-fullnode"
-echo -e "  Update   :  bash deploy.sh --update"
+echo -e "  Git update: sudo gyds-fullnode-update"
+echo -e "  Rebuild  :  sudo bash deploy.sh --update"
 echo -e "  Storage  :  bash ${_scripts_dir}/check-storage.sh"
 echo ""

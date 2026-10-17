@@ -108,17 +108,35 @@ Visit `/setup` for the 8-step guided configuration wizard:
 Background goroutine checks GitHub releases every 24 hours. Status available at `GET /api/updates`.
 
 ## Production startup and updates
-The production installer enables the required boot services:
-- Docker (when using the default Docker deployment)
-- `gyds-fullnode-compose.service` for the Docker node, or `gyds-fullnode.service` for native mode
-- Nginx reverse proxy
-- UFW firewall rules when enabled
+`deploy.sh` installs the native `gyds-fullnode.service` systemd service and
+configures UFW when enabled. It does not install Docker or Nginx, and it does
+not configure TLS. Docker Compose is a separate deployment option; run only one
+node runtime on a host to avoid competing processes and ports. Configure a
+TLS-terminating reverse proxy and restrictive RPC/dashboard exposure separately
+before offering public endpoints.
 
 After installation, pull and apply the latest Git version with:
 ```bash
 sudo gyds-fullnode-update
 ```
 The updater uses a lock, refuses dirty or non-fast-forward checkouts, runs tests/builds before stopping the node, backs up chain state and `.env`, verifies both RPC and dashboard health, and rolls back the code/image if health checks fail. It does not wipe chain data.
+
+For a local rebuild without fetching Git, use `sudo bash deploy.sh --update`.
+This uses the installed `.env` by default and preserves the configured data
+directory. Pass `--env FILE` only when intentionally changing deployment
+configuration. An ordinary deployment also leaves chain data alone.
+
+To deliberately start this server with fresh local data:
+```bash
+sudo bash deploy.sh --reset-data --env .env
+```
+The script requires typing `RESET`, stops the native service, and renames the
+configured data directory to a timestamped sibling backup before starting with
+an empty directory. `.env` is retained. Non-interactive use requires the
+explicit `--confirm-reset-data RESET` argument. Resetting a node does not reset
+other servers or coordinate a network migration; on an active chain, only do
+this when the node can safely resynchronize or after an explicitly coordinated
+network reset. Keep enough disk space to retain the archived backup.
 
 ## Genesis node
 The genesis config is baked into `core/genesis.go`. If you change it (validators, chain ID, initial balances), **all nodes must be rebuilt from the same binary** to share a common genesis hash. Existing data directories must be wiped if the genesis changes.
@@ -128,6 +146,7 @@ The genesis config is baked into `core/genesis.go`. If you change it (validators
 bash deploy.sh
 ```
 `deploy.sh` builds the binary, installs it as a systemd service, and applies UFW-only rules (requires root). It does not install or configure fail2ban.
+The deployment script requires Go 1.25 or later, matching `go.mod`.
 
 ### Deploy a specific node mode
 Set the mode in the `.env` file before deploying. The installer persists the selected mode in the installed systemd service and restarts the node with that mode:

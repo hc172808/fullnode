@@ -260,6 +260,11 @@ validated.
   every node and wallet network configuration.
 - [x] Use `https://rpc.netlifegy.com` as the canonical public RPC endpoint for
   RPC-node setup and wallet network configuration.
+- [x] Keep normal deployment and Git updates from deleting chain state; add an
+  explicit, confirmed `deploy.sh --reset-data` path that archives the selected
+  data directory and leaves the operator `.env` in place.
+- [x] Make local deploy rebuilds retain the installed `.env` by default, and
+  require Go 1.25 or newer to match the module.
 
 ## Plan 8 — Reset, Git updates, persistent peers, and wallet onboarding
 
