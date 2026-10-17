@@ -650,17 +650,16 @@ Acceptance criteria:
   response. A regression test checks that a submitted test key is not echoed.
 - [x] The setup import path does not create a GYD/GYDS token wallet or deploy a
   token contract; no runtime use of `GYDS_WALLET_PRIVATE_KEY` was found.
-- [ ] Remove or redesign private-key/recovery-phrase import so operators can
-  configure a public wallet address and sign through their own browser or
-  hardware wallet. Decide backward-compatible treatment of existing `.env`
-  keys before removing this option.
+- [x] User chose to keep optional private-key/recovery-phrase import and add a
+  prominent server-storage warning; this does not mean the key is encrypted.
 - [ ] Keep server-side wallet persistence optional. The setup wizard must allow
   `Skip wallet`, and an empty wallet key must remain valid.
 - [ ] Protect `.env` with mode `0600` or an equivalent owner-only permission,
   keep it outside the public static directory, and never include private keys in
   API responses, HTML, logs, or backups sent to third parties.
-- [ ] Add a clear warning that a server-side private key controls funds and
-  should be used only on a secured wallet/validator host.
+- [x] Add a prominent warning in first-time setup and node settings that the
+  imported key is stored on the server, is not application-encrypted, and
+  should not be a personal, admin-login, validator, or treasury key.
 - [ ] Prefer an encrypted server keystore with an operator-supplied unlock
   secret for production; do not silently generate or persist a private key.
 - [ ] Keep browser/MetaMask signing optional. Browser wallets should remain

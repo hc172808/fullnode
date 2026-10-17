@@ -317,9 +317,12 @@
         <button class="wallet-tab" onclick="switchWTab('skip',this)">Skip</button>
       </div>
 
+      <div class="alert alert-warn" role="alert">
+        <strong>Server wallet key warning:</strong> If you generate or import a private key or recovery phrase here, its private key is sent to this server and stored in <code>.env</code> with mode <code>0600</code>. The app does not encrypt it; anyone with server access may use it. Use only a dedicated server wallet. Never enter a personal, admin-login, validator, or GYD treasury key. This does not deploy GYD or create separate GYD/GYDS wallets. Prefer skipping this step and signing locally with your browser or hardware wallet.
+      </div>
+
       <!-- Generate -->
       <div class="wallet-pane active" id="wpane-generate">
-        <div class="alert alert-warn">⚠️ Save your private key securely before continuing. It will be stored in your .env file — never share it or upload it publicly.</div>
         <div class="field">
           <label>Generated Address</label>
           <div class="input-wrap">
@@ -372,7 +375,7 @@
 
       <!-- Skip -->
       <div class="wallet-pane" id="wpane-skip">
-        <div class="alert alert-info">No wallet will be configured now. You can add <code>GYDS_WALLET_PRIVATE_KEY</code> to your .env file later.</div>
+        <div class="alert alert-info">No server wallet key will be stored. You can still connect an external wallet for signing. If you add a server key later, it will be stored in <code>.env</code> without application-level encryption; use only a dedicated server wallet.</div>
       </div>
 
     </div>

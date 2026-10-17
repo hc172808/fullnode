@@ -12,6 +12,7 @@
 - [P2P genesis compatibility](p2p-genesis-compatibility.md) — configured nodes reject handshakes that omit or disagree on genesis identity
 - [Canonical explorer](canonical-explorer.md) — all GYDS nodes and wallet metadata use explorer.netlifegy.com
 - [Admin Web3 authentication](admin-web3-auth.md) — admin access uses a one-time Ethereum personal-sign challenge; PIN authentication is intentionally disabled
+- [Server wallet key setup policy](server-wallet-key-setup-policy.md) — keep optional key import, but require a prominent warning about server-side storage
 - [User-created token standard](user-created-token-standard.md) — new user-created assets should be standard EVM ERC-20 contracts, not native GYDS-20 tokens
 - [GYD stablecoin decisions](gyd-usd-target-and-token-logos.md) — USD target is informational; preserve 10B balances in the mainnet ERC-20 migration with multisig authority and safety gates
 - [Production launch target](node-launch-priority.md) — target the existing mainnet on the operator's server; preserve data on updates and make resets explicit

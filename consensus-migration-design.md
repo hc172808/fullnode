@@ -95,9 +95,9 @@ current height, balances, or peer health of an external production network.
   treasury key.
 - The current setup import path can send a private key/recovery phrase to the
   server and persist a raw key in `.env`. The key is not needed to deploy an
-  ERC-20 from this node. Keep this as a separate security issue to resolve
-  before inviting operators to use the installer; do not enter personal or
-  multisig keys.
+  ERC-20 from this node. The user chose to retain import but require a prominent
+  warning; that warning does not encrypt the key or make server storage safe.
+  Do not enter personal or multisig keys.
 
 ## Migration stages
 
@@ -213,5 +213,5 @@ Resolve these before production integration:
 - The authoritative cutover record for legacy GYD; genesis accounts currently
   total 10B, but no live mainnet data was verified in this workspace.
 - Mainnet EVM hardfork/activation schedule and the multisig treasury address.
-- Whether to remove private-key/recovery-phrase import from setup and replace it
-  with public-address-only configuration and wallet-local signing.
+- How to improve server-side key custody beyond the confirmed warning-only
+  setup policy; the current optional import remains unencrypted.

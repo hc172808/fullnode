@@ -3,6 +3,7 @@ package rpc
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -60,5 +61,32 @@ func TestSetupApplyDoesNotEchoWalletKey(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf(".env permissions = %o; want 600", info.Mode().Perm())
+	}
+}
+
+func TestWalletSetupPagesWarnAboutServerKeyStorage(t *testing.T) {
+	for _, path := range []string{"static/setup.html", "static/admin-node.html"} {
+		file, err := staticFiles.Open(path)
+		if err != nil {
+			t.Fatalf("open embedded %s: %v", path, err)
+		}
+		content, readErr := io.ReadAll(file)
+		closeErr := file.Close()
+		if readErr != nil {
+			t.Fatalf("read embedded %s: %v", path, readErr)
+		}
+		if closeErr != nil {
+			t.Fatalf("close embedded %s: %v", path, closeErr)
+		}
+		text := string(content)
+		for _, warning := range []string{
+			"key is sent to this server and stored in",
+			"The app does not encrypt it",
+			"Never enter a personal, admin-login, validator, or GYD treasury key",
+		} {
+			if !strings.Contains(text, warning) {
+				t.Errorf("%s is missing warning text %q", path, warning)
+			}
+		}
 	}
 }
