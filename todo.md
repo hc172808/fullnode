@@ -644,8 +644,16 @@ Acceptance criteria:
 ### Wallet storage policy
 
 - [x] The setup wizard's generated/imported wallet key is written server-side
-  to `.env` as `GYDS_WALLET_PRIVATE_KEY`; it is not intentionally stored in
-  browser local storage.
+  to `.env` as `GYDS_WALLET_PRIVATE_KEY`; the file is mode `0600`, but the raw
+  key is not encrypted by the application.
+- [x] The setup endpoint no longer returns the full `.env` content in its JSON
+  response. A regression test checks that a submitted test key is not echoed.
+- [x] The setup import path does not create a GYD/GYDS token wallet or deploy a
+  token contract; no runtime use of `GYDS_WALLET_PRIVATE_KEY` was found.
+- [ ] Remove or redesign private-key/recovery-phrase import so operators can
+  configure a public wallet address and sign through their own browser or
+  hardware wallet. Decide backward-compatible treatment of existing `.env`
+  keys before removing this option.
 - [ ] Keep server-side wallet persistence optional. The setup wizard must allow
   `Skip wallet`, and an empty wallet key must remain valid.
 - [ ] Protect `.env` with mode `0600` or an equivalent owner-only permission,
@@ -825,8 +833,10 @@ Validation completed on **2026-08-09**:
 - [ ] Create or select a mainnet-compatible multisig only after the EVM and
   consensus migration gates pass; do not deploy it through the current preview.
 - [ ] Snapshot actual mainnet GYD balances at an agreed block and reconcile them
-  to exactly 10B before migration. Genesis allocations alone are not a substitute
-  for an operator-approved live-state snapshot.
+  to exactly 10B before migration. Code audit found legacy token balances are
+  seeded from genesis but no token transfer/persistence path was found; reconcile
+  the exact mainnet genesis and any operator-held ledger rather than claiming
+  live balances were queried.
 - [ ] Specify the mainnet EVM hardfork schedule and activation height, then
   verify deterministic execution and replay across every mainnet node before
   enabling contract transactions.
@@ -1180,6 +1190,9 @@ coordinated network migration is explicitly approved.
   Ethereum execution tests and third-party wallet/tooling fixtures.
 - [x] Select the consensus direction: adopt a mature BFT engine rather than
   extending the current custom proposer or moving to Ethereum consensus.
+- [x] Prepare the requested CometBFT v0.40.0 production migration design in
+  `consensus-migration-design.md`; production adoption and activation remain
+  unapproved.
 - [ ] Select and review the concrete engine and GYDS application integration.
   CometBFT v0.40.0 is the leading candidate: its release supports this project's
   Go 1.25 baseline, while GYDS must still implement deterministic execution and

@@ -313,7 +313,6 @@ func (s *Server) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"ok":      true,
 		"message": ".env saved successfully",
-		"env":     content,
 		"envPath": envPath,
 	}
 	resp["authStatus"] = "Web3 wallet authentication enabled; no PIN required"
