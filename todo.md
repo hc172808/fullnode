@@ -802,6 +802,30 @@ Validation completed on **2026-08-09**:
 
 ### Supply and wallet-token decisions required before implementation
 
+- [x] Operator selected mainnet `198282` for readiness work only. Do not activate
+  EVM execution or deploy the GYD contract on mainnet until the consensus,
+  protocol-migration, and multi-node verification gates above pass.
+- [x] Operator selected a one-to-one migration of the existing 10B node-managed
+  GYD balances into the ERC-20, rather than minting a second 10B supply.
+- [x] Operator selected a multisig treasury contract for mint authority. Do not
+  use the dashboard login wallet or a node-local key as the production treasury.
+- [x] Code audit confirmed the mainnet EVM activation height is unset; chain
+  startup initializes EVM only when an activation height is configured.
+- [x] Code audit confirmed EVM activation seeds native GYDS balances but does
+  not import the separate genesis GYD token balances. The ERC-20 migration must
+  explicitly account for the approved GYD snapshot.
+- [x] Code audit confirmed the EVM engine currently starts from
+  `AllEthashProtocolChanges` and activates Shanghai/Cancun at timestamp zero;
+  no reviewed mainnet fork schedule is configured.
+- [ ] Verify the multisig's public address, deployed code, threshold, signer
+  governance, and mainnet compatibility before binding it as the contract
+  authority. Never request or store multisig signer keys.
+- [ ] Snapshot actual mainnet GYD balances at an agreed block and reconcile them
+  to exactly 10B before migration. Genesis allocations alone are not a substitute
+  for an operator-approved live-state snapshot.
+- [ ] Specify the mainnet EVM hardfork schedule and activation height, then
+  verify deterministic execution and replay across every mainnet node before
+  enabling contract transactions.
 - [x] Product decision: allow authenticated Admin mint/burn on the live
   network, subject to consensus-safe authorization and an auditable supply
   policy. Never make live supply changes an unaudited dashboard field.
@@ -820,7 +844,9 @@ Validation completed on **2026-08-09**:
   rules, contract creation, storage, logs, revert and gas behavior, block
   context, persistence, and historical reads. The implementation uses
   go-ethereum EVM components, but activated test/custom chains do not establish
-  that the persistent production networks are enabled or fully compatible.
+  that the persistent production networks are enabled or fully compatible. The
+  current engine selects `AllEthashProtocolChanges` and activates Shanghai and
+  Cancun at time zero; this is not yet an approved mainnet fork schedule.
   - [x] On an isolated activated 31337 chain, execute a signed contract-creation
     transaction, verify its receipt address and runtime bytecode, then reopen
     LevelDB and verify the bytecode persisted. This smoke test does not establish

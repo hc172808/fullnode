@@ -13,7 +13,7 @@
 - [Canonical explorer](canonical-explorer.md) — all GYDS nodes and wallet metadata use explorer.netlifegy.com
 - [Admin Web3 authentication](admin-web3-auth.md) — admin access uses a one-time Ethereum personal-sign challenge; PIN authentication is intentionally disabled
 - [User-created token standard](user-created-token-standard.md) — new user-created assets should be standard EVM ERC-20 contracts, not native GYDS-20 tokens
-- [GYD USD target and token logos](gyd-usd-target-and-token-logos.md) — configure the USD target in `.env` as informational metadata; keep token and network logos distinct
+- [GYD stablecoin decisions](gyd-usd-target-and-token-logos.md) — USD target is informational; preserve 10B balances in the mainnet ERC-20 migration with multisig authority and safety gates
 - [Production launch target](node-launch-priority.md) — target the existing mainnet on the operator's server; preserve data on updates and make resets explicit
 - [Go archive checksum verification](go-checksum-verification.md) — verify against Go's release JSON and report expected/actual hashes on mismatch
 - [Consensus engine direction](consensus-engine-direction.md) — use a mature BFT engine; keep GYDS validator economics and network migration decisions explicit
