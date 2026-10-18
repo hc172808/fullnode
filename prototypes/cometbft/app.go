@@ -18,13 +18,17 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/version"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 type appState struct {
-	ChainID  string            `json:"chainId"`
-	Height   int64             `json:"height"`
-	Balances map[string]string `json:"balances"`
-	Nonces   map[string]uint64 `json:"nonces"`
+	Version     int                          `json:"version"`
+	ChainID     string                       `json:"chainId"`
+	Height      int64                        `json:"height"`
+	Balances    map[string]string            `json:"balances"`
+	Nonces      map[string]uint64            `json:"nonces"`
+	EVMRoot     string                       `json:"evmRoot"`
+	EVMAccounts map[string]evmAccountState   `json:"evmAccounts,omitempty"`
 }
 
 type app struct {
@@ -55,6 +59,9 @@ func newApp(stateFile string) (*app, error) {
 	if a.state.Nonces == nil {
 		a.state.Nonces = make(map[string]uint64)
 	}
+	if a.state.EVMAccounts == nil {
+		a.state.EVMAccounts = make(map[string]evmAccountState)
+	}
 	if err := validateAppState(a.state); err != nil {
 		return nil, fmt.Errorf("validate saved prototype state: %w", err)
 	}
@@ -65,7 +72,7 @@ func (a *app) Info(context.Context, *abci.RequestInfo) (*abci.ResponseInfo, erro
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return &abci.ResponseInfo{
-		Data:             "GYDS isolated CometBFT prototype; gasless EIP-155 native transfers only",
+		Data:             "GYDS isolated CometBFT prototype; zero-fee EIP-155 Ethereum transactions with deterministic EVM execution",
 		Version:          version.ABCIVersion,
 		AppVersion:       AppVersion,
 		LastBlockHeight:  a.state.Height,
@@ -88,10 +95,17 @@ func (a *app) InitChain(_ context.Context, req *abci.RequestInitChain) (*abci.Re
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	candidate := appState{
-		ChainID:  genesis.ChainID,
-		Balances: cloneBalances(genesis.Balances),
-		Nonces:   make(map[string]uint64),
+		Version:     AppStateVersion,
+		ChainID:     genesis.ChainID,
+		Balances:    cloneBalances(genesis.Balances),
+		Nonces:      make(map[string]uint64),
+		EVMAccounts: make(map[string]evmAccountState),
 	}
+	root, err := prototypeEVMRoot(candidate)
+	if err != nil {
+		return nil, err
+	}
+	candidate.EVMRoot = root.Hex()
 	if a.state.Balances != nil {
 		if !bytes.Equal(stateHash(a.state), stateHash(candidate)) {
 			return nil, fmt.Errorf("saved app state does not match the prototype genesis")
@@ -122,6 +136,8 @@ func (a *app) Query(_ context.Context, req *abci.RequestQuery) (*abci.ResponseQu
 			"totalSupplyBaseUnits": total.String(),
 		})
 		return &abci.ResponseQuery{Code: 0, Value: result, Height: a.state.Height}, nil
+	case "/evm/state-root":
+		return &abci.ResponseQuery{Code: 0, Value: []byte(a.state.EVMRoot), Height: a.state.Height}, nil
 	default:
 		const prefix = "/balance/"
 		if len(req.Path) > len(prefix) && req.Path[:len(prefix)] == prefix {
@@ -148,7 +164,36 @@ func (a *app) Query(_ context.Context, req *abci.RequestQuery) (*abci.ResponseQu
 				Height: a.state.Height,
 			}, nil
 		}
-		return &abci.ResponseQuery{Code: 1, Log: "supported paths: /supply, /balance/<address>, /nonce/<address>"}, nil
+		const codePrefix = "/evm/code/"
+		if strings.HasPrefix(req.Path, codePrefix) {
+			address := strings.TrimPrefix(req.Path, codePrefix)
+			if !common.IsHexAddress(address) {
+				return &abci.ResponseQuery{Code: 1, Log: "invalid address"}, nil
+			}
+			account := a.state.EVMAccounts[addressKey(common.HexToAddress(address))]
+			return &abci.ResponseQuery{Code: 0, Value: []byte(account.Code), Height: a.state.Height}, nil
+		}
+		const storagePrefix = "/evm/storage/"
+		if strings.HasPrefix(req.Path, storagePrefix) {
+			parts := strings.Split(strings.TrimPrefix(req.Path, storagePrefix), "/")
+			if len(parts) != 2 || !common.IsHexAddress(parts[0]) {
+				return &abci.ResponseQuery{Code: 1, Log: "expected /evm/storage/<address>/<32-byte-slot>"}, nil
+			}
+			slot, err := decodeCanonicalHash(parts[1])
+			if err != nil {
+				return &abci.ResponseQuery{Code: 1, Log: "invalid storage slot: " + err.Error()}, nil
+			}
+			account := a.state.EVMAccounts[addressKey(common.HexToAddress(parts[0]))]
+			value := account.Storage[slot.Hex()]
+			if value == "" {
+				value = common.Hash{}.Hex()
+			}
+			return &abci.ResponseQuery{Code: 0, Value: []byte(value), Height: a.state.Height}, nil
+		}
+		return &abci.ResponseQuery{
+			Code: 1,
+			Log:  "supported paths: /supply, /balance/<address>, /nonce/<address>, /evm/state-root, /evm/code/<address>, /evm/storage/<address>/<slot>",
+		}, nil
 	}
 }
 
@@ -159,7 +204,8 @@ func (a *app) CheckTx(_ context.Context, req *abci.RequestCheckTx) (*abci.Respon
 	a.mu.RLock()
 	working := cloneState(a.state)
 	a.mu.RUnlock()
-	if err := applyNativeTransfer(&working, req.Tx); err != nil {
+	block := requestBlockContext(working.Height+1, 0, working.Height, nil)
+	if _, err := applyPrototypeTransaction(&working, req.Tx, block, 0, prototypeBlockGasLimit); err != nil {
 		return &abci.ResponseCheckTx{Code: 1, Codespace: "gyds-prototype", Log: err.Error()}, nil
 	}
 	return &abci.ResponseCheckTx{Code: 0}, nil
@@ -172,21 +218,28 @@ func (a *app) PrepareProposal(_ context.Context, req *abci.RequestPrepareProposa
 	a.mu.RLock()
 	working := cloneState(a.state)
 	a.mu.RUnlock()
+	block := requestBlockContext(req.Height, req.Time.Unix(), working.Height, nil)
 
 	selected := make([][]byte, 0, len(req.Txs))
 	var selectedBytes int64
+	remainingGas := prototypeBlockGasLimit
 	for _, raw := range req.Txs {
+		if len(selected) >= prototypeMaxTxCount {
+			break
+		}
 		txSize := int64(len(raw))
 		if txSize > req.MaxTxBytes-selectedBytes {
 			continue
 		}
 		candidate := cloneState(working)
-		if err := applyNativeTransfer(&candidate, raw); err != nil {
+		execution, err := applyPrototypeTransaction(&candidate, raw, block, uint32(len(selected)), remainingGas)
+		if err != nil {
 			continue
 		}
 		working = candidate
 		selected = append(selected, append([]byte(nil), raw...))
 		selectedBytes += txSize
+		remainingGas -= uint64(execution.GasUsed)
 	}
 	return &abci.ResponsePrepareProposal{Txs: selected}, nil
 }
@@ -198,10 +251,17 @@ func (a *app) ProcessProposal(_ context.Context, req *abci.RequestProcessProposa
 	a.mu.RLock()
 	working := cloneState(a.state)
 	a.mu.RUnlock()
-	for _, raw := range req.Txs {
-		if err := applyNativeTransfer(&working, raw); err != nil {
+	if len(req.Txs) > prototypeMaxTxCount {
+		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
+	}
+	block := requestBlockContext(req.Height, req.Time.Unix(), working.Height, req.Hash)
+	remainingGas := prototypeBlockGasLimit
+	for i, raw := range req.Txs {
+		execution, err := applyPrototypeTransaction(&working, raw, block, uint32(i), remainingGas)
+		if err != nil {
 			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 		}
+		remainingGas -= uint64(execution.GasUsed)
 	}
 	if working.ChainID != ChainID {
 		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
@@ -224,19 +284,22 @@ func (a *app) FinalizeBlock(_ context.Context, req *abci.RequestFinalizeBlock) (
 	if req.Height != a.state.Height+1 {
 		return nil, fmt.Errorf("unexpected block height %d; expected %d", req.Height, a.state.Height+1)
 	}
+	if len(req.Txs) > prototypeMaxTxCount {
+		return nil, fmt.Errorf("block has %d transactions; maximum is %d", len(req.Txs), prototypeMaxTxCount)
+	}
 	next := cloneState(a.state)
 	next.Height = req.Height
 	results := make([]*abci.ExecTxResult, len(req.Txs))
+	block := requestBlockContext(req.Height, req.Time.Unix(), a.state.Height, req.Hash)
+	remainingGas := prototypeBlockGasLimit
 	for i, raw := range req.Txs {
-		if err := applyNativeTransfer(&next, raw); err != nil {
+		execution, err := applyPrototypeTransaction(&next, raw, block, uint32(i), remainingGas)
+		if err != nil {
 			results[i] = &abci.ExecTxResult{Code: 1, Codespace: "gyds-prototype", Log: err.Error()}
 			continue
 		}
-		results[i] = &abci.ExecTxResult{
-			Code:      0,
-			GasWanted: int64(nativeTransferGasLimit),
-			GasUsed:   int64(nativeTransferGasLimit),
-		}
+		results[i] = prototypeABCIResult(execution)
+		remainingGas -= uint64(execution.GasUsed)
 	}
 	a.pending = &next
 	return &abci.ResponseFinalizeBlock{TxResults: results, AppHash: stateHash(next)}, nil
@@ -296,10 +359,13 @@ func (a *app) persistLocked(state appState) error {
 
 func cloneState(state appState) appState {
 	return appState{
-		ChainID:  state.ChainID,
-		Height:   state.Height,
-		Balances: cloneBalances(state.Balances),
-		Nonces:   cloneNonces(state.Nonces),
+		Version:     state.Version,
+		ChainID:     state.ChainID,
+		Height:      state.Height,
+		Balances:    cloneBalances(state.Balances),
+		Nonces:      cloneNonces(state.Nonces),
+		EVMRoot:     state.EVMRoot,
+		EVMAccounts: cloneEVMAccounts(state.EVMAccounts),
 	}
 }
 
@@ -320,6 +386,9 @@ func cloneNonces(nonces map[string]uint64) map[string]uint64 {
 }
 
 func validateAppState(state appState) error {
+	if state.Version != AppStateVersion {
+		return fmt.Errorf("unsupported prototype app-state version %d; use a fresh isolated home", state.Version)
+	}
 	if state.ChainID != ChainID || state.Height < 0 {
 		return fmt.Errorf("incompatible chain ID or height")
 	}
@@ -330,6 +399,32 @@ func validateAppState(state appState) error {
 		if !common.IsHexAddress(address) || address != strings.ToLower(address) {
 			return fmt.Errorf("invalid nonce address %q", address)
 		}
+	}
+	for address, account := range state.EVMAccounts {
+		if !common.IsHexAddress(address) || address != strings.ToLower(address) {
+			return fmt.Errorf("invalid EVM contract address %q", address)
+		}
+		if account.Code != "" {
+			code, err := hexutil.Decode(account.Code)
+			if err != nil || hexutil.Encode(code) != account.Code {
+				return fmt.Errorf("invalid or non-canonical EVM code for %s", address)
+			}
+		}
+		for slot, value := range account.Storage {
+			if _, err := decodeCanonicalHash(slot); err != nil {
+				return fmt.Errorf("invalid EVM storage slot for %s: %w", address, err)
+			}
+			if _, err := decodeCanonicalHash(value); err != nil {
+				return fmt.Errorf("invalid EVM storage value for %s: %w", address, err)
+			}
+		}
+	}
+	root, err := prototypeEVMRoot(state)
+	if err != nil {
+		return err
+	}
+	if root.Hex() != state.EVMRoot {
+		return fmt.Errorf("saved EVM state root %q does not match reconstructed state root %s", state.EVMRoot, root.Hex())
 	}
 	return nil
 }
@@ -349,9 +444,13 @@ func stateHash(state appState) []byte {
 		return nil
 	}
 	hash := sha256.New()
+	_, _ = hash.Write([]byte(strconv.Itoa(state.Version)))
+	_, _ = hash.Write([]byte{0})
 	_, _ = hash.Write([]byte(state.ChainID))
 	_, _ = hash.Write([]byte{0})
 	_, _ = hash.Write([]byte(strconv.FormatInt(state.Height, 10)))
+	_, _ = hash.Write([]byte{0})
+	_, _ = hash.Write([]byte(state.EVMRoot))
 	_, _ = hash.Write([]byte{0})
 	addressSet := make(map[string]struct{}, len(state.Balances)+len(state.Nonces))
 	for address := range state.Balances {

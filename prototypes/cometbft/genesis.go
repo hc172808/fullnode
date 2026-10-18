@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	ChainID          = "9198281"
-	AppVersion       = 2
+	ChainID          = "9198282"
+	AppVersion       = 3
+	AppStateVersion  = 1
 	NativeDecimals   = 18
 	NativeSupplyGYDS = int64(2_000_000_000)
 )
