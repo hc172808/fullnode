@@ -17,5 +17,5 @@
 - [GYD stablecoin decisions](gyd-usd-target-and-token-logos.md) — USD target is informational; preserve 10B balances in the mainnet ERC-20 migration with multisig authority and safety gates
 - [Production launch target](node-launch-priority.md) — target the existing mainnet on the operator's server; preserve data on updates and make resets explicit
 - [Go archive checksum verification](go-checksum-verification.md) — verify against Go's release JSON and report expected/actual hashes on mismatch
-- [Consensus engine direction](consensus-engine-direction.md) — CometBFT migration design authorized only; keep validator economics and live-network approval explicit
+- [Consensus engine direction](consensus-engine-direction.md) — isolated signed-tx prototype is approved and must use a unique chain ID; production activation remains separately gated
 - [GYDS supply targets](gyds-supply-targets.md) — requested 3B mainnet and 2B persistent-testnet genesis supplies require coordinated migration

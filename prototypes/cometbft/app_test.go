@@ -55,7 +55,7 @@ func TestInitChainAndSupplyQuery(t *testing.T) {
 	}
 }
 
-func TestPrototypeRejectsTransactions(t *testing.T) {
+func TestPrototypeRejectsMalformedTransactions(t *testing.T) {
 	app, err := newApp("")
 	if err != nil {
 		t.Fatal(err)

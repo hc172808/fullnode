@@ -23,7 +23,7 @@ import (
 )
 
 func main() {
-	home := flag.String("home", filepath.Join(os.TempDir(), "gyds-cometbft-prototype"), "isolated prototype home; must be under the system temp directory")
+	home := flag.String("home", filepath.Join(os.TempDir(), "gyds-cometbft-prototype-9198281"), "isolated prototype home; must be under the system temp directory")
 	flag.Parse()
 	if err := run(*home); err != nil {
 		fmt.Fprintln(os.Stderr, "CometBFT prototype:", err)
@@ -96,7 +96,7 @@ func run(home string) error {
 	}
 
 	fmt.Printf("Isolated CometBFT prototype running: chain ID %s, 2,000,000,000 GYDS, RPC http://127.0.0.1:36657\n", ChainID)
-	fmt.Println("This single-validator prototype has no signed transactions and must not connect to live peers.")
+	fmt.Println("Prototype-only: accepts zero-fee EIP-155 native transfers; do not connect it to live peers or use it for funds.")
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)

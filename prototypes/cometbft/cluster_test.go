@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/cometbft/cometbft/proxy"
 	httpclient "github.com/cometbft/cometbft/rpc/client/http"
 	cmtTypes "github.com/cometbft/cometbft/types"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 )
 
 const clusterValidatorCount = 3
@@ -31,9 +33,27 @@ type clusterMember struct {
 	p2pPort int
 	rpcPort int
 	rpc     *httpclient.HTTP
+	app     *app
 }
 
-func TestThreeValidatorClusterCommitsMatchingBlocks(t *testing.T) {
+func TestThreeValidatorClusterExecutesSignedTransferDeterministically(t *testing.T) {
+	senderKey, err := ethcrypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipientKey, err := ethcrypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender := ethcrypto.PubkeyToAddress(senderKey.PublicKey)
+	recipient := ethcrypto.PubkeyToAddress(recipientKey.PublicKey)
+	genesisState := GenesisState{
+		ChainID: ChainID,
+		Balances: map[string]string{
+			addressKey(sender): toBaseUnits(NativeSupplyGYDS),
+		},
+	}
+
 	root := t.TempDir()
 	usedPorts := make(map[int]struct{}, clusterValidatorCount*2)
 	members := make([]clusterMember, clusterValidatorCount)
@@ -84,7 +104,7 @@ func TestThreeValidatorClusterCommitsMatchingBlocks(t *testing.T) {
 		}
 	}
 
-	genesis := clusterGenesis(t, validators)
+	genesis := clusterGenesis(t, validators, genesisState)
 	for i := range members {
 		peers := make([]string, 0, clusterValidatorCount-1)
 		for j := range members {
@@ -125,6 +145,7 @@ func TestThreeValidatorClusterCommitsMatchingBlocks(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create validator %d app: %v", i+1, err)
 		}
+		member.app = application
 		cometNode, err := node.NewNode(
 			member.cfg,
 			member.privVal,
@@ -145,11 +166,46 @@ func TestThreeValidatorClusterCommitsMatchingBlocks(t *testing.T) {
 	}
 
 	waitForClusterCommit(t, members, 3, 45*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	before, err := members[0].rpc.Status(ctx)
+	cancel()
+	if err != nil {
+		t.Fatalf("read pre-transfer validator status: %v", err)
+	}
+	amount := big.NewInt(17)
+	raw := signedNativeTransferForTest(t, senderKey, 0, recipient, amount, ChainID)
+	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+	broadcast, err := members[0].rpc.BroadcastTxSync(ctx, cmtTypes.Tx(raw))
+	cancel()
+	if err != nil {
+		t.Fatalf("broadcast signed native transfer: %v", err)
+	}
+	if broadcast.Code != 0 {
+		t.Fatalf("cluster rejected signed transfer: code=%d log=%s", broadcast.Code, broadcast.Log)
+	}
+
+	initialBalance, ok := new(big.Int).SetString(toBaseUnits(NativeSupplyGYDS), 10)
+	if !ok {
+		t.Fatal("invalid prototype genesis supply")
+	}
+	expectedSender := new(big.Int).Sub(initialBalance, amount).String()
+	waitForClusterTransfer(
+		t,
+		members,
+		before.SyncInfo.LatestBlockHeight+1,
+		addressKey(sender),
+		expectedSender,
+		addressKey(recipient),
+		amount.String(),
+		20*time.Second,
+	)
+	waitForClusterCommit(t, members, before.SyncInfo.LatestBlockHeight+1, 15*time.Second)
 }
 
-func clusterGenesis(t *testing.T, validators []cmtTypes.GenesisValidator) *cmtTypes.GenesisDoc {
+func clusterGenesis(t *testing.T, validators []cmtTypes.GenesisValidator, state GenesisState) *cmtTypes.GenesisDoc {
 	t.Helper()
-	appState, err := json.Marshal(defaultGenesisState())
+	appState, err := json.Marshal(state)
 	if err != nil {
 		t.Fatalf("encode isolated genesis app state: %v", err)
 	}
@@ -165,6 +221,55 @@ func clusterGenesis(t *testing.T, validators []cmtTypes.GenesisValidator) *cmtTy
 		t.Fatalf("validate isolated multi-validator genesis: %v", err)
 	}
 	return genesis
+}
+
+func waitForClusterTransfer(
+	t *testing.T,
+	members []clusterMember,
+	minimumHeight int64,
+	sender, expectedSenderBalance, recipient, expectedRecipientBalance string,
+	timeout time.Duration,
+) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	lastState := make([]string, len(members))
+
+	for time.Now().Before(deadline) {
+		allCommitted := true
+		var expectedHash string
+		for i, member := range members {
+			member.app.mu.RLock()
+			state := cloneState(member.app.state)
+			member.app.mu.RUnlock()
+
+			lastState[i] = fmt.Sprintf(
+				"height=%d sender=%s recipient=%s nonce=%d",
+				state.Height,
+				state.Balances[sender],
+				state.Balances[recipient],
+				state.Nonces[sender],
+			)
+			if state.Height < minimumHeight ||
+				state.Balances[sender] != expectedSenderBalance ||
+				state.Balances[recipient] != expectedRecipientBalance ||
+				state.Nonces[sender] != 1 {
+				allCommitted = false
+				continue
+			}
+			hash := hashString(state)
+			if expectedHash == "" {
+				expectedHash = hash
+			} else if hash != expectedHash {
+				allCommitted = false
+			}
+		}
+		if allCommitted {
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	t.Fatalf("three-validator cluster did not execute the same signed transfer: %v", lastState)
 }
 
 func waitForClusterCommit(t *testing.T, members []clusterMember, minimumHeight int64, timeout time.Duration) {

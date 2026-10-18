@@ -1204,11 +1204,13 @@ coordinated network migration is explicitly approved.
   height after restart.
 - [x] Add an isolated three-validator CometBFT cluster smoke test. It confirms
   each local validator connects to both peers and commits matching block and
-  app hashes. This covers empty-block consensus only, not GYDS transactions or
+  app hashes, then propagates and executes a signed native transfer with
+  identical balances and nonces. This is a no-fault smoke test, not evidence of
   distributed BFT safety under faults.
-- [ ] Add signed transaction validation and deterministic GYDS execution to
-  the isolated prototype. Keep existing mainnet and persistent-testnet
-  genesis/history unchanged until a migration is reviewed and approved.
+- [x] Add isolated signed native-transfer validation and deterministic GYDS
+  execution. The prototype accepts only zero-fee EIP-155 legacy transfers;
+  production fee, pending-nonce, EVM, and migration rules remain unapproved.
+  Existing mainnet and persistent-testnet genesis/history are unchanged.
 - [ ] Add coordinated, signed protocol-upgrade activation (version signaling,
   activation height, compatibility window, operator notice, and rollback
   boundary). Do not let a normal Git update silently change consensus behavior.

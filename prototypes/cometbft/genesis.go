@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/cometbft/cometbft/crypto"
 	cmtTypes "github.com/cometbft/cometbft/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
-	ChainID          = "198281"
-	AppVersion       = 1
+	ChainID          = "9198281"
+	AppVersion       = 2
 	NativeDecimals   = 18
 	NativeSupplyGYDS = int64(2_000_000_000)
 )
@@ -46,12 +48,21 @@ func validateGenesisState(state GenesisState) error {
 		return fmt.Errorf("genesis must allocate the native supply")
 	}
 	total := new(big.Int)
+	seen := make(map[string]struct{}, len(state.Balances))
 	for address, amountText := range state.Balances {
-		if len(address) != 42 || address[:2] != "0x" {
+		if !common.IsHexAddress(address) {
 			return fmt.Errorf("invalid genesis address %q", address)
 		}
+		normalized := strings.ToLower(common.HexToAddress(address).Hex())
+		if address != normalized {
+			return fmt.Errorf("genesis address %q must use lowercase hexadecimal", address)
+		}
+		if _, exists := seen[normalized]; exists {
+			return fmt.Errorf("duplicate genesis address %q", address)
+		}
+		seen[normalized] = struct{}{}
 		amount, ok := new(big.Int).SetString(amountText, 10)
-		if !ok || amount.Sign() < 0 {
+		if !ok || amount.Sign() < 0 || amount.BitLen() > 256 {
 			return fmt.Errorf("invalid balance for %s", address)
 		}
 		total.Add(total, amount)

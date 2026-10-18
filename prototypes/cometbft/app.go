@@ -12,16 +12,19 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/version"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type appState struct {
 	ChainID  string            `json:"chainId"`
 	Height   int64             `json:"height"`
 	Balances map[string]string `json:"balances"`
+	Nonces   map[string]uint64 `json:"nonces"`
 }
 
 type app struct {
@@ -49,10 +52,10 @@ func newApp(stateFile string) (*app, error) {
 	if err := json.Unmarshal(data, &a.state); err != nil {
 		return nil, fmt.Errorf("decode prototype app state: %w", err)
 	}
-	if a.state.ChainID != ChainID || a.state.Height < 0 {
-		return nil, fmt.Errorf("prototype app state has incompatible chain ID or height")
+	if a.state.Nonces == nil {
+		a.state.Nonces = make(map[string]uint64)
 	}
-	if err := validateGenesisState(GenesisState{ChainID: a.state.ChainID, Balances: a.state.Balances}); err != nil {
+	if err := validateAppState(a.state); err != nil {
 		return nil, fmt.Errorf("validate saved prototype state: %w", err)
 	}
 	return a, nil
@@ -62,7 +65,7 @@ func (a *app) Info(context.Context, *abci.RequestInfo) (*abci.ResponseInfo, erro
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return &abci.ResponseInfo{
-		Data:             "GYDS isolated CometBFT prototype; transactions disabled",
+		Data:             "GYDS isolated CometBFT prototype; gasless EIP-155 native transfers only",
 		Version:          version.ABCIVersion,
 		AppVersion:       AppVersion,
 		LastBlockHeight:  a.state.Height,
@@ -84,7 +87,11 @@ func (a *app) InitChain(_ context.Context, req *abci.RequestInitChain) (*abci.Re
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	candidate := appState{ChainID: genesis.ChainID, Balances: cloneBalances(genesis.Balances)}
+	candidate := appState{
+		ChainID:  genesis.ChainID,
+		Balances: cloneBalances(genesis.Balances),
+		Nonces:   make(map[string]uint64),
+	}
 	if a.state.Balances != nil {
 		if !bytes.Equal(stateHash(a.state), stateHash(candidate)) {
 			return nil, fmt.Errorf("saved app state does not match the prototype genesis")
@@ -119,26 +126,84 @@ func (a *app) Query(_ context.Context, req *abci.RequestQuery) (*abci.ResponseQu
 		const prefix = "/balance/"
 		if len(req.Path) > len(prefix) && req.Path[:len(prefix)] == prefix {
 			address := req.Path[len(prefix):]
-			balance, ok := a.state.Balances[address]
+			if !common.IsHexAddress(address) {
+				return &abci.ResponseQuery{Code: 1, Log: "invalid address"}, nil
+			}
+			balance, ok := a.state.Balances[addressKey(common.HexToAddress(address))]
 			if !ok {
 				balance = "0"
 			}
 			return &abci.ResponseQuery{Code: 0, Value: []byte(balance), Height: a.state.Height}, nil
 		}
-		return &abci.ResponseQuery{Code: 1, Log: "supported paths: /supply, /balance/<address>"}, nil
+		const noncePrefix = "/nonce/"
+		if len(req.Path) > len(noncePrefix) && req.Path[:len(noncePrefix)] == noncePrefix {
+			address := req.Path[len(noncePrefix):]
+			if !common.IsHexAddress(address) {
+				return &abci.ResponseQuery{Code: 1, Log: "invalid address"}, nil
+			}
+			nonce := a.state.Nonces[addressKey(common.HexToAddress(address))]
+			return &abci.ResponseQuery{
+				Code:   0,
+				Value:  []byte(strconv.FormatUint(nonce, 10)),
+				Height: a.state.Height,
+			}, nil
+		}
+		return &abci.ResponseQuery{Code: 1, Log: "supported paths: /supply, /balance/<address>, /nonce/<address>"}, nil
 	}
 }
 
-func (a *app) CheckTx(context.Context, *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
-	return &abci.ResponseCheckTx{Code: 1, Log: "transactions are disabled in the isolated consensus prototype"}, nil
+func (a *app) CheckTx(_ context.Context, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
+	if req == nil {
+		return &abci.ResponseCheckTx{Code: 1, Log: "missing transaction"}, nil
+	}
+	a.mu.RLock()
+	working := cloneState(a.state)
+	a.mu.RUnlock()
+	if err := applyNativeTransfer(&working, req.Tx); err != nil {
+		return &abci.ResponseCheckTx{Code: 1, Codespace: "gyds-prototype", Log: err.Error()}, nil
+	}
+	return &abci.ResponseCheckTx{Code: 0}, nil
 }
 
-func (a *app) PrepareProposal(context.Context, *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
-	return &abci.ResponsePrepareProposal{Txs: [][]byte{}}, nil
+func (a *app) PrepareProposal(_ context.Context, req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
+	if req == nil || req.MaxTxBytes <= 0 {
+		return &abci.ResponsePrepareProposal{Txs: [][]byte{}}, nil
+	}
+	a.mu.RLock()
+	working := cloneState(a.state)
+	a.mu.RUnlock()
+
+	selected := make([][]byte, 0, len(req.Txs))
+	var selectedBytes int64
+	for _, raw := range req.Txs {
+		txSize := int64(len(raw))
+		if txSize > req.MaxTxBytes-selectedBytes {
+			continue
+		}
+		candidate := cloneState(working)
+		if err := applyNativeTransfer(&candidate, raw); err != nil {
+			continue
+		}
+		working = candidate
+		selected = append(selected, append([]byte(nil), raw...))
+		selectedBytes += txSize
+	}
+	return &abci.ResponsePrepareProposal{Txs: selected}, nil
 }
 
 func (a *app) ProcessProposal(_ context.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
-	if req != nil && len(req.Txs) != 0 {
+	if req == nil {
+		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
+	}
+	a.mu.RLock()
+	working := cloneState(a.state)
+	a.mu.RUnlock()
+	for _, raw := range req.Txs {
+		if err := applyNativeTransfer(&working, raw); err != nil {
+			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
+		}
+	}
+	if working.ChainID != ChainID {
 		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 	}
 	return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
@@ -150,23 +215,31 @@ func (a *app) FinalizeBlock(_ context.Context, req *abci.RequestFinalizeBlock) (
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.state.Balances == nil {
+		return nil, fmt.Errorf("application state is not initialized")
+	}
+	if a.pending != nil {
+		return nil, fmt.Errorf("previous block has not been committed")
+	}
 	if req.Height != a.state.Height+1 {
 		return nil, fmt.Errorf("unexpected block height %d; expected %d", req.Height, a.state.Height+1)
 	}
-	if len(req.Txs) != 0 {
-		results := make([]*abci.ExecTxResult, len(req.Txs))
-		for i := range results {
-			results[i] = &abci.ExecTxResult{Code: 1, Log: "transactions are disabled in the isolated consensus prototype"}
-		}
-		return &abci.ResponseFinalizeBlock{
-			TxResults: results,
-			AppHash:   stateHash(a.state),
-		}, nil
-	}
 	next := cloneState(a.state)
 	next.Height = req.Height
+	results := make([]*abci.ExecTxResult, len(req.Txs))
+	for i, raw := range req.Txs {
+		if err := applyNativeTransfer(&next, raw); err != nil {
+			results[i] = &abci.ExecTxResult{Code: 1, Codespace: "gyds-prototype", Log: err.Error()}
+			continue
+		}
+		results[i] = &abci.ExecTxResult{
+			Code:      0,
+			GasWanted: int64(nativeTransferGasLimit),
+			GasUsed:   int64(nativeTransferGasLimit),
+		}
+	}
 	a.pending = &next
-	return &abci.ResponseFinalizeBlock{AppHash: stateHash(next)}, nil
+	return &abci.ResponseFinalizeBlock{TxResults: results, AppHash: stateHash(next)}, nil
 }
 
 func (a *app) Commit(context.Context, *abci.RequestCommit) (*abci.ResponseCommit, error) {
@@ -222,7 +295,12 @@ func (a *app) persistLocked(state appState) error {
 }
 
 func cloneState(state appState) appState {
-	return appState{ChainID: state.ChainID, Height: state.Height, Balances: cloneBalances(state.Balances)}
+	return appState{
+		ChainID:  state.ChainID,
+		Height:   state.Height,
+		Balances: cloneBalances(state.Balances),
+		Nonces:   cloneNonces(state.Nonces),
+	}
 }
 
 func cloneBalances(balances map[string]string) map[string]string {
@@ -231,6 +309,29 @@ func cloneBalances(balances map[string]string) map[string]string {
 		copyOf[address] = amount
 	}
 	return copyOf
+}
+
+func cloneNonces(nonces map[string]uint64) map[string]uint64 {
+	copyOf := make(map[string]uint64, len(nonces))
+	for address, nonce := range nonces {
+		copyOf[address] = nonce
+	}
+	return copyOf
+}
+
+func validateAppState(state appState) error {
+	if state.ChainID != ChainID || state.Height < 0 {
+		return fmt.Errorf("incompatible chain ID or height")
+	}
+	if err := validateGenesisState(GenesisState{ChainID: state.ChainID, Balances: state.Balances}); err != nil {
+		return err
+	}
+	for address := range state.Nonces {
+		if !common.IsHexAddress(address) || address != strings.ToLower(address) {
+			return fmt.Errorf("invalid nonce address %q", address)
+		}
+	}
+	return nil
 }
 
 func totalSupply(balances map[string]string) *big.Int {
@@ -252,15 +353,28 @@ func stateHash(state appState) []byte {
 	_, _ = hash.Write([]byte{0})
 	_, _ = hash.Write([]byte(strconv.FormatInt(state.Height, 10)))
 	_, _ = hash.Write([]byte{0})
-	addresses := make([]string, 0, len(state.Balances))
+	addressSet := make(map[string]struct{}, len(state.Balances)+len(state.Nonces))
 	for address := range state.Balances {
+		addressSet[address] = struct{}{}
+	}
+	for address := range state.Nonces {
+		addressSet[address] = struct{}{}
+	}
+	addresses := make([]string, 0, len(addressSet))
+	for address := range addressSet {
 		addresses = append(addresses, address)
 	}
 	sort.Strings(addresses)
 	for _, address := range addresses {
 		_, _ = hash.Write([]byte(address))
 		_, _ = hash.Write([]byte{0})
-		_, _ = hash.Write([]byte(state.Balances[address]))
+		balance := state.Balances[address]
+		if balance == "" {
+			balance = "0"
+		}
+		_, _ = hash.Write([]byte(balance))
+		_, _ = hash.Write([]byte{0})
+		_, _ = hash.Write([]byte(strconv.FormatUint(state.Nonces[address], 10)))
 		_, _ = hash.Write([]byte{0})
 	}
 	return hash.Sum(nil)

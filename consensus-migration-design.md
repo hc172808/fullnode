@@ -45,10 +45,10 @@ mainnet EVM, or modifying mainnet history.
    paths do not provide token transfers or persist token balances. The proposed
    migration therefore needs a verified source-of-truth manifest; it must not
    assume there is a mutable, queryable 10B live balance map.
-6. **The CometBFT prototype remains isolated.** It uses testnet chain ID
-   `198281`, a 2B GYDS test genesis, and rejects transactions. The new temporary
-   three-validator test confirms peer connectivity and matching empty-block and
-   app hashes only.
+6. **The CometBFT prototype remains isolated.** It uses unique test-only chain
+   ID `9198281` and a 2B GYDS test genesis. It now exercises signed native
+   transfers and deterministic state execution, but does not implement EVM
+   contracts, production fees, or fault testing.
 7. **Current wallet setup collects more secret material than this migration
    needs.** The setup page can generate/import a key or recovery phrase and
    posts the private key to the node, which writes it into `.env` with mode
@@ -114,9 +114,11 @@ Resolve these before production integration:
 - Whether to retain EVM chain ID `198282` across the transition. Preserving it
   is the continuity-oriented default for wallet configuration and EIP-155
   transaction signing, but this needs explicit protocol review.
-- A deterministic transaction envelope for legacy native transfers and any
+- A production transaction envelope for legacy native transfers and any
   remaining native operations. EVM transactions must also enforce chain ID,
-  nonce, signature recovery, gas, and fork rules.
+  nonce, signature recovery, gas, and fork rules. The isolated prototype now
+  exercises only EIP-155 legacy native transfers with zero fees; this is not an
+  approved production transaction or fee policy.
 - An independently reviewed decision for how the legacy chain's final head is
   authorized. The current proposer does not provide cryptographic finality.
 
@@ -135,8 +137,9 @@ Resolve these before production integration:
 
 ### Stage 2 — isolated testnet and fault testing
 
-- Extend `prototypes/cometbft/` with signed transactions and deterministic GYDS
-  execution; the present smoke app rejects transactions.
+- The prototype now validates and executes signed native transfers
+  deterministically. Extend it with production-grade pending nonce/fee behavior,
+  EVM execution, and the fault/restart/partition scenarios listed below.
 - Test multiple independent validators, restart/catch-up, lost peers,
   partitions, invalid signatures/nonces, duplicate transactions, conflicting
   proposals, process crashes, and state restoration from backups.
