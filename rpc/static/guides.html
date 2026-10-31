@@ -84,7 +84,7 @@
     .step-body ul li::before { content: '▸'; position: absolute; left: 0; color: var(--accent); }
 
     /* Code blocks */
-    .code-block { background: #060a12; border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; font-family: var(--mono); font-size: 12px; line-height: 1.8; color: #a0b4c8; margin: 12px 0; overflow-x: auto; position: relative; }
+    .code-block { background: #060a12; border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; font-family: var(--mono); font-size: 12px; line-height: 1.8; color: #a0b4c8; margin: 12px 0; overflow-x: auto; position: relative; white-space: pre-wrap; }
     .code-block .comment { color: var(--muted); }
     .code-block .key { color: var(--accent2); }
     .code-block .val { color: var(--accent); }
@@ -143,7 +143,7 @@
   <nav class="nav-links">
     <a href="/" class="nav-link">Dashboard</a>
     <a href="/setup" class="nav-link">Setup Wizard</a>
-    <a href="/admin/guides" class="nav-link active">Operator Guide</a>
+    <a href="/guide" class="nav-link active">Operator Guide</a>
   </nav>
 </header>
 
@@ -192,6 +192,35 @@
         <li>Back up encrypted configuration, identities, keys, and chain data. Test recovery without automatically deleting chain data.</li>
       </ul></div></div>
       <div class="step-card"><div class="step-card-header"><div class="step-num">4</div><div class="step-title">What still needs engineering review</div></div><div class="step-body"><p>This build provides node health, peer status, update checks, firewall/fail2ban deployment, and admin controls. External alerting, backup verification, comprehensive RPC/P2P/failure test suites, HTTPS edge authentication, redundant bootnodes, backup RPC/archive capacity, and a full validator review remain separate production work.</p></div></div>
+    </div>
+    <div class="quick-start">
+      <h3>Reset old node data safely</h3>
+      <p style="color:var(--muted);font-size:14px;line-height:1.7">
+        A full reset removes the node's local configuration, chain data, node identity, admin state, and Docker data volume if Compose is active.
+        The reset script makes a protected backup first, asks you to type <code>RESET</code>, then restarts the service so the setup wizard is available.
+        Do not reset a node whose chain history or keys you still need.
+      </p>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+<span class="comment"># Preview the targets first; this changes nothing</span>
+<span class="cmd">sudo scripts/reset-node.sh --dry-run</span>
+
+<span class="comment"># Run the reset; type RESET when prompted</span>
+<span class="cmd">sudo scripts/reset-node.sh</span>
+
+<span class="comment"># Complete setup at /setup, then install the saved configuration</span>
+<span class="cmd">sudo bash deploy.sh --env .env</span></div>
+      <div class="alert alert-danger">
+        ⚠️ Backups are written under <code>/var/backups/gyds-fullnode/</code> with owner-only permissions.
+        Ensure the server has enough free disk space before resetting. The reset does not change the baked-in genesis or coordinate a network reset.
+        For a node that should keep its configuration and only rebuild local chain state, use
+        <code>sudo bash deploy.sh --reset-data --env .env</code> instead; that archives the configured data directory and retains <code>.env</code>.
+      </div>
+      <p style="color:var(--muted);font-size:13px;line-height:1.7;margin-bottom:0">
+        Open this guide directly at <code>/guide</code>. The dashboard does not show a guide link.
+        Configure a public <code>GYDS_P2P_ADVERTISE_HOST</code>, a real bootstrap address on joining nodes, HTTPS for public RPC,
+        and firewall rules before exposing the node.
+      </p>
     </div>
   </div>
 

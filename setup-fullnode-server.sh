@@ -929,7 +929,13 @@ fi
 install -m 0755 "${APP_DIR}/scripts/update-from-git.sh" /usr/local/bin/gyds-fullnode-update
 log "Update helper installed: /usr/local/bin/gyds-fullnode-update"
 if [ -f "${APP_DIR}/scripts/reset-node.sh" ]; then
-  install -m 0755 "${APP_DIR}/scripts/reset-node.sh" /usr/local/bin/gyds-fullnode-reset
+  cat > /usr/local/bin/gyds-fullnode-reset <<RESET_WRAPPER
+#!/usr/bin/env bash
+export GYDS_APP_DIR="${APP_DIR}"
+export GYDS_ENV_FILE="${APP_DIR}/.env"
+exec "${APP_DIR}/scripts/reset-node.sh" "\$@"
+RESET_WRAPPER
+  chmod 0755 /usr/local/bin/gyds-fullnode-reset
   log "Reset helper installed: /usr/local/bin/gyds-fullnode-reset"
 fi
 
