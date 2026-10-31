@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────
 # Stage 1 — Build
 # ──────────────────────────────────────────────
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 RUN apk add --no-cache git ca-certificates tzdata make
 WORKDIR /build
 COPY go.mod go.sum ./
