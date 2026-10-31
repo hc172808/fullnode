@@ -150,6 +150,22 @@ func (c *Chain) loadFromDB() error {
 		if b.Header.Number == 0 {
 			continue // Genesis is always re-derived from config, never persisted
 		}
+		if c.headerOnly {
+			head := c.blocks[len(c.blocks)-1]
+			if len(b.Transactions) != 0 {
+				return fmt.Errorf("header-only database contains block bodies at height %d", b.Header.Number)
+			}
+			if b.Header.Number != head.Header.Number+1 {
+				return fmt.Errorf("header-only database is not contiguous at height %d", b.Header.Number)
+			}
+			if !strings.EqualFold(b.Header.ParentHash, head.Hash) {
+				return fmt.Errorf("header-only database has a broken parent link at height %d", b.Header.Number)
+			}
+			if !strings.EqualFold(b.Header.Hash, b.Header.ComputeHash()) ||
+				!strings.EqualFold(b.Hash, b.Header.Hash) {
+				return fmt.Errorf("header-only database has an invalid hash at height %d", b.Header.Number)
+			}
+		}
 		c.addBlock(&b)
 		// Index transactions (no balance replay — loaded separately below)
 		c.txMu.Lock()

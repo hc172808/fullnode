@@ -161,6 +161,10 @@ func (s *Server) SetNodeMode(mode string) {
 // Use this for testnode mode to guarantee no external exposure.
 func (s *Server) SetLoopbackOnly() { s.bindHost = "127.0.0.1" }
 
+// SetBindHost configures the host address for HTTP listeners. An empty value
+// retains the default all-interface binding.
+func (s *Server) SetBindHost(host string) { s.bindHost = host }
+
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -269,7 +273,7 @@ func (s *Server) setupDashboardRoutes() {
 
 	r.HandleFunc("/health", s.handleHealth).Methods("GET")
 	r.HandleFunc("/", s.handleDashboard).Methods("GET")
-r.HandleFunc("/guide", s.handleGuidesPage).Methods("GET")
+	r.HandleFunc("/guide", s.handleGuidesPage).Methods("GET")
 
 	// JSON-RPC at /rpc on the dashboard port — used by the built-in browser wallet
 	r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
@@ -356,6 +360,7 @@ r.HandleFunc("/guide", s.handleGuidesPage).Methods("GET")
 func (s *Server) setupRPCRoutes() {
 	r := mux.NewRouter()
 	r.HandleFunc("/health", s.handleHealth).Methods("GET")
+	r.HandleFunc("/p2p/node-id", s.handleNodeIDInfo).Methods("GET")
 	// The dedicated RPC origin is commonly the URL given to external wallets.
 	// Serve the same public metadata and logo assets there as on the dashboard
 	// so iconUrls do not resolve to 404.
@@ -981,6 +986,14 @@ func parseBlockNumberTag(tag string, latest uint64) (uint64, bool) {
 func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 	resp := jsonRPCResponse{JSONRPC: "2.0", ID: req.ID}
 
+	if s.nodeMode == "lite" && !liteRPCMethod(req.Method) {
+		resp.Error = rpcError(
+			-32004,
+			"lite mode stores headers only and cannot answer state, transaction, or full-block queries; use an independently trusted full-node RPC for those queries",
+		)
+		return resp
+	}
+
 	switch req.Method {
 
 	// ── Network / chain info ─────────────────────────────────────────────────
@@ -1016,7 +1029,24 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 		}
 
 	case "eth_syncing":
-		resp.Result = false
+		if s.nodeMode == "lite" {
+			current := s.chain.Height()
+			highest := current
+			if peerHeights, ok := s.p2p.(interface{ MaxPeerHeight() uint64 }); ok {
+				highest = peerHeights.MaxPeerHeight()
+			}
+			if highest > current {
+				resp.Result = map[string]string{
+					"startingBlock": "0x0",
+					"currentBlock":  fmt.Sprintf("0x%x", current),
+					"highestBlock":  fmt.Sprintf("0x%x", highest),
+				}
+			} else {
+				resp.Result = false
+			}
+		} else {
+			resp.Result = false
+		}
 
 	case "web3_clientVersion":
 		resp.Result = "GYDS/v1.0.0/linux/go1.25"
@@ -1074,6 +1104,22 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 			resp.Result = blockToRPC(b)
 		} else {
 			resp.Result = nil
+		}
+
+	case "gyds_getHeaderByNumber":
+		tag := paramStr(req.Params, 0)
+		if num, ok := parseBlockNumberTag(tag, s.chain.Height()); ok {
+			if block, err := s.chain.GetByNumber(num); err == nil {
+				resp.Result = headerToRPC(block.Header)
+			}
+		} else {
+			resp.Error = rpcError(-32602, fmt.Sprintf("invalid block number %q", tag))
+		}
+
+	case "gyds_getHeaderByHash":
+		hash := paramStr(req.Params, 0)
+		if block, err := s.chain.GetByHash(hash); err == nil {
+			resp.Result = headerToRPC(block.Header)
 		}
 
 	case "eth_getBlockTransactionCountByNumber":
@@ -1215,6 +1261,44 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 	}
 
 	return resp
+}
+
+func liteRPCMethod(method string) bool {
+	switch method {
+	case "eth_blockNumber",
+		"eth_chainId",
+		"net_version",
+		"net_listening",
+		"net_peerCount",
+		"net_enode",
+		"eth_syncing",
+		"web3_clientVersion",
+		"eth_protocolVersion",
+		"gyds_getHeaderByNumber",
+		"gyds_getHeaderByHash":
+		return true
+	default:
+		return false
+	}
+}
+
+func headerToRPC(header *core.Header) map[string]interface{} {
+	if header == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"number":           fmt.Sprintf("0x%x", header.Number),
+		"hash":             header.Hash,
+		"parentHash":       header.ParentHash,
+		"stateRoot":        header.StateRoot,
+		"transactionsRoot": header.TxRoot,
+		"receiptsRoot":     header.ReceiptRoot,
+		"validator":        header.Validator,
+		"timestamp":        fmt.Sprintf("0x%x", header.Timestamp),
+		"gasLimit":         fmt.Sprintf("0x%x", header.GasLimit),
+		"gasUsed":          fmt.Sprintf("0x%x", header.GasUsed),
+		"size":             fmt.Sprintf("0x%x", header.Size),
+	}
 }
 
 type callArguments struct {

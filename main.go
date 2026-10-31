@@ -22,11 +22,10 @@ import (
 
 // wireAuth loads the node keypair and configures peer authorization on a P2P server.
 // P2P-capable roles always require an approved node ID for inbound connections.
-func wireAuth(srv *p2p.Server, cfg *config.Config) {
+func wireAuth(srv *p2p.Server, cfg *config.Config) error {
 	nk, err := p2p.LoadOrCreateNodeKey(cfg.DataDir)
 	if err != nil {
-		log.Warn().Err(err).Msg("Could not load/create node key — peer auth unavailable")
-		return
+		return fmt.Errorf("load or create required P2P node identity: %w", err)
 	}
 	requireAuth := cfg.PeerAuth || config.PeerAuthRequired(cfg.NodeMode)
 	log.Info().Str("nodeId", nk.ID()[:16]+"…").
@@ -34,6 +33,7 @@ func wireAuth(srv *p2p.Server, cfg *config.Config) {
 		Int("allowedNodes", len(cfg.AllowedNodes)).
 		Msg("Node identity loaded")
 	srv.SetAuth(nk, requireAuth, cfg.AllowedNodes)
+	return nil
 }
 
 // wireBlockProvider registers a block-serving callback on the P2P server so that
@@ -60,6 +60,34 @@ func wireBlockProvider(srv *p2p.Server, chain *core.Chain) {
 		raw, _ := json.Marshal(blocks)
 		return raw
 	})
+	wireHeaderProvider(srv, chain)
+}
+
+func wireHeaderProvider(srv *p2p.Server, chain *core.Chain) {
+	srv.SetHeaderProvider(func(from uint64, count int) json.RawMessage {
+		if count <= 0 {
+			return nil
+		}
+		if count > 200 {
+			count = 200
+		}
+		headers := make([]*core.Header, 0, count)
+		for i := 0; i < count; i++ {
+			block, err := chain.GetByNumber(from + uint64(i))
+			if err != nil {
+				break
+			}
+			if block == nil || block.Header == nil {
+				break
+			}
+			headers = append(headers, block.Header)
+		}
+		if len(headers) == 0 {
+			return nil
+		}
+		raw, _ := json.Marshal(headers)
+		return raw
+	})
 }
 
 var version = "1.0.0"
@@ -71,7 +99,7 @@ func main() {
 		Short: "GYDS Chain Node",
 		Long: `GYDS Chain Node — supports multiple operating modes:
   full     Complete node with P2P, block production, RPC, and dashboard
-  lite     Header-only sync with lower storage and faster startup
+  lite     Trusted-peer header sync only; no state proofs or block bodies
   rpc      RPC/API-only node — no block production, no P2P
   boost    High-performance validator node with extended peer limits
   genesis  Network bootstrapper — exports genesis and seeds the network
@@ -81,7 +109,7 @@ func main() {
 	root.AddCommand(startCmd(), genesisCmd(), versionCmd())
 	root.Long = `GYDS Chain Node — supports multiple operating modes:
   full       Complete node with P2P, block production, RPC, and dashboard
-  lite       Header-only sync with lower storage and faster startup
+  lite       Trusted-peer header sync only; no state proofs or block bodies
   rpc        RPC/API-only node — no block production, no P2P
   boost      High-performance validator node with extended peer limits
   genesis    Network bootstrapper — exports genesis and seeds the network
@@ -214,7 +242,9 @@ func runFullNode(cfg *config.Config) error {
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
-	wireAuth(p2pSrv, cfg)
+	if err := wireAuth(p2pSrv, cfg); err != nil {
+		return err
+	}
 	rpcSrv.SetP2P(p2pSrv)
 
 	if err := p2pSrv.Start(); err != nil {
@@ -229,46 +259,146 @@ func runFullNode(cfg *config.Config) error {
 }
 
 // ── Lite Node ─────────────────────────────────────────────────────────────────
-// Downloads only block headers. Much lower storage footprint (~95% less than a
-// full node). Cannot validate full transaction history or serve archive queries.
-// Ideal for wallets, light clients, and low-resource servers.
+// Stores headers only and syncs from explicitly approved peers. Current block
+// headers do not carry consensus finality proofs, so this mode is not trustless:
+// the operator must trust the peers they authorize.
 func runLiteNode(cfg *config.Config) error {
-	log.Info().Msg("Mode: Lite Node — header-only sync, reduced storage")
+	if len(cfg.P2PBootstrap) == 0 {
+		return fmt.Errorf("lite mode requires at least one trusted GYDS_BOOTSTRAP_NODES peer")
+	}
+	if len(cfg.AllowedNodes) == 0 {
+		return fmt.Errorf("lite mode requires the bootstrap node IDs in GYDS_ALLOWED_NODES; peer authentication cannot be bypassed")
+	}
 
-	// Lite nodes use a separate data directory to keep the footprint small.
-	liteDataDir := cfg.DataDir + "/lite"
-	chain := core.NewChain(activeGenesis, liteDataDir)
+	liteDataDir := cfg.DataDir + "/lite-headers"
+	chain, err := core.NewHeaderChain(activeGenesis, liteDataDir)
+	if err != nil {
+		return fmt.Errorf("open lite header database: %w", err)
+	}
 	log.Info().Uint64("height", chain.Height()).Msg("Lite chain initialised")
 
-	// Lite nodes serve RPC and dashboard but do NOT produce blocks.
+	responses := make(chan liteHeaderResponse, 16)
+	p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
+	p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
+	p2pSrv.SetMaxPeers(cfg.MaxPeers)
+	p2pSrv.SetNodeMode(cfg.NodeMode)
+	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
+	wireHeaderProvider(p2pSrv, chain)
+	if err := wireAuth(p2pSrv, cfg); err != nil {
+		chain.Close()
+		return err
+	}
+	p2pSrv.OnMessage(func(peer *p2p.Peer, msg p2p.Message) {
+		if msg.Type != p2p.MsgHeaders || len(msg.Payload) == 0 {
+			return
+		}
+		var response p2p.HeadersPayload
+		if err := json.Unmarshal(msg.Payload, &response); err != nil {
+			log.Warn().Err(err).Str("peer", peer.RemoteAddr()).Msg("invalid lite header response")
+			return
+		}
+		select {
+		case responses <- liteHeaderResponse{peerAddr: peer.RemoteAddr(), payload: response}:
+		default:
+			log.Warn().Str("peer", peer.RemoteAddr()).Msg("lite header response queue is full")
+		}
+	})
+	if err := p2pSrv.Start(); err != nil {
+		chain.Close()
+		return fmt.Errorf("lite P2P start failed: %w", err)
+	}
+	startBootstrapDialers(p2pSrv, cfg.P2PBootstrap)
+
+	// Lite mode intentionally exposes no dashboard: account and transaction
+	// state is unavailable from headers alone.
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), liteDataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
-	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
-
-	// Connect to bootstrap peers for header sync only.
-	if len(cfg.P2PBootstrap) > 0 {
-		p2pSrv := p2p.NewServer(cfg.P2PPort, cfg.ChainID, chain.Height)
-		p2pSrv.SetGenesisHash(core.GenesisBlock(activeGenesis).Hash)
-		p2pSrv.SetMaxPeers(cfg.MaxPeers)
-		p2pSrv.SetNodeMode(cfg.NodeMode)
-		p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
-		wireAuth(p2pSrv, cfg)
-		rpcSrv.SetP2P(p2pSrv)
-		if err := p2pSrv.Start(); err != nil {
-			log.Warn().Err(err).Msg("P2P start failed")
-		}
-		startBootstrapDialers(p2pSrv, cfg.P2PBootstrap)
-		log.Info().Strs("peers", cfg.P2PBootstrap).Msg("Lite node connected to bootstrap peers for header sync")
+	rpcSrv.SetDashboardEnabled(false)
+	if os.Getenv("GYDS_RPC_HOST") == "" {
+		rpcSrv.SetLoopbackOnly()
 	} else {
-		log.Warn().Msg("No bootstrap peers configured — lite node running in isolated mode")
+		rpcSrv.SetBindHost(cfg.RPCHost)
 	}
+	rpcSrv.SetP2P(p2pSrv)
+	go syncLiteHeaders(context.Background(), chain, p2pSrv, responses)
 
 	log.Info().
 		Int("rpcPort", cfg.RPCPort).
-		Int("dashPort", cfg.DashboardPort).
-		Msg("Lite node online — no block production")
+		Int("p2pPort", cfg.P2PPort).
+		Strs("trustedPeers", cfg.P2PBootstrap).
+		Msg("Lite node online — header-only, trusted peers, no state proofs or block production")
 
 	return serveAndWait(rpcSrv, chain, nil)
+}
+
+type liteHeaderResponse struct {
+	peerAddr string
+	payload  p2p.HeadersPayload
+}
+
+const liteHeaderBatchSize = 200
+
+func syncLiteHeaders(ctx context.Context, chain *core.Chain, peers *p2p.Server, responses <-chan liteHeaderResponse) {
+	statusTicker := time.NewTicker(15 * time.Second)
+	defer statusTicker.Stop()
+	peers.RequestStatus()
+
+	for {
+		localHeight := chain.Height()
+		networkHeight := peers.MaxPeerHeight()
+		if peers.PeerCount() > 0 && networkHeight > localHeight {
+			from := localHeight + 1
+			count := int(networkHeight - localHeight)
+			if count > liteHeaderBatchSize {
+				count = liteHeaderBatchSize
+			}
+			peers.RequestHeaders(from, count)
+
+			select {
+			case response := <-responses:
+				if response.payload.From != from {
+					continue
+				}
+				var headers []*core.Header
+				if err := json.Unmarshal(response.payload.Headers, &headers); err != nil ||
+					len(headers) == 0 || len(headers) > count {
+					log.Warn().Err(err).Str("peer", response.peerAddr).Msg("invalid lite header batch")
+					peers.Disconnect(response.peerAddr)
+					continue
+				}
+				for i, header := range headers {
+					if header == nil || header.Number != from+uint64(i) {
+						log.Warn().Str("peer", response.peerAddr).Uint64("from", from).Msg("non-contiguous lite header batch")
+						peers.Disconnect(response.peerAddr)
+						break
+					}
+					if err := chain.InsertHeader(header); err != nil {
+						log.Warn().Err(err).Str("peer", response.peerAddr).Uint64("height", header.Number).Msg("rejected lite header")
+						peers.Disconnect(response.peerAddr)
+						break
+					}
+				}
+				log.Info().
+					Uint64("height", chain.Height()).
+					Uint64("peerHeight", networkHeight).
+					Str("peer", response.peerAddr).
+					Msg("Lite header sync progress")
+			case <-time.After(15 * time.Second):
+				log.Warn().Uint64("from", from).Msg("timed out waiting for lite headers")
+			case <-ctx.Done():
+				return
+			}
+			continue
+		}
+
+		select {
+		case <-statusTicker.C:
+			peers.RequestStatus()
+		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // ── RPC Node ──────────────────────────────────────────────────────────────────
@@ -328,7 +458,9 @@ func runBoostNode(cfg *config.Config) error {
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
-	wireAuth(p2pSrv, cfg)
+	if err := wireAuth(p2pSrv, cfg); err != nil {
+		return err
+	}
 	rpcSrv.SetP2P(p2pSrv)
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P start failed")
@@ -389,7 +521,9 @@ func runGenesisNode(cfg *config.Config) error {
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
-	wireAuth(p2pSrv, cfg)
+	if err := wireAuth(p2pSrv, cfg); err != nil {
+		return err
+	}
 	rpcSrv.SetP2P(p2pSrv)
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P start failed")
@@ -446,7 +580,9 @@ func runSyncNode(cfg *config.Config) error {
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	// Also serve blocks so peers that connect to us can sync from us.
 	wireBlockProvider(p2pSrv, chain)
-	wireAuth(p2pSrv, cfg)
+	if err := wireAuth(p2pSrv, cfg); err != nil {
+		return err
+	}
 
 	if err := p2pSrv.Start(); err != nil {
 		return fmt.Errorf("sync P2P listener failed: %w", err)
@@ -756,7 +892,9 @@ func runValidatorNode(cfg *config.Config) error {
 	p2pSrv.SetNodeMode(cfg.NodeMode)
 	p2pSrv.SetAdvertiseHost(cfg.P2PAdvertiseHost)
 	wireBlockProvider(p2pSrv, chain)
-	wireAuth(p2pSrv, cfg)
+	if err := wireAuth(p2pSrv, cfg); err != nil {
+		return err
+	}
 	rpcSrv.SetP2P(p2pSrv)
 
 	if err := p2pSrv.Start(); err != nil {

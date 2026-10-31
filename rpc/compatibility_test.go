@@ -86,6 +86,63 @@ func TestGYDMetadataRejectsInvalidUSDDollarTarget(t *testing.T) {
 	}
 }
 
+func TestLiteRPCExposesHeadersButRejectsUnavailableState(t *testing.T) {
+	s := compatibilityServer(t, core.GydsGenesis)
+	s.SetNodeMode("lite")
+
+	balance := s.dispatch(jsonRPCRequest{
+		JSONRPC: "2.0",
+		Method:  "eth_getBalance",
+		Params:  []interface{}{rpcTestRecipient, "latest"},
+		ID:      "balance",
+	})
+	balanceError, ok := balance.Error.(map[string]interface{})
+	if !ok || !strings.Contains(balanceError["message"].(string), "headers only") {
+		t.Fatalf("lite eth_getBalance error = %#v, want an explicit unsupported-state error", balance.Error)
+	}
+
+	header := s.dispatch(jsonRPCRequest{
+		JSONRPC: "2.0",
+		Method:  "gyds_getHeaderByNumber",
+		Params:  []interface{}{"0x0"},
+		ID:      "header",
+	})
+	if header.Error != nil {
+		t.Fatalf("lite header query failed: %#v", header.Error)
+	}
+	result, ok := header.Result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("lite header result has type %T, want object", header.Result)
+	}
+	if got, want := result["hash"], core.GenesisBlock(core.GydsGenesis).Hash; got != want {
+		t.Fatalf("genesis header hash = %v, want %s", got, want)
+	}
+}
+
+func TestRPCRouterExposesPublicP2PNodeID(t *testing.T) {
+	s := compatibilityServer(t, core.GydsGenesis)
+	key, err := p2p.LoadOrCreateNodeKey(t.TempDir())
+	if err != nil {
+		t.Fatalf("create node key: %v", err)
+	}
+	node := p2p.NewServer(30303, core.GydsGenesis.ChainID, nil)
+	node.SetAuth(key, true, nil)
+	s.SetP2P(node)
+
+	response := httptest.NewRecorder()
+	s.rpcRouter.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/p2p/node-id", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("node ID status = %d, body=%s", response.Code, response.Body.String())
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode node ID response: %v", err)
+	}
+	if got := payload["nodeId"]; got != key.ID() {
+		t.Fatalf("nodeId = %v, want %s", got, key.ID())
+	}
+}
+
 func rpcRequest(t *testing.T, s *Server, method string, params ...interface{}) map[string]interface{} {
 	t.Helper()
 	body, err := json.Marshal(jsonRPCRequest{JSONRPC: "2.0", Method: method, Params: params, ID: "compatibility"})

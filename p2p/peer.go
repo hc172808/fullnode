@@ -21,6 +21,8 @@ const (
 	MsgStatus        MsgType = "status"
 	MsgGetBlocks     MsgType = "getBlocks"
 	MsgBlocks        MsgType = "blocks"
+	MsgGetHeaders    MsgType = "getHeaders"
+	MsgHeaders       MsgType = "headers"
 	MsgNewBlock      MsgType = "newBlock"
 	MsgNewTx         MsgType = "newTx"
 	MsgPing          MsgType = "ping"
@@ -45,6 +47,14 @@ type PeerInfo struct {
 	NodeMode    string `json:"nodeMode"`
 	Version     string `json:"version"`
 	NodeID      string `json:"nodeId,omitempty"` // ed25519 public key (hex)
+}
+
+// ChainStatus is periodically exchanged so peers can refresh the remote
+// height after the initial handshake.
+type ChainStatus struct {
+	ChainID     int64  `json:"chainId"`
+	GenesisHash string `json:"genesisHash"`
+	Height      uint64 `json:"height"`
 }
 
 // AuthChallengePayload is sent server→client to start the auth handshake.
@@ -190,8 +200,22 @@ type GetBlocksPayload struct {
 	Count int    `json:"count"`
 }
 
+// GetHeadersPayload requests a bounded, sequential header range.
+type GetHeadersPayload struct {
+	From  uint64 `json:"from"`
+	Count int    `json:"count"`
+}
+
+// HeadersPayload carries a header range as JSON so the P2P package does not
+// need to depend on the chain implementation.
+type HeadersPayload struct {
+	From    uint64          `json:"from"`
+	Headers json.RawMessage `json:"headers"`
+}
+
 // BlockFetcher is called by the server when a peer requests a block range.
 type BlockFetcher func(from uint64, count int) json.RawMessage
+type HeaderFetcher func(from uint64, count int) json.RawMessage
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
@@ -207,6 +231,7 @@ type Server struct {
 	height        func() uint64
 	onMsg         func(*Peer, Message)
 	blockProv     BlockFetcher
+	headerProv    HeaderFetcher
 	quit          chan struct{}
 
 	// Auth — set via SetAuth before Start().
@@ -308,10 +333,28 @@ func (s *Server) SetBlockProvider(fn BlockFetcher) {
 	s.mu.Unlock()
 }
 
+// SetHeaderProvider registers a callback used to serve MsgGetHeaders requests.
+func (s *Server) SetHeaderProvider(fn HeaderFetcher) {
+	s.mu.Lock()
+	s.headerProv = fn
+	s.mu.Unlock()
+}
+
 // RequestBlocks broadcasts a MsgGetBlocks request to all connected peers.
 func (s *Server) RequestBlocks(from uint64, count int) {
 	payload, _ := json.Marshal(GetBlocksPayload{From: from, Count: count})
 	s.Broadcast(Message{Type: MsgGetBlocks, Payload: payload})
+}
+
+// RequestHeaders broadcasts a bounded header-range request to authorized peers.
+func (s *Server) RequestHeaders(from uint64, count int) {
+	payload, _ := json.Marshal(GetHeadersPayload{From: from, Count: count})
+	s.Broadcast(Message{Type: MsgGetHeaders, Payload: payload})
+}
+
+// RequestStatus asks connected peers to refresh their advertised chain height.
+func (s *Server) RequestStatus() {
+	s.Broadcast(Message{Type: MsgGetStatus})
 }
 
 func (s *Server) Start() error {
@@ -437,6 +480,58 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 
 	case MsgPong:
 		// keep-alive reply — no action needed
+
+	case MsgGetStatus:
+		peer.mu.Lock()
+		auth := peer.authorized
+		peer.mu.Unlock()
+		if !auth {
+			return
+		}
+		height := uint64(0)
+		if s.height != nil {
+			height = s.height()
+		}
+		s.mu.RLock()
+		status := ChainStatus{
+			ChainID:     s.chainID,
+			GenesisHash: s.genesisHash,
+			Height:      height,
+		}
+		s.mu.RUnlock()
+		payload, err := json.Marshal(status)
+		if err == nil {
+			peer.Send(Message{Type: MsgStatus, Payload: payload})
+		}
+
+	case MsgStatus:
+		peer.mu.Lock()
+		auth := peer.authorized
+		peer.mu.Unlock()
+		if !auth {
+			return
+		}
+		var status ChainStatus
+		if err := json.Unmarshal(msg.Payload, &status); err != nil {
+			peer.Close()
+			return
+		}
+		s.mu.RLock()
+		localChainID := s.chainID
+		localGenesis := s.genesisHash
+		s.mu.RUnlock()
+		if status.ChainID != localChainID ||
+			(localGenesis != "" && status.GenesisHash != localGenesis) {
+			log.Warn().Str("peer", peer.RemoteAddr()).Msg("peer rejected — chain identity changed in status update")
+			peer.Close()
+			return
+		}
+		peer.mu.Lock()
+		if peer.info == nil {
+			peer.info = &PeerInfo{ChainID: status.ChainID, GenesisHash: status.GenesisHash}
+		}
+		peer.info.Height = status.Height
+		peer.mu.Unlock()
 
 	case MsgHandshake:
 		var info PeerInfo
@@ -595,6 +690,33 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 				if payload := prov(req.From, req.Count); len(payload) > 0 {
 					peer.Send(Message{Type: MsgBlocks, Payload: payload})
 				}
+			}
+		}
+
+	case MsgGetHeaders:
+		peer.mu.Lock()
+		auth := peer.authorized
+		peer.mu.Unlock()
+		if !auth {
+			return
+		}
+		s.mu.RLock()
+		provider := s.headerProv
+		s.mu.RUnlock()
+		if provider == nil {
+			return
+		}
+		var req GetHeadersPayload
+		if err := json.Unmarshal(msg.Payload, &req); err != nil || req.Count <= 0 {
+			return
+		}
+		if req.Count > 200 {
+			req.Count = 200
+		}
+		if payload := provider(req.From, req.Count); len(payload) > 0 {
+			response, err := json.Marshal(HeadersPayload{From: req.From, Headers: payload})
+			if err == nil {
+				peer.Send(Message{Type: MsgHeaders, Payload: response})
 			}
 		}
 

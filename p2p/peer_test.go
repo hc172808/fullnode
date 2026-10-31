@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -267,6 +268,60 @@ func TestTCPMultipleBootstrapPeersServeBlocksAndReconnect(t *testing.T) {
 	}
 	waitForPeerState(t, "primary reconnect and handshake", func() bool {
 		return local.PeerCount() == 2 && primary.PeerCount() == 1 && local.MaxPeerHeight() == 12
+	})
+}
+
+func TestTCPHeaderRequestsAndStatusRefresh(t *testing.T) {
+	const genesisHash = "shared-genesis-hash"
+	var remoteHeight atomic.Uint64
+	remoteHeight.Store(7)
+
+	local := NewServer(0, 198282, func() uint64 { return 2 })
+	local.SetGenesisHash(genesisHash)
+	listenPeerTestServer(t, local)
+
+	remote := NewServer(0, 198282, remoteHeight.Load)
+	remote.SetGenesisHash(genesisHash)
+	remote.SetHeaderProvider(func(from uint64, count int) json.RawMessage {
+		if from != 3 || count != 2 {
+			t.Errorf("header request = from %d count %d, want from 3 count 2", from, count)
+		}
+		return json.RawMessage(`[{"number":3},{"number":4}]`)
+	})
+	remoteAddr := listenPeerTestServer(t, remote)
+
+	requests := make(chan HeadersPayload, 1)
+	local.OnMessage(func(_ *Peer, msg Message) {
+		if msg.Type != MsgHeaders {
+			return
+		}
+		var payload HeadersPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err == nil {
+			requests <- payload
+		}
+	})
+
+	if err := local.ConnectTo(remoteAddr); err != nil {
+		t.Fatalf("connect to header peer: %v", err)
+	}
+	waitForPeerState(t, "header peer handshake", func() bool {
+		return local.PeerCount() == 1 && local.MaxPeerHeight() == 7
+	})
+
+	local.RequestHeaders(3, 2)
+	select {
+	case payload := <-requests:
+		if payload.From != 3 || string(payload.Headers) != `[{"number":3},{"number":4}]` {
+			t.Fatalf("header response = %#v", payload)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("header peer did not return the requested header range")
+	}
+
+	remoteHeight.Store(12)
+	local.RequestStatus()
+	waitForPeerState(t, "refreshed remote height", func() bool {
+		return local.MaxPeerHeight() == 12
 	})
 }
 

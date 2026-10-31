@@ -19,6 +19,7 @@ import (
 var (
 	ErrBlockNotFound  = errors.New("block not found")
 	ErrInvalidBlock   = errors.New("invalid block")
+	ErrInvalidHeader  = errors.New("invalid header")
 	ErrParentNotFound = errors.New("parent block not found")
 	ErrEVMUnavailable = errors.New("EVM transaction execution is not active on this chain")
 )
@@ -31,13 +32,14 @@ type AccountState struct {
 }
 
 type Chain struct {
-	mu       sync.RWMutex
-	blocks   []*Block
-	byHash   map[string]*Block
-	byNumber map[uint64]*Block
-	genesis  *GenesisConfig
-	dataDir  string
-	db       storage.Storage
+	mu         sync.RWMutex
+	blocks     []*Block
+	byHash     map[string]*Block
+	byNumber   map[uint64]*Block
+	genesis    *GenesisConfig
+	dataDir    string
+	db         storage.Storage
+	headerOnly bool
 
 	accountsMu sync.RWMutex
 	accounts   map[string]*AccountState
@@ -54,15 +56,43 @@ type Chain struct {
 }
 
 func NewChain(genesis *GenesisConfig, dataDir string) *Chain {
+	return newChain(genesis, dataDir, false)
+}
+
+// NewHeaderChain opens a persistent header-only view of the chain. It does not
+// create or load EVM state, balances, transaction indexes, or block bodies.
+// The caller must only use it with the lite-node RPC surface.
+func NewHeaderChain(genesis *GenesisConfig, dataDir string) (*Chain, error) {
+	if genesis == nil {
+		return nil, errors.New("header chain requires a genesis configuration")
+	}
+	if strings.TrimSpace(dataDir) == "" {
+		return nil, errors.New("header chain requires a persistent data directory")
+	}
+	c := newChain(genesis, "", true)
+	c.dataDir = dataDir
+	if err := c.openDB(); err != nil {
+		c.Close()
+		return nil, err
+	}
+	if err := c.loadFromDB(); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+func newChain(genesis *GenesisConfig, dataDir string, headerOnly bool) *Chain {
 	c := &Chain{
-		blocks:   make([]*Block, 0, 1024),
-		byHash:   make(map[string]*Block),
-		byNumber: make(map[uint64]*Block),
-		genesis:  genesis,
-		dataDir:  dataDir,
-		accounts: make(map[string]*AccountState),
-		txIndex:  make(map[string]*Transaction),
-		pending:  make(map[string]*Transaction),
+		blocks:     make([]*Block, 0, 1024),
+		byHash:     make(map[string]*Block),
+		byNumber:   make(map[uint64]*Block),
+		genesis:    genesis,
+		dataDir:    dataDir,
+		headerOnly: headerOnly,
+		accounts:   make(map[string]*AccountState),
+		txIndex:    make(map[string]*Transaction),
+		pending:    make(map[string]*Transaction),
 	}
 	for _, alloc := range genesis.Alloc {
 		addr := strings.ToLower(alloc.Address)
@@ -109,7 +139,7 @@ func NewChain(genesis *GenesisConfig, dataDir string) *Chain {
 			c.dataDir = ""
 		}
 	}
-	if genesis.EVMActivationBlock > 0 {
+	if !headerOnly && genesis.EVMActivationBlock > 0 {
 		c.initializeEVM()
 	}
 	return c
@@ -534,6 +564,45 @@ func (c *Chain) InsertBlock(b *Block) error {
 		return err
 	}
 
+	return nil
+}
+
+// InsertHeader validates and persists one contiguous header on a header-only
+// chain. It checks the encoded header hash and parent linkage, but not consensus
+// finality or state/transaction proofs; callers must trust their approved peers.
+func (c *Chain) InsertHeader(h *Header) error {
+	if !c.headerOnly {
+		return errors.New("header insertion is only available on a header-only chain")
+	}
+	if h == nil || h.Hash == "" || !strings.EqualFold(h.Hash, h.ComputeHash()) {
+		return ErrInvalidHeader
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if existing, ok := c.byNumber[h.Number]; ok {
+		if strings.EqualFold(existing.Hash, h.Hash) {
+			return nil
+		}
+		return fmt.Errorf("%w: conflicting header at height %d", ErrInvalidHeader, h.Number)
+	}
+	if len(c.blocks) == 0 {
+		return ErrInvalidHeader
+	}
+	head := c.blocks[len(c.blocks)-1]
+	if h.Number != head.Header.Number+1 {
+		return fmt.Errorf("%w: expected height %d, received %d", ErrInvalidHeader, head.Header.Number+1, h.Number)
+	}
+	if !strings.EqualFold(h.ParentHash, head.Hash) {
+		return ErrParentNotFound
+	}
+
+	block := &Block{Header: h, Hash: h.Hash}
+	if err := c.persistBlock(block); err != nil {
+		return fmt.Errorf("persist header %d: %w", h.Number, err)
+	}
+	c.addBlock(block)
 	return nil
 }
 
