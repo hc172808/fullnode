@@ -10,7 +10,6 @@ PREFIX="${PREFIX:-${HOME}/.termux/usr}"
 BIN="${PREFIX}/bin/gyds-fullnode"
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
 SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_URL="${GYDS_REPO_URL:-https://github.com/hc172808/fullnode.git}"
 
 usage() {
   cat <<'EOF'
@@ -65,6 +64,28 @@ configured_rpc_port() {
   printf '%s' "${port:-18545}"
 }
 
+validate_bootstrap_list() {
+  local value="$1" entry host port
+  local -a entries
+  [[ -n "$value" ]] || return 1
+  IFS=, read -r -a entries <<< "$value"
+  for entry in "${entries[@]}"; do
+    [[ -n "$entry" ]] || return 1
+    case "$entry" in tcp://*) entry="${entry#tcp://}" ;; esac
+    [[ "$entry" == *:* ]] || return 1
+    host="${entry%:*}"
+    port="${entry##*:}"
+    [[ -n "$host" && "$port" =~ ^[0-9]{1,5}$ ]] || return 1
+    ((10#$port > 0 && 10#$port <= 65535)) || return 1
+    if [[ "$host" == \[*\] ]]; then
+      host="${host:1:${#host}-2}"
+      [[ "$host" =~ ^[A-Fa-f0-9:.]+$ ]] || return 1
+    else
+      [[ "$host" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+    fi
+  done
+}
+
 install_node() {
   require_termux
   local network="mainnet"
@@ -105,7 +126,7 @@ install_node() {
   esac
   [[ -n "$bootstrap" ]] || die "provide at least one --bootstrap address"
   [[ -n "$allowed_ids" ]] || die "provide the bootstrap peer IDs with --allowed-node-ids"
-  [[ "$bootstrap" =~ ^(tcp://)?[A-Za-z0-9._\[\]:-]+:[0-9]{1,5}(,(tcp://)?[A-Za-z0-9._\[\]:-]+:[0-9]{1,5})*$ ]] ||
+  validate_bootstrap_list "$bootstrap" ||
     die "invalid bootstrap addresses; use comma-separated host:port values"
   [[ "$allowed_ids" =~ ^(0[xX])?[A-Fa-f0-9]{64}(,(0[xX])?[A-Fa-f0-9]{64})*$ ]] ||
     die "peer IDs must be 64-digit hexadecimal IDs, comma-separated"
@@ -191,7 +212,7 @@ start_node() {
   echo "$!" > "$PID_FILE"
   chmod 0600 "$PID_FILE"
   printf 'Started GYDS lite node (PID %s); waiting for its local RPC endpoint...\n' "$(cat "$PID_FILE")"
-  for _ in $(seq 1 20); do
+  for ((attempt = 0; attempt < 20; attempt++)); do
     if ! is_running; then
       tail -n 40 "$LOG_FILE" 2>/dev/null || true
       die "node exited during startup"
@@ -214,7 +235,7 @@ stop_node() {
   local pid
   pid="$(cat "$PID_FILE")"
   kill -TERM "$pid"
-  for _ in $(seq 1 30); do
+  for ((attempt = 0; attempt < 30; attempt++)); do
     if ! kill -0 "$pid" 2>/dev/null; then
       rm -f "$PID_FILE"
       command -v termux-wake-unlock >/dev/null 2>&1 && termux-wake-unlock || true
@@ -235,7 +256,12 @@ status_node() {
   curl -fsS --max-time 3 "http://127.0.0.1:$(configured_rpc_port)/p2p/node-id" ||
     printf 'RPC endpoint is not responding yet.\n'
   printf '\n'
-  curl -fsS --max-time 3 "http://127.0.0.1:$(configured_rpc_port)/health" || true
+  printf 'Sync progress:\n'
+  curl -sS --max-time 3 "http://127.0.0.1:$(configured_rpc_port)/sync-status" ||
+    printf 'Sync status endpoint is not responding yet.\n'
+  printf '\nReadiness (HTTP 200 means ready; 503 means still syncing):\n'
+  curl -sS --max-time 3 "http://127.0.0.1:$(configured_rpc_port)/ready" ||
+    printf 'Readiness endpoint is not responding yet.\n'
   printf '\n'
 }
 

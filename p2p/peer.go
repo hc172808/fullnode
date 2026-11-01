@@ -233,6 +233,8 @@ type Server struct {
 	blockProv     BlockFetcher
 	headerProv    HeaderFetcher
 	quit          chan struct{}
+	listener      net.Listener
+	closeOnce     sync.Once
 
 	// Auth — set via SetAuth before Start().
 	nodeKey      *NodeKey            // our own identity (nil = no auth)
@@ -362,12 +364,53 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("p2p listen: %w", err)
 	}
-	s.mu.RLock()
+	s.mu.Lock()
+	if s.listener != nil {
+		s.mu.Unlock()
+		_ = ln.Close()
+		return fmt.Errorf("p2p server already started")
+	}
+	s.listener = ln
 	authMode := s.peerAuth
-	s.mu.RUnlock()
+	s.mu.Unlock()
 	log.Info().Int("port", s.port).Bool("peerAuth", authMode).Msg("P2P server listening")
 	go s.acceptLoop(ln)
+	go s.refreshPeerStatusLoop()
 	return nil
+}
+
+// Close stops the listener, peer connections, and periodic status refresh.
+func (s *Server) Close() {
+	s.closeOnce.Do(func() {
+		close(s.quit)
+		s.mu.Lock()
+		listener := s.listener
+		s.listener = nil
+		peers := make([]*Peer, 0, len(s.peers))
+		for _, peer := range s.peers {
+			peers = append(peers, peer)
+		}
+		s.mu.Unlock()
+		if listener != nil {
+			_ = listener.Close()
+		}
+		for _, peer := range peers {
+			peer.Close()
+		}
+	})
+}
+
+func (s *Server) refreshPeerStatusLoop() {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.RequestStatus()
+		case <-s.quit:
+			return
+		}
+	}
 }
 
 // randomNonce generates a 32-byte random nonce and returns it hex-encoded.
@@ -906,6 +949,27 @@ func (s *Server) Disconnect(addr string) {
 	if target != nil {
 		target.Close()
 	}
+}
+
+// HandshakePeerCount counts connected authorized peers with a validated
+// chain-identity handshake, which is required before readiness can be trusted.
+func (s *Server) HandshakePeerCount() int {
+	s.mu.RLock()
+	peers := make([]*Peer, 0, len(s.peers))
+	for _, peer := range s.peers {
+		peers = append(peers, peer)
+	}
+	s.mu.RUnlock()
+	count := 0
+	for _, peer := range peers {
+		peer.mu.Lock()
+		ready := peer.authorized && peer.info != nil
+		peer.mu.Unlock()
+		if ready {
+			count++
+		}
+	}
+	return count
 }
 
 // MaxPeerHeight returns the highest block height reported by any connected peer.

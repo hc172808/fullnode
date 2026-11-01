@@ -50,6 +50,9 @@ type Server struct {
 	upgrader websocket.Upgrader
 	subs     map[string]*subscriber
 	subsMu   sync.RWMutex
+	startMu  sync.Mutex
+	started  bool
+	startErr chan error
 
 	dashPort         int
 	dashboardEnabled bool
@@ -63,6 +66,7 @@ type Server struct {
 	externalURL string
 	bindHost    string // host to bind listeners on ("" / "0.0.0.0" = all interfaces, "127.0.0.1" = loopback only)
 	nodeMode    string
+	syncGate    bool
 	dataDir     string
 
 	auth    *AuthStore
@@ -154,6 +158,12 @@ func (s *Server) SetNodeMode(mode string) {
 		mode = "full"
 	}
 	s.nodeMode = mode
+}
+
+// RequireSyncForServing blocks state-serving routes and the dashboard until a
+// connected authorized peer reports a height the local chain has reached.
+func (s *Server) RequireSyncForServing(required bool) {
+	s.syncGate = required
 }
 
 // SetLoopbackOnly restricts all HTTP listeners to 127.0.0.1.
@@ -258,6 +268,16 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	if s.syncGate && !s.syncStatus().Ready {
+		page, err := fs.ReadFile(staticFiles, "static/syncing.html")
+		if err != nil {
+			http.Error(w, "sync status page unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(page)
+		return
+	}
 	sub, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
@@ -266,12 +286,42 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	http.FileServer(http.FS(sub)).ServeHTTP(w, r)
 }
 
+func (s *Server) syncReadinessMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.syncGate || s.syncStatus().Ready {
+			next.ServeHTTP(w, r)
+			return
+		}
+		switch r.URL.Path {
+		case "/", "/health", "/ready", "/sync-status", "/guide",
+			"/p2p/node-id", "/logo.png", "/favicon.ico",
+			"/gyds-network.json", "/gyd-token.json":
+			next.ServeHTTP(w, r)
+			return
+		case "/rpc":
+			if r.Method == http.MethodPost || r.Method == http.MethodOptions {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		status := s.syncStatus()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "node is not ready; state and dashboard APIs are gated until sync completes",
+			"sync":  status,
+		})
+	})
+}
+
 // setupDashboardRoutes builds the router for the web dashboard (UI + REST API).
 // It also handles JSON-RPC at POST /rpc so the built-in wallet works same-origin.
 func (s *Server) setupDashboardRoutes() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/health", s.handleHealth).Methods("GET")
+	r.HandleFunc("/ready", s.handleReady).Methods("GET")
+	r.HandleFunc("/sync-status", s.handleSyncStatus).Methods("GET")
 	r.HandleFunc("/", s.handleDashboard).Methods("GET")
 	r.HandleFunc("/guide", s.handleGuidesPage).Methods("GET")
 
@@ -350,6 +400,7 @@ func (s *Server) setupDashboardRoutes() {
 
 	r.HandleFunc("/setup", s.handleSetupPage).Methods("GET")
 
+	r.Use(s.syncReadinessMiddleware)
 	r.Use(cors)
 	r.Use(s.accessLog)
 	s.dashRouter = r
@@ -360,6 +411,8 @@ func (s *Server) setupDashboardRoutes() {
 func (s *Server) setupRPCRoutes() {
 	r := mux.NewRouter()
 	r.HandleFunc("/health", s.handleHealth).Methods("GET")
+	r.HandleFunc("/ready", s.handleReady).Methods("GET")
+	r.HandleFunc("/sync-status", s.handleSyncStatus).Methods("GET")
 	r.HandleFunc("/p2p/node-id", s.handleNodeIDInfo).Methods("GET")
 	// The dedicated RPC origin is commonly the URL given to external wallets.
 	// Serve the same public metadata and logo assets there as on the dashboard
@@ -378,6 +431,7 @@ func (s *Server) setupRPCRoutes() {
 	r.HandleFunc("/", s.handleJSONRPC).Methods("POST", "OPTIONS")
 	r.HandleFunc("/rpc", s.handleJSONRPC).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/ws", s.handleWS)
+	r.Use(s.syncReadinessMiddleware)
 	r.Use(cors)
 	r.Use(s.accessLog)
 	s.rpcRouter = r
@@ -674,6 +728,64 @@ func (s *Server) StartDashboard() error {
 	return s.dashServer.ListenAndServe()
 }
 
+// StartBackground opens the configured HTTP listeners and serves them without
+// blocking the caller. It is safe to call again after startup.
+func (s *Server) StartBackground() (<-chan error, error) {
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+	if s.started {
+		return s.startErr, nil
+	}
+
+	var dashListener net.Listener
+	if s.DashboardEnabled() {
+		listener, err := net.Listen("tcp", s.listenAddr(s.dashPort))
+		if err != nil {
+			return nil, fmt.Errorf("dashboard listen: %w", err)
+		}
+		dashListener = listener
+	}
+	rpcListener, err := net.Listen("tcp", s.listenAddr(s.rpcPort))
+	if err != nil {
+		if dashListener != nil {
+			_ = dashListener.Close()
+		}
+		return nil, fmt.Errorf("RPC listen: %w", err)
+	}
+
+	if dashListener != nil {
+		s.dashServer = &http.Server{
+			Addr:         dashListener.Addr().String(),
+			Handler:      s.dashRouter,
+			ReadTimeout:  15 * time.Second,
+			WriteTimeout: 15 * time.Second,
+		}
+	}
+	s.rpcServer = &http.Server{
+		Addr:         rpcListener.Addr().String(),
+		Handler:      s.rpcRouter,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+	}
+	s.startErr = make(chan error, 2)
+	s.started = true
+	if dashListener != nil {
+		log.Info().Str("addr", dashListener.Addr().String()).Msg("Dashboard server listening")
+		go func() {
+			if err := s.dashServer.Serve(dashListener); err != nil && err != http.ErrServerClosed {
+				s.startErr <- fmt.Errorf("dashboard server: %w", err)
+			}
+		}()
+	}
+	log.Info().Str("addr", rpcListener.Addr().String()).Msg("RPC server listening")
+	go func() {
+		if err := s.rpcServer.Serve(rpcListener); err != nil && err != http.ErrServerClosed {
+			s.startErr <- fmt.Errorf("RPC server: %w", err)
+		}
+	}()
+	return s.startErr, nil
+}
+
 // StartRPC starts the dedicated JSON-RPC server on rpcPort.
 func (s *Server) StartRPC() error {
 	addr := s.listenAddr(s.rpcPort)
@@ -693,6 +805,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	if s.rpcServer != nil {
 		s.rpcServer.Shutdown(ctx)
+	}
+	if closer, ok := s.p2p.(interface{ Close() }); ok {
+		closer.Close()
 	}
 	return nil
 }
@@ -728,13 +843,96 @@ func jsonErr(w http.ResponseWriter, code int, msg string) {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	jsonOK(w, map[string]interface{}{"status": "ok", "height": s.chain.Height()})
+	jsonOK(w, map[string]interface{}{
+		"status": "ok",
+		"height": s.chain.Height(),
+		"sync":   s.syncStatus(),
+	})
+}
+
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	status := s.syncStatus()
+	w.Header().Set("Content-Type", "application/json")
+	if !status.Ready {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	_ = json.NewEncoder(w).Encode(status)
+}
+
+func (s *Server) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
+	jsonOK(w, s.syncStatus())
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	stats := s.chain.Stats()
 	stats["nodeMode"] = s.nodeMode
+	stats["sync"] = s.syncStatus()
 	jsonOK(w, stats)
+}
+
+type SyncStatus struct {
+	Mode           string `json:"mode"`
+	Ready          bool   `json:"ready"`
+	Synced         bool   `json:"synced"`
+	Syncing        bool   `json:"syncing"`
+	CurrentBlock   uint64 `json:"currentBlock"`
+	TargetBlock    uint64 `json:"targetBlock"`
+	PeerCount      int    `json:"peerCount"`
+	HandshakePeers int    `json:"handshakePeers"`
+	Percent        int    `json:"percent"`
+	Source         string `json:"source"`
+	Reason         string `json:"reason"`
+}
+
+func (s *Server) syncStatus() SyncStatus {
+	current := s.chain.Height()
+	status := SyncStatus{
+		Mode:         s.nodeMode,
+		CurrentBlock: current,
+		TargetBlock:  current,
+		Source:       "unavailable",
+		Reason:       "no peer height source is configured",
+	}
+	if s.p2p == nil {
+		return status
+	}
+	status.Source = "authorized-p2p-peers"
+	status.PeerCount = s.p2p.PeerCount()
+	if handshakePeers, ok := s.p2p.(interface{ HandshakePeerCount() int }); ok {
+		status.HandshakePeers = handshakePeers.HandshakePeerCount()
+	}
+	heightReader, ok := s.p2p.(interface{ MaxPeerHeight() uint64 })
+	if !ok {
+		status.Reason = "P2P provider cannot report peer height"
+		return status
+	}
+	peerHeight := heightReader.MaxPeerHeight()
+	if peerHeight > current {
+		status.TargetBlock = peerHeight
+	}
+	status.Synced = current >= peerHeight
+	if peerHeight == 0 {
+		if status.Synced {
+			status.Percent = 100
+		}
+	} else {
+		status.Percent = int((current * 100) / peerHeight)
+		if status.Percent > 100 {
+			status.Percent = 100
+		}
+	}
+	if status.HandshakePeers == 0 {
+		status.Reason = "waiting for an authorized peer"
+		return status
+	}
+	if !status.Synced {
+		status.Syncing = true
+		status.Reason = "syncing to the highest authorized peer height"
+		return status
+	}
+	status.Ready = true
+	status.Reason = "local height has reached the authorized peer height"
+	return status
 }
 
 func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
@@ -993,6 +1191,14 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 		)
 		return resp
 	}
+	if s.syncGate && !s.syncStatus().Ready && !rpcMethodAllowedWhileSync(req.Method) {
+		status := s.syncStatus()
+		resp.Error = rpcError(
+			-32002,
+			fmt.Sprintf("node is not ready: %s (block %d of %d)", status.Reason, status.CurrentBlock, status.TargetBlock),
+		)
+		return resp
+	}
 
 	switch req.Method {
 
@@ -1029,24 +1235,19 @@ func (s *Server) dispatch(req jsonRPCRequest) jsonRPCResponse {
 		}
 
 	case "eth_syncing":
-		if s.nodeMode == "lite" {
-			current := s.chain.Height()
-			highest := current
-			if peerHeights, ok := s.p2p.(interface{ MaxPeerHeight() uint64 }); ok {
-				highest = peerHeights.MaxPeerHeight()
-			}
-			if highest > current {
-				resp.Result = map[string]string{
-					"startingBlock": "0x0",
-					"currentBlock":  fmt.Sprintf("0x%x", current),
-					"highestBlock":  fmt.Sprintf("0x%x", highest),
-				}
-			} else {
-				resp.Result = false
+		status := s.syncStatus()
+		if status.Syncing {
+			resp.Result = map[string]string{
+				"startingBlock": "0x0",
+				"currentBlock":  fmt.Sprintf("0x%x", status.CurrentBlock),
+				"highestBlock":  fmt.Sprintf("0x%x", status.TargetBlock),
 			}
 		} else {
 			resp.Result = false
 		}
+
+	case "gyds_syncStatus":
+		resp.Result = s.syncStatus()
 
 	case "web3_clientVersion":
 		resp.Result = "GYDS/v1.0.0/linux/go1.25"
@@ -1272,10 +1473,25 @@ func liteRPCMethod(method string) bool {
 		"net_peerCount",
 		"net_enode",
 		"eth_syncing",
+		"gyds_syncStatus",
 		"web3_clientVersion",
 		"eth_protocolVersion",
 		"gyds_getHeaderByNumber",
 		"gyds_getHeaderByHash":
+		return true
+	default:
+		return false
+	}
+}
+
+func rpcMethodAllowedWhileSync(method string) bool {
+	switch method {
+	case "eth_chainId",
+		"net_version",
+		"eth_syncing",
+		"gyds_syncStatus",
+		"web3_clientVersion",
+		"eth_protocolVersion":
 		return true
 	default:
 		return false

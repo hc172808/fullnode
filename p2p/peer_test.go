@@ -163,7 +163,8 @@ func listenPeerTestServer(t *testing.T, s *Server) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return servePeerTestServer(t, s, ln)
+	addr := servePeerTestServer(t, s, ln)
+	return addr
 }
 
 func waitForPeerState(t *testing.T, label string, ready func() bool) {

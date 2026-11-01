@@ -30,6 +30,6 @@ ENV GYDS_CHAIN_ID=198282 \
     GYDS_P2P_PORT=30303
 EXPOSE 5000 8545 8546 30303
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD curl -sf http://localhost:${GYDS_RPC_PORT}/health || exit 1
+  CMD curl -sf http://localhost:${GYDS_RPC_PORT}/ready || exit 1
 ENTRYPOINT ["/app/gyds-fullnode"]
 CMD ["start"]

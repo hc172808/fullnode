@@ -1,0 +1,10 @@
+.git/
+.env
+.env.*
+!.env.example
+data/
+node_modules/
+dist/
+bin/
+generated-artifacts/
+*.log

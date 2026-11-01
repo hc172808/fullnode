@@ -19,7 +19,7 @@ Manage isolated GYDS Docker nodes on one server.
   docker-node-fleet.sh logs NAME
   docker-node-fleet.sh delete NAME --delete-data --yes
 
-Modes: full, lite, rpc, sync, boost
+Modes: full, lite, sync, boost
 Networks: mainnet, testnet, testnet3b
 
 The add command builds the current source, allocates distinct host ports, creates
@@ -50,8 +50,25 @@ valid_name() {
 }
 
 validate_bootstrap_list() {
-  local value="$1"
-  [[ "$value" =~ ^(tcp://)?[A-Za-z0-9._\[\]:-]+:[0-9]{1,5}(,(tcp://)?[A-Za-z0-9._\[\]:-]+:[0-9]{1,5})*$ ]]
+  local value="$1" entry host port
+  local -a entries
+  [[ -n "$value" ]] || return 1
+  IFS=, read -r -a entries <<< "$value"
+  for entry in "${entries[@]}"; do
+    [[ -n "$entry" ]] || return 1
+    case "$entry" in tcp://*) entry="${entry#tcp://}" ;; esac
+    [[ "$entry" == *:* ]] || return 1
+    host="${entry%:*}"
+    port="${entry##*:}"
+    [[ -n "$host" && "$port" =~ ^[0-9]{1,5}$ ]] || return 1
+    ((10#$port > 0 && 10#$port <= 65535)) || return 1
+    if [[ "$host" == \[*\] ]]; then
+      host="${host:1:${#host}-2}"
+      [[ "$host" =~ ^[A-Fa-f0-9:.]+$ ]] || return 1
+    else
+      [[ "$host" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+    fi
+  done
 }
 
 validate_node_ids() {
@@ -103,8 +120,9 @@ add_node() {
   local bootstrap="${4:-}" allowed_ids="${5:-}" advertise_host="${6:-}"
   valid_name "$name" || die "NAME must start with a lowercase letter and contain only lowercase letters, digits, '_' or '-'"
   case "$mode" in
-    full|lite|rpc|sync|boost) ;;
-    *) die "unsupported mode '$mode'; use full, lite, rpc, sync, or boost" ;;
+    full|lite|sync|boost) ;;
+    rpc) die "rpc mode has no peer-height source; use full or sync mode to verify catch-up before readiness" ;;
+    *) die "unsupported mode '$mode'; use full, lite, sync, or boost" ;;
   esac
   case "$network" in
     mainnet|testnet|testnet3b) ;;
@@ -118,10 +136,8 @@ add_node() {
   if [[ -n "$allowed_ids" ]]; then
     validate_node_ids "$allowed_ids" || die "peer IDs must be 64-digit hexadecimal IDs, comma-separated"
   fi
-  if [[ "$mode" == lite || "$mode" == sync ]]; then
-    [[ -n "$bootstrap" ]] || die "$mode mode requires at least one bootstrap address"
-    [[ -n "$allowed_ids" ]] || die "$mode mode requires trusted peer IDs"
-  fi
+  [[ -n "$bootstrap" ]] || die "$mode mode requires at least one bootstrap address"
+  [[ -n "$allowed_ids" ]] || die "$mode mode requires trusted peer IDs"
   if [[ "$mode" == rpc && ( -n "$bootstrap" || -n "$allowed_ids" ) ]]; then
     die "rpc mode has no P2P; omit bootstrap addresses and peer IDs"
   fi
@@ -195,7 +211,7 @@ EOF
         max-size: "100m"
         max-file: "5"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${rpc_port}/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${rpc_port}/ready || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -210,7 +226,8 @@ EOF
   docker compose --project-name "$project" --project-directory "$dir" -f "${dir}/compose.yaml" up -d
   cat <<EOF
 
-Node '$name' started.
+Node '$name' started in sync-only state. It becomes healthy only after /ready
+returns HTTP 200; state RPC calls and the main dashboard remain gated meanwhile.
   Mode/network: ${mode}/${network}
   P2P TCP:      ${p2p_port} (public)
   RPC:          127.0.0.1:${rpc_port}
@@ -220,6 +237,14 @@ Node '$name' started.
 
 Use 'scripts/docker-node-fleet.sh status ${name}' to check it.
 EOF
+  if command -v curl >/dev/null 2>&1; then
+    curl --max-time 3 -sS "http://127.0.0.1:${rpc_port}/p2p/node-id" || true
+    printf '\n'
+    curl --max-time 3 -sS "http://127.0.0.1:${rpc_port}/sync-status" || true
+    printf '\n'
+    curl --max-time 3 -sS "http://127.0.0.1:${rpc_port}/ready" || true
+    printf '\n'
+  fi
 }
 
 list_nodes() {
@@ -278,7 +303,11 @@ case "$command" in
         env_file="$(node_dir_for "$name")/node.env"
         rpc_port="$(sed -n 's/^GYDS_RPC_PORT=//p' "$env_file")"
         if command -v curl >/dev/null 2>&1; then
-          curl --max-time 3 -fsS "http://127.0.0.1:${rpc_port}/health" || true
+          curl --max-time 3 -fsS "http://127.0.0.1:${rpc_port}/p2p/node-id" || true
+          printf '\n'
+          curl --max-time 3 -fsS "http://127.0.0.1:${rpc_port}/sync-status" || true
+          printf '\n'
+          curl --max-time 3 -fsS "http://127.0.0.1:${rpc_port}/ready" || true
           printf '\n'
         fi
         ;;

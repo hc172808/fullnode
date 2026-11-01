@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>GYDS Node — Syncing</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #07111f;
+      color: #e8eef8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(ellipse at top, rgba(25, 91, 146, .24), transparent 48%),
+        #07111f;
+    }
+    main {
+      width: min(100%, 560px);
+      padding: 32px;
+      border: 1px solid #1e3249;
+      border-radius: 20px;
+      background: rgba(12, 25, 42, .94);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, .32);
+    }
+    .eyebrow { color: #64b5ff; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 10px 0 8px; font-size: clamp(26px, 6vw, 34px); }
+    p { color: #9eafc4; line-height: 1.55; }
+    .state { margin: 24px 0 10px; color: #f5c66a; font-weight: 700; }
+    .track { height: 10px; overflow: hidden; border-radius: 99px; background: #1d3046; }
+    .fill { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #168eea, #72d5ff); transition: width .35s ease; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 22px 0; }
+    .metric { padding: 14px; border: 1px solid #1e3249; border-radius: 12px; }
+    .label { color: #8196ae; font-size: 12px; }
+    .value { margin-top: 6px; font-size: 18px; font-variant-numeric: tabular-nums; font-weight: 700; }
+    .reason { padding: 12px 14px; border-radius: 10px; background: #10243a; color: #bfcee0; font-size: 14px; }
+    .note { margin-top: 20px; font-size: 12px; }
+    @media (max-width: 440px) { main { padding: 24px 18px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">GYDS Chain node</div>
+    <h1>Syncing before service</h1>
+    <p>RPC state queries and the main dashboard stay unavailable until this node catches up to an authorized peer.</p>
+    <div class="state" id="state">Checking peer status…</div>
+    <div class="track" aria-label="Sync progress"><div class="fill" id="fill"></div></div>
+    <div class="grid">
+      <div class="metric"><div class="label">Local block</div><div class="value" id="current">—</div></div>
+      <div class="metric"><div class="label">Peer target</div><div class="value" id="target">—</div></div>
+      <div class="metric"><div class="label">Authorized peers</div><div class="value" id="peers">—</div></div>
+      <div class="metric"><div class="label">Progress</div><div class="value" id="percent">—</div></div>
+    </div>
+    <div class="reason" id="reason">Waiting for sync status…</div>
+    <p class="note">Readiness is based on the highest authorized peer height. This does not prove consensus finality or state correctness.</p>
+  </main>
+  <script>
+    const numberFormat = new Intl.NumberFormat();
+    async function refresh() {
+      try {
+        const response = await fetch("/sync-status", { cache: "no-store" });
+        const s = await response.json();
+        document.getElementById("current").textContent = numberFormat.format(s.currentBlock);
+        document.getElementById("target").textContent = numberFormat.format(s.targetBlock);
+        document.getElementById("peers").textContent = `${s.handshakePeers} ready / ${s.peerCount} connected`;
+        document.getElementById("percent").textContent = `${s.percent}%`;
+        document.getElementById("fill").style.width = `${Math.max(0, Math.min(100, s.percent))}%`;
+        document.getElementById("reason").textContent = s.reason;
+        document.getElementById("state").textContent = s.ready ? "Sync complete — opening dashboard…" : "Node is not ready yet";
+        document.getElementById("state").style.color = s.ready ? "#72d5a7" : "#f5c66a";
+        if (s.ready) window.setTimeout(() => { window.location.replace("/"); }, 1200);
+      } catch (_) {
+        document.getElementById("state").textContent = "Sync status unavailable";
+        document.getElementById("reason").textContent = "The node's status endpoint could not be reached. Refreshing…";
+      }
+    }
+    refresh();
+    window.setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

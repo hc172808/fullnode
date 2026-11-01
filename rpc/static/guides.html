@@ -371,14 +371,16 @@
         <div class="step-body">
           <div class="code-block">
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
-<span class="comment"># Check the block height is increasing</span>
-<span class="cmd">curl -s http://localhost:8545 \
-  -X POST -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'</span>
+<span class="comment"># View local height, peer target, and sync percentage</span>
+<span class="cmd">curl -s http://localhost:8545/sync-status</span>
+
+<span class="comment"># HTTP 503 means still syncing; 200 means ready</span>
+<span class="cmd">curl -i http://localhost:8545/ready</span>
 
 <span class="comment"># Tail live logs</span>
 <span class="cmd">sudo journalctl -u gyds-fullnode -f --no-pager</span></div>
-          <div class="alert alert-info">ℹ️ A fresh full node replays the genesis and all stored blocks on first start. This takes a few seconds. Subsequent starts are instant.</div>
+          <div class="alert alert-info">ℹ️ RPC state queries and the main dashboard stay gated until the node reaches the highest authorized peer height. Use <code>/sync-status</code> for progress and <code>/ready</code> for the readiness check.</div>
+          <p>For several nodes on one Docker server, use <code>bash scripts/docker-node-fleet.sh add NAME full mainnet BOOTSTRAP_ADDRESSES ALLOWED_PEER_IDS PUBLIC_HOST</code>. Each node gets its own data volume and ports; the container is healthy only after catch-up.</p>
         </div>
       </div>
 
@@ -451,8 +453,8 @@
         <div class="step-card-header"><div class="step-num">2</div><div class="step-title">Configure via setup wizard</div></div>
         <div class="step-body">
           <p>Visit <code>/setup</code> and select <strong>⚡ Lite Node</strong>. The wizard adjusts the recommended storage limit and peer settings automatically.</p>
-          <p>The most important setting: provide at least one <strong>Bootstrap Node</strong> address. Without it the lite node runs isolated and cannot sync headers from the network.</p>
-          <div class="alert alert-info">ℹ️ Lite node data is stored in a separate <code>/lite</code> subdirectory of your data dir, keeping it isolated from any full node data.</div>
+          <p>Provide at least one <strong>Bootstrap Node</strong> address and its node ID in <code>GYDS_ALLOWED_NODES</code>. GYDS peers require mutual allowlisting; the remote operator must also allowlist this node's ID.</p>
+          <div class="alert alert-info">ℹ️ Headers are stored separately under <code>/lite-headers</code>. During sync, check <code>/sync-status</code>; state RPC calls and wallet balance queries remain unavailable until the node is ready.</div>
         </div>
       </div>
 
@@ -465,7 +467,8 @@
 
 <span class="comment"># Confirm lite mode in logs</span>
 <span class="cmd">sudo journalctl -u gyds-fullnode -f | grep -i lite</span></div>
-          <div class="alert alert-warn">⚠️ <strong>Limitation:</strong> <code>eth_getBalance</code> and other state queries may be inaccurate for accounts not in the light client's local state cache. Use a full node for reliable balance checks.</div>
+          <div class="alert alert-warn">⚠️ <strong>Security limitation:</strong> Lite mode stores headers only. It rejects balance, transaction, and full-block queries; it does not verify consensus finality or state proofs and trusts explicitly allowlisted peers. Do not use it as a trustless wallet backend.</div>
+          <p>On Android Termux, install with <code>bash scripts/termux-lite-node.sh install --network mainnet --bootstrap host:30303 --allowed-node-ids PEER_ID</code>, then run <code>gyds-lite start</code> and <code>gyds-lite status</code>. Give the phone's displayed node ID to the peer operator for allowlisting.</p>
         </div>
       </div>
 
@@ -831,12 +834,12 @@ jq '{chainId,networkName,genesisHash}' /tmp/gyds-genesis.json</span></div>
             <button class="copy-btn" onclick="copyCode(this)">copy</button>
 <span class="cmd">sudo bash deploy.sh</span>
 
-<span class="comment"># Watch block height increase as the node syncs</span>
-<span class="cmd">watch -n 5 'curl -s http://localhost:8545 \
-  -X POST -H "Content-Type: application/json" \
-  -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}" \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(\"Height:\", int(d[\"result\"],16))"'</span></div>
-          <div class="alert alert-info">ℹ️ Sync speed depends on network latency to bootstrap peers and disk I/O speed. A fresh node with a fast SSD and nearby peers can sync thousands of blocks per minute.</div>
+<span class="comment"># View current height, peer target, and progress during startup</span>
+<span class="cmd">watch -n 3 'curl -s http://localhost:8545/sync-status'</span>
+
+<span class="comment"># Readiness returns HTTP 200 only after catch-up</span>
+<span class="cmd">curl -i http://localhost:8545/ready</span></div>
+          <div class="alert alert-info">ℹ️ The container may run while syncing so it can exchange P2P data. Docker reports it healthy only after <code>/ready</code> returns HTTP 200; state RPC calls remain gated until then.</div>
         </div>
       </div>
 

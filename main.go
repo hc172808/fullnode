@@ -205,7 +205,7 @@ func runNode() error {
 	case "testnode":
 		return runTestNode(cfg)
 	case "full":
-		return runFullNode(cfg)
+		return runSyncNode(cfg)
 	default:
 		return fmt.Errorf("unsupported node mode %q", cfg.NodeMode)
 	}
@@ -246,6 +246,7 @@ func runFullNode(cfg *config.Config) error {
 		return err
 	}
 	rpcSrv.SetP2P(p2pSrv)
+	rpcSrv.RequireSyncForServing(true)
 
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P server failed to start (continuing without P2P)")
@@ -320,6 +321,7 @@ func runLiteNode(cfg *config.Config) error {
 		rpcSrv.SetBindHost(cfg.RPCHost)
 	}
 	rpcSrv.SetP2P(p2pSrv)
+	rpcSrv.RequireSyncForServing(true)
 	go syncLiteHeaders(context.Background(), chain, p2pSrv, responses)
 
 	log.Info().
@@ -412,6 +414,7 @@ func runRPCNode(cfg *config.Config) error {
 	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
 	rpcSrv.SetNodeMode(cfg.NodeMode)
 	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
+	rpcSrv.RequireSyncForServing(true)
 
 	log.Info().
 		Int("rpcPort", cfg.RPCPort).
@@ -462,6 +465,7 @@ func runBoostNode(cfg *config.Config) error {
 		return err
 	}
 	rpcSrv.SetP2P(p2pSrv)
+	rpcSrv.RequireSyncForServing(true)
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P start failed")
 	}
@@ -525,6 +529,7 @@ func runGenesisNode(cfg *config.Config) error {
 		return err
 	}
 	rpcSrv.SetP2P(p2pSrv)
+	rpcSrv.RequireSyncForServing(true)
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P start failed")
 	}
@@ -568,6 +573,9 @@ func runSyncNode(cfg *config.Config) error {
 	if len(cfg.P2PBootstrap) == 0 {
 		return fmt.Errorf("sync requires GYDS_BOOTSTRAP_NODES=<public-host>:<p2p-port>; no bootstrap peers are configured")
 	}
+	if len(cfg.AllowedNodes) == 0 {
+		return fmt.Errorf("sync requires trusted peer IDs in GYDS_ALLOWED_NODES")
+	}
 
 	chain := core.NewChain(activeGenesis, cfg.DataDir)
 	log.Info().Uint64("localHeight", chain.Height()).Msg("Local chain state loaded")
@@ -586,6 +594,16 @@ func runSyncNode(cfg *config.Config) error {
 
 	if err := p2pSrv.Start(); err != nil {
 		return fmt.Errorf("sync P2P listener failed: %w", err)
+	}
+	defer p2pSrv.Close()
+
+	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
+	rpcSrv.SetNodeMode(cfg.NodeMode)
+	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
+	rpcSrv.SetP2P(p2pSrv)
+	rpcSrv.RequireSyncForServing(true)
+	if _, err := rpcSrv.StartBackground(); err != nil {
+		return fmt.Errorf("start sync progress endpoints: %w", err)
 	}
 
 	type bootstrapResult struct {
@@ -670,7 +688,13 @@ func runSyncNode(cfg *config.Config) error {
 		applied := uint64(0)
 		syncDeadline := time.Now().Add(10 * time.Minute) // overall catch-up time limit
 
-		for chain.Height() < networkHeight && time.Now().Before(syncDeadline) {
+		for time.Now().Before(syncDeadline) {
+			if latestHeight := p2pSrv.MaxPeerHeight(); latestHeight > networkHeight {
+				networkHeight = latestHeight
+			}
+			if chain.Height() >= networkHeight {
+				break
+			}
 			from := chain.Height() + 1
 			p2pSrv.RequestBlocks(from, syncBatchSize)
 			log.Debug().Uint64("from", from).Int("count", syncBatchSize).Msg("Requesting blocks from peers")
@@ -720,11 +744,6 @@ func runSyncNode(cfg *config.Config) error {
 	// ── Phase 3: Steady-state full-node operation ──────────────────────────────
 	vs := consensus.NewValidatorSet(activeGenesis.Validators)
 	engine := consensus.NewPoSEngine(chain, vs, cfg.BlockTime)
-
-	rpcSrv := rpc.NewServer(chain, cfg.DashboardPort, cfg.RPCPort, int(cfg.BlockTime.Seconds()), cfg.DataDir, cfg.ExternalURL, version)
-	rpcSrv.SetNodeMode(cfg.NodeMode)
-	rpcSrv.SetDashboardEnabled(cfg.DashboardEnabled)
-	rpcSrv.SetP2P(p2pSrv)
 
 	engine.OnNewBlock(func(b *core.Block) {
 		log.Info().
@@ -896,6 +915,7 @@ func runValidatorNode(cfg *config.Config) error {
 		return err
 	}
 	rpcSrv.SetP2P(p2pSrv)
+	rpcSrv.RequireSyncForServing(true)
 
 	if err := p2pSrv.Start(); err != nil {
 		log.Warn().Err(err).Msg("P2P server failed to start (continuing without P2P)")
@@ -984,13 +1004,13 @@ func min(a, b int) int {
 // ── Shared shutdown helper ────────────────────────────────────────────────────
 
 func serveAndWait(rpcSrv *rpc.Server, chain *core.Chain, engine *consensus.PoSEngine) error {
-	errCh := make(chan error, 2)
-	if rpcSrv.DashboardEnabled() {
-		go func() { errCh <- rpcSrv.StartDashboard() }()
-	} else {
+	errCh, err := rpcSrv.StartBackground()
+	if err != nil {
+		return err
+	}
+	if !rpcSrv.DashboardEnabled() {
 		log.Info().Msg("Dashboard UI disabled; JSON-RPC remains available")
 	}
-	go func() { errCh <- rpcSrv.StartRPC() }()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
