@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,8 @@ const (
 	MsgBlocks        MsgType = "blocks"
 	MsgGetHeaders    MsgType = "getHeaders"
 	MsgHeaders       MsgType = "headers"
+	MsgGetPeers      MsgType = "getPeers"
+	MsgPeers         MsgType = "peers"
 	MsgNewBlock      MsgType = "newBlock"
 	MsgNewTx         MsgType = "newTx"
 	MsgPing          MsgType = "ping"
@@ -43,6 +46,7 @@ type PeerInfo struct {
 	ID          string `json:"id"`
 	ChainID     int64  `json:"chainId"`
 	GenesisHash string `json:"genesisHash,omitempty"`
+	P2PAddr     string `json:"p2pAddr,omitempty"`
 	Height      uint64 `json:"height"`
 	NodeMode    string `json:"nodeMode"`
 	Version     string `json:"version"`
@@ -56,6 +60,23 @@ type ChainStatus struct {
 	GenesisHash string `json:"genesisHash"`
 	Height      uint64 `json:"height"`
 }
+
+// PeerEndpoint is a chain-verified P2P endpoint returned by discovery nodes.
+// Its address is supplied by the peer handshake, never inferred from a TCP
+// connection's ephemeral source port.
+type PeerEndpoint struct {
+	Addr        string `json:"addr"`
+	NodeID      string `json:"nodeId,omitempty"`
+	ChainID     int64  `json:"chainId"`
+	GenesisHash string `json:"genesisHash"`
+	NodeMode    string `json:"nodeMode"`
+}
+
+type PeersPayload struct {
+	Peers []PeerEndpoint `json:"peers"`
+}
+
+const maxDiscoveredPeers = 64
 
 // AuthChallengePayload is sent server→client to start the auth handshake.
 type AuthChallengePayload struct {
@@ -237,9 +258,11 @@ type Server struct {
 	closeOnce     sync.Once
 
 	// Auth — set via SetAuth before Start().
-	nodeKey      *NodeKey            // our own identity (nil = no auth)
-	peerAuth     bool                // if true, require challenge-response
-	allowedNodes map[string]struct{} // whitelist of permitted node IDs
+	nodeKey       *NodeKey            // our own identity (nil = no auth)
+	peerAuth      bool                // if true, require challenge-response
+	allowedNodes  map[string]struct{} // whitelist of permitted node IDs
+	dialing       map[string]struct{} // endpoints currently being dialed via discovery
+	advertisePort int
 }
 
 func NewServer(port int, chainID int64, height func() uint64) *Server {
@@ -252,6 +275,7 @@ func NewServer(port int, chainID int64, height func() uint64) *Server {
 		height:       height,
 		quit:         make(chan struct{}),
 		allowedNodes: make(map[string]struct{}),
+		dialing:      make(map[string]struct{}),
 	}
 }
 
@@ -290,6 +314,16 @@ func (s *Server) SetAdvertiseHost(host string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.advertiseHost = strings.TrimSpace(host)
+	s.advertisePort = 0
+}
+
+// SetAdvertiseEndpoint configures the externally reachable endpoint sent in
+// handshakes. Pass port 0 to use the listener port.
+func (s *Server) SetAdvertiseEndpoint(host string, port int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.advertiseHost = strings.TrimSpace(host)
+	s.advertisePort = port
 }
 
 // SetAuth configures peer authorization. Call before Start().
@@ -371,6 +405,9 @@ func (s *Server) Start() error {
 		return fmt.Errorf("p2p server already started")
 	}
 	s.listener = ln
+	if tcpAddr, ok := ln.Addr().(*net.TCPAddr); ok && s.port == 0 {
+		s.port = tcpAddr.Port
+	}
 	authMode := s.peerAuth
 	s.mu.Unlock()
 	log.Info().Int("port", s.port).Bool("peerAuth", authMode).Msg("P2P server listening")
@@ -462,6 +499,9 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 	requireAuth := s.peerAuth
 	nodeMode := s.nodeMode
 	genesisHash := s.genesisHash
+	advertiseHost := s.advertiseHost
+	advertisePort := s.advertisePort
+	listenPort := s.port
 	s.mu.RUnlock()
 
 	// Register peer immediately so we can receive their handshake.
@@ -483,9 +523,19 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 	if nk != nil {
 		myNodeID = nk.ID()
 	}
+	p2pAddr := ""
+	if validAdvertiseHost(advertiseHost) {
+		if advertisePort <= 0 {
+			advertisePort = listenPort
+		}
+		if advertisePort > 0 && advertisePort <= 65535 {
+			p2pAddr = net.JoinHostPort(advertiseHost, fmt.Sprintf("%d", advertisePort))
+		}
+	}
 	hs, _ := json.Marshal(PeerInfo{
 		ChainID:     s.chainID,
 		GenesisHash: genesisHash,
+		P2PAddr:     p2pAddr,
 		Height:      s.height(),
 		NodeMode:    nodeMode,
 		Version:     "1.0.0",
@@ -621,6 +671,9 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 		}
 		peer.mu.Unlock()
 		log.Info().Str("peer", peer.RemoteAddr()).Str("nodeId", info.NodeID).Int64("chainId", info.ChainID).Msg("peer handshake accepted")
+		if info.NodeMode == "bootnode" {
+			peer.Send(Message{Type: MsgGetPeers})
+		}
 
 	case MsgAuthChallenge:
 		// We received a challenge from the remote node — sign it and respond.
@@ -763,6 +816,41 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 			}
 		}
 
+	case MsgGetPeers:
+		peer.mu.Lock()
+		auth := peer.authorized
+		peer.mu.Unlock()
+		if !auth {
+			return
+		}
+		payload, err := json.Marshal(PeersPayload{Peers: s.discoveryPeers(peer)})
+		if err == nil {
+			peer.Send(Message{Type: MsgPeers, Payload: payload})
+		}
+
+	case MsgPeers:
+		peer.mu.Lock()
+		auth := peer.authorized
+		bootnode := peer.info != nil && peer.info.NodeMode == "bootnode"
+		peer.mu.Unlock()
+		if !auth || !bootnode {
+			return
+		}
+		var payload PeersPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil || len(payload.Peers) > maxDiscoveredPeers {
+			log.Warn().Str("peer", peer.RemoteAddr()).Msg("ignoring malformed or oversized peer discovery response")
+			return
+		}
+		for _, endpoint := range payload.Peers {
+			if endpoint.ChainID != s.chainID ||
+				(s.genesisHash != "" && endpoint.GenesisHash != s.genesisHash) ||
+				endpoint.NodeID == s.NodeID() ||
+				!validP2PEndpoint(endpoint.Addr) {
+				continue
+			}
+			s.connectDiscovered(endpoint.Addr)
+		}
+
 	default:
 		// Forward to user-registered handler only for authorized peers.
 		peer.mu.Lock()
@@ -772,6 +860,81 @@ func (s *Server) handleMessage(peer *Peer, msg Message) {
 			s.onMsg(peer, msg)
 		}
 	}
+}
+
+func (s *Server) discoveryPeers(exclude *Peer) []PeerEndpoint {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	peers := make([]PeerEndpoint, 0, len(s.peers))
+	for _, candidate := range s.peers {
+		if candidate == exclude {
+			continue
+		}
+		candidate.mu.Lock()
+		if !candidate.authorized || candidate.isClosed() || candidate.info == nil {
+			candidate.mu.Unlock()
+			continue
+		}
+		info := *candidate.info
+		candidate.mu.Unlock()
+
+		if info.NodeMode == "bootnode" || !validP2PEndpoint(info.P2PAddr) ||
+			info.ChainID != s.chainID ||
+			(s.genesisHash != "" && info.GenesisHash != s.genesisHash) {
+			continue
+		}
+		peers = append(peers, PeerEndpoint{
+			Addr:        info.P2PAddr,
+			NodeID:      info.NodeID,
+			ChainID:     info.ChainID,
+			GenesisHash: info.GenesisHash,
+			NodeMode:    info.NodeMode,
+		})
+		if len(peers) >= maxDiscoveredPeers {
+			break
+		}
+	}
+	return peers
+}
+
+func validP2PEndpoint(addr string) bool {
+	host, portText, err := net.SplitHostPort(strings.TrimSpace(addr))
+	if err != nil || host == "" || strings.ContainsAny(host, "/ \t\r\n") {
+		return false
+	}
+	port, err := strconv.Atoi(portText)
+	return err == nil && port >= 1 && port <= 65535
+}
+
+func (s *Server) connectDiscovered(addr string) {
+	key := strings.ToLower(strings.TrimSpace(addr))
+	if !validP2PEndpoint(key) || s.IsConnectedTo(key) {
+		return
+	}
+
+	s.mu.Lock()
+	if _, exists := s.dialing[key]; exists {
+		s.mu.Unlock()
+		return
+	}
+	if s.maxPeers > 0 && len(s.peers)+len(s.dialing) >= s.maxPeers {
+		s.mu.Unlock()
+		return
+	}
+	s.dialing[key] = struct{}{}
+	s.mu.Unlock()
+
+	go func() {
+		defer func() {
+			s.mu.Lock()
+			delete(s.dialing, key)
+			s.mu.Unlock()
+		}()
+		if err := s.ConnectTo(key); err != nil {
+			log.Debug().Err(err).Str("addr", key).Msg("discovered peer connection failed")
+		}
+	}()
 }
 
 // denyPeer sends a rejection message and immediately drops the connection.
