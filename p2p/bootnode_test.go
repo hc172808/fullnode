@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -103,6 +104,10 @@ func TestBootnodeKeepsIdentityAndDoesNotServeBlocks(t *testing.T) {
 	if got := restarted.NodeID(); got != firstID {
 		t.Fatalf("node ID after restart = %s, want stable ID %s", got, firstID)
 	}
+	if err := restarted.Start(); err != nil {
+		t.Fatalf("restart bootnode: %v", err)
+	}
+	restarted.Close()
 }
 
 func TestBootnodeReturnsOnlyCompatibleDiscoveredPeers(t *testing.T) {
@@ -170,6 +175,44 @@ func TestBootnodeReturnsOnlyCompatibleDiscoveredPeers(t *testing.T) {
 	}
 	if payload.Peers[0].Addr != "192.0.2.10:30303" || payload.Peers[0].NodeID != "candidate-a" {
 		t.Fatalf("unexpected discovered endpoint: %#v", payload.Peers[0])
+	}
+}
+
+func TestConnectDiscoveredDialsCompatiblePeerOnce(t *testing.T) {
+	const chainID = int64(198282)
+	const genesisHash = "0xproduction-genesis"
+	remotePort := freeTCPPort(t)
+
+	remote := NewServer(remotePort, chainID, func() uint64 { return 1 })
+	remote.SetGenesisHash(genesisHash)
+	remote.SetNodeMode("full")
+	remote.SetMaxPeers(8)
+	if err := remote.Start(); err != nil {
+		t.Fatalf("start discovered peer: %v", err)
+	}
+	defer remote.Close()
+
+	local := NewServer(0, chainID, func() uint64 { return 1 })
+	local.SetGenesisHash(genesisHash)
+	local.SetMaxPeers(8)
+	defer local.Close()
+
+	endpoint := fmt.Sprintf("127.0.0.1:%d", remotePort)
+	var callers sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		callers.Add(1)
+		go func() {
+			defer callers.Done()
+			local.connectDiscovered(endpoint)
+		}()
+	}
+	callers.Wait()
+
+	waitFor(t, 3*time.Second, func() bool {
+		return local.HandshakePeerCount() == 1
+	})
+	if got := local.PeerCount(); got != 1 {
+		t.Fatalf("discovered peer count = %d, want exactly one", got)
 	}
 }
 

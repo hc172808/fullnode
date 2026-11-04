@@ -48,6 +48,39 @@ func TestFromEnvNormalizesNodeModeBeforeApplyingTestnodePorts(t *testing.T) {
 	}
 }
 
+func TestTestnodeIgnoresGenericProductionPorts(t *testing.T) {
+	t.Setenv("GYDS_NODE_MODE", "testnode")
+	t.Setenv("GYDS_NETWORK", "")
+	t.Setenv("GYDS_BOOTSTRAP_NODES", "")
+	t.Setenv("GYDS_DATA_DIR", t.TempDir())
+	t.Setenv("GYDS_P2P_PORT", "30303")
+	t.Setenv("GYDS_RPC_PORT", "8545")
+	t.Setenv("GYDS_DASHBOARD_PORT", "5000")
+	t.Setenv("GYDS_WS_PORT", "8546")
+	t.Setenv("GYDS_TESTNODE_P2P_PORT", "")
+	t.Setenv("GYDS_TESTNODE_RPC_PORT", "")
+	t.Setenv("GYDS_TESTNODE_DASHBOARD_PORT", "")
+	t.Setenv("GYDS_TESTNODE_WS_PORT", "")
+
+	cfg := FromEnv()
+	if cfg.P2PPort != 31337 || cfg.RPCPort != 18545 ||
+		cfg.DashboardPort != 15000 || cfg.WSPort != 18546 {
+		t.Fatalf("testnode inherited production ports: p2p:%d rpc:%d dashboard:%d ws:%d",
+			cfg.P2PPort, cfg.RPCPort, cfg.DashboardPort, cfg.WSPort)
+	}
+
+	t.Setenv("GYDS_TESTNODE_P2P_PORT", "31338")
+	t.Setenv("GYDS_TESTNODE_RPC_PORT", "18547")
+	t.Setenv("GYDS_TESTNODE_DASHBOARD_PORT", "5000")
+	t.Setenv("GYDS_TESTNODE_WS_PORT", "18548")
+	cfg = FromEnv()
+	if cfg.P2PPort != 31338 || cfg.RPCPort != 18547 ||
+		cfg.DashboardPort != 5000 || cfg.WSPort != 18548 {
+		t.Fatalf("testnode-specific ports not applied: p2p:%d rpc:%d dashboard:%d ws:%d",
+			cfg.P2PPort, cfg.RPCPort, cfg.DashboardPort, cfg.WSPort)
+	}
+}
+
 func TestDashboardEnabledDefaultsToTrueAndCanBeDisabled(t *testing.T) {
 	t.Setenv("GYDS_DASHBOARD_ENABLED", "")
 	if cfg := FromEnv(); !cfg.DashboardEnabled {

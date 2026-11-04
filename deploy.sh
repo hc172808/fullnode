@@ -258,7 +258,10 @@ fi
 
 set -a
 # shellcheck source=/dev/null
-source "$ENV_FILE"
+# Older local .env files may contain the network label without quotes. Normalize
+# that single known value while sourcing so the trailing word is not executed as
+# a shell command; leave the operator's file unchanged.
+source <(sed 's/^GYDS_NETWORK_NAME=GYDS Chain$/GYDS_NETWORK_NAME="GYDS Chain"/' "$ENV_FILE")
 set +a
 
 # Apply defaults for any variable not present in .env
@@ -387,6 +390,18 @@ if [[ -n "$DASHBOARD_PORT_OVERRIDE" ]]; then
   GYDS_DASHBOARD_PORT="$DASHBOARD_PORT_OVERRIDE"
 fi
 
+# Keep testnode private even if an operator copied a production .env. Apply
+# these values before validation so only the ports testnode will actually use
+# participate in conflict checks, firewall rules, and the systemd unit.
+if [[ "$GYDS_NODE_MODE" == "testnode" ]]; then
+  GYDS_RPC_HOST="127.0.0.1"
+  GYDS_DASHBOARD_PORT=15000
+  GYDS_RPC_PORT=18545
+  GYDS_WS_PORT=18546
+  GYDS_P2P_PORT=31337
+  info "Testnode ports forced to dashboard=15000 rpc=18545 ws=18546 p2p=31337"
+fi
+
 # systemd requires every path in ReadWritePaths= to be absolute. Resolve a
 # relative path against the checkout before creating the service, and persist
 # the resolved value in the installed environment so the service and binary
@@ -449,16 +464,6 @@ if [[ "$GYDS_DASHBOARD_ENABLED" == "true" ]]; then
   DASHBOARD_FIREWALL_ENABLED=true
 else
   DASHBOARD_FIREWALL_ENABLED=false
-fi
-
-# Keep testnode private even if an operator copied a production .env.
-if [[ "$GYDS_NODE_MODE" == "testnode" ]]; then
-  GYDS_RPC_HOST="127.0.0.1"
-  GYDS_DASHBOARD_PORT=15000
-  GYDS_RPC_PORT=18545
-  GYDS_WS_PORT=18546
-  GYDS_P2P_PORT=31337
-  info "Testnode ports forced to dashboard=15000 rpc=18545 ws=18546 p2p=31337"
 fi
 
 validate_advertise_ipv4() {

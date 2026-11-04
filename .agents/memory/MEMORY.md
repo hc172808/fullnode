@@ -19,3 +19,4 @@
 - [Go archive checksum verification](go-checksum-verification.md) — verify against Go's release JSON and report expected/actual hashes on mismatch
 - [Consensus engine direction](consensus-engine-direction.md) — isolated signed-tx prototype is approved and must use a unique chain ID; production activation remains separately gated
 - [GYDS supply targets](gyds-supply-targets.md) — requested 3B mainnet and 2B persistent-testnet genesis supplies require coordinated migration
+- [Remote node administration boundary](remote-node-admin-boundary.md) — do not add arbitrary remote command execution or file editing to node administration

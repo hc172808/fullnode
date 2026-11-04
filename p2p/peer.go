@@ -258,24 +258,26 @@ type Server struct {
 	closeOnce     sync.Once
 
 	// Auth — set via SetAuth before Start().
-	nodeKey       *NodeKey            // our own identity (nil = no auth)
-	peerAuth      bool                // if true, require challenge-response
-	allowedNodes  map[string]struct{} // whitelist of permitted node IDs
-	dialing       map[string]struct{} // endpoints currently being dialed via discovery
-	advertisePort int
+	nodeKey           *NodeKey            // our own identity (nil = no auth)
+	peerAuth          bool                // if true, require challenge-response
+	allowedNodes      map[string]struct{} // whitelist of permitted node IDs
+	dialing           map[string]struct{} // endpoints currently being dialed via discovery
+	discoveryCooldown map[string]time.Time
+	advertisePort     int
 }
 
 func NewServer(port int, chainID int64, height func() uint64) *Server {
 	return &Server{
-		peers:        make(map[string]*Peer),
-		port:         port,
-		maxPeers:     25,
-		chainID:      chainID,
-		nodeMode:     "full",
-		height:       height,
-		quit:         make(chan struct{}),
-		allowedNodes: make(map[string]struct{}),
-		dialing:      make(map[string]struct{}),
+		peers:             make(map[string]*Peer),
+		port:              port,
+		maxPeers:          25,
+		chainID:           chainID,
+		nodeMode:          "full",
+		height:            height,
+		quit:              make(chan struct{}),
+		allowedNodes:      make(map[string]struct{}),
+		dialing:           make(map[string]struct{}),
+		discoveryCooldown: make(map[string]time.Time),
 	}
 }
 
@@ -478,6 +480,13 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 	addr := conn.RemoteAddr().String()
 
 	s.mu.Lock()
+	select {
+	case <-s.quit:
+		s.mu.Unlock()
+		_ = conn.Close()
+		return
+	default:
+	}
 	if _, ok := s.peers[addr]; ok {
 		s.mu.Unlock()
 		log.Warn().Str("peer", addr).Msg("rejecting duplicate peer connection")
@@ -506,6 +515,13 @@ func (s *Server) onNewConn(conn net.Conn, outbound bool) {
 
 	// Register peer immediately so we can receive their handshake.
 	s.mu.Lock()
+	select {
+	case <-s.quit:
+		s.mu.Unlock()
+		_ = conn.Close()
+		return
+	default:
+	}
 	s.peers[addr] = peer
 	peer.onClose = func(closed *Peer) {
 		s.mu.Lock()
@@ -913,8 +929,18 @@ func (s *Server) connectDiscovered(addr string) {
 		return
 	}
 
+	now := time.Now()
 	s.mu.Lock()
 	if _, exists := s.dialing[key]; exists {
+		s.mu.Unlock()
+		return
+	}
+	for endpoint, until := range s.discoveryCooldown {
+		if !until.After(now) {
+			delete(s.discoveryCooldown, endpoint)
+		}
+	}
+	if until, coolingDown := s.discoveryCooldown[key]; coolingDown && until.After(now) {
 		s.mu.Unlock()
 		return
 	}
@@ -923,6 +949,7 @@ func (s *Server) connectDiscovered(addr string) {
 		return
 	}
 	s.dialing[key] = struct{}{}
+	s.discoveryCooldown[key] = now.Add(30 * time.Second)
 	s.mu.Unlock()
 
 	go func() {
@@ -933,6 +960,27 @@ func (s *Server) connectDiscovered(addr string) {
 		}()
 		if err := s.ConnectTo(key); err != nil {
 			log.Debug().Err(err).Str("addr", key).Msg("discovered peer connection failed")
+			return
+		}
+
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		timeout := time.NewTimer(10 * time.Second)
+		defer timeout.Stop()
+		for {
+			if s.IsConnectedTo(key) {
+				s.mu.Lock()
+				delete(s.discoveryCooldown, key)
+				s.mu.Unlock()
+				return
+			}
+			select {
+			case <-s.quit:
+				return
+			case <-timeout.C:
+				return
+			case <-ticker.C:
+			}
 		}
 	}()
 }

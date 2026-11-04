@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +37,7 @@ type Bootnode struct {
 }
 
 func NewBootnode(cfg BootnodeConfig) (*Bootnode, error) {
-	if cfg.DataDir == "" {
+	if strings.TrimSpace(cfg.DataDir) == "" {
 		return nil, fmt.Errorf("bootnode data directory is required")
 	}
 	if cfg.Port < 1 || cfg.Port > 65535 {
@@ -53,7 +54,7 @@ func NewBootnode(cfg BootnodeConfig) (*Bootnode, error) {
 	}
 
 	keyPath := cfg.NodeKeyPath
-	if keyPath == "" {
+	if strings.TrimSpace(keyPath) == "" {
 		keyPath = filepath.Join(cfg.DataDir, "node.key")
 	}
 	key, err := LoadOrCreateNodeKeyAt(keyPath)
@@ -106,8 +107,8 @@ func parseBootnodePublicAddr(value string) (string, int, error) {
 		if !validAdvertiseHost(host) {
 			return "", 0, fmt.Errorf("public address host must not be localhost or unspecified")
 		}
-		var port int
-		if _, err := fmt.Sscanf(portText, "%d", &port); err != nil || port < 1 || port > 65535 {
+		port, err := strconv.Atoi(portText)
+		if err != nil || port < 1 || port > 65535 {
 			return "", 0, fmt.Errorf("public address port must be between 1 and 65535")
 		}
 		return host, port, nil

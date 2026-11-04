@@ -130,8 +130,9 @@ func FromEnv() *Config {
 	}
 	cfg.NodeMode, _ = NormalizeNodeMode(os.Getenv("GYDS_NODE_MODE"))
 	// The test node is intentionally isolated and uses its own standard ports
-	// unless the operator explicitly overrides them.
-	if strings.EqualFold(cfg.NodeMode, "testnode") {
+	// unless the operator explicitly supplies testnode-specific overrides.
+	testNodeMode := strings.EqualFold(cfg.NodeMode, "testnode")
+	if testNodeMode {
 		cfg.DashboardPort = 15000
 		cfg.RPCPort = 18545
 		cfg.WSPort = 18546
@@ -140,7 +141,11 @@ func FromEnv() *Config {
 	if v := os.Getenv("GYDS_NETWORK_NAME"); v != "" && !networkConfigured {
 		cfg.NetworkName = v
 	}
-	if v := os.Getenv("GYDS_P2P_PORT"); v != "" {
+	portEnvPrefix := "GYDS_"
+	if testNodeMode {
+		portEnvPrefix = "GYDS_TESTNODE_"
+	}
+	if v := os.Getenv(portEnvPrefix + "P2P_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.P2PPort = p
 		}
@@ -148,12 +153,12 @@ func FromEnv() *Config {
 	if v := os.Getenv("GYDS_P2P_ADVERTISE_HOST"); v != "" {
 		cfg.P2PAdvertiseHost = strings.TrimSpace(v)
 	}
-	if v := os.Getenv("GYDS_RPC_PORT"); v != "" {
+	if v := os.Getenv(portEnvPrefix + "RPC_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.RPCPort = p
 		}
 	}
-	if v := os.Getenv("GYDS_DASHBOARD_PORT"); v != "" {
+	if v := os.Getenv(portEnvPrefix + "DASHBOARD_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.DashboardPort = p
 		}
@@ -163,7 +168,7 @@ func FromEnv() *Config {
 			cfg.DashboardEnabled = enabled
 		}
 	}
-	if v := os.Getenv("GYDS_WS_PORT"); v != "" {
+	if v := os.Getenv(portEnvPrefix + "WS_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.WSPort = p
 		}

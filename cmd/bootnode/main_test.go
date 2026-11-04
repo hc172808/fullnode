@@ -42,8 +42,8 @@ func TestGenesisHashRequiresExplicitValueForUnknownChain(t *testing.T) {
 	if _, err := genesisHashForChainID(55555); err == nil {
 		t.Fatal("unknown network accepted without an explicit genesis hash")
 	}
-	if hash, err := genesisHashForChainID(198282); err != nil || hash == "" {
-		t.Fatalf("known mainnet genesis hash = %q, err = %v", hash, err)
+	if _, err := genesisHashForChainID(198282); err == nil {
+		t.Fatal("mainnet genesis hash was inferred from the outdated local genesis")
 	}
 }
 
@@ -54,5 +54,15 @@ func TestReadTOMLConfigRejectsMalformedLines(t *testing.T) {
 	}
 	if _, err := readTOMLConfig(path); err == nil {
 		t.Fatal("malformed TOML line accepted")
+	}
+}
+
+func TestParseOptionsRejectsMalformedTOMLValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bootnode.toml")
+	if err := os.WriteFile(path, []byte("p2p_port = not-a-port\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseOptions([]string{"--config", path}); err == nil {
+		t.Fatal("malformed TOML integer was silently ignored")
 	}
 }

@@ -133,7 +133,9 @@ func parseOptions(args []string) (options, error) {
 		if err != nil {
 			return options{}, err
 		}
-		applyTOMLConfig(&opts, values, changed)
+		if err := applyTOMLConfig(&opts, values, changed); err != nil {
+			return options{}, fmt.Errorf("invalid bootnode config: %w", err)
+		}
 	}
 	if opts.dataDir == "" {
 		return options{}, fmt.Errorf("--datadir must not be empty")
@@ -166,6 +168,9 @@ func readTOMLConfig(path string) (map[string]string, error) {
 		key = normalizeTOMLKey(key)
 		if key == "" {
 			return nil, fmt.Errorf("%s:%d: empty configuration key", path, lineNo)
+		}
+		if _, exists := values[key]; exists {
+			return nil, fmt.Errorf("%s:%d: duplicate configuration key %q", path, lineNo, key)
 		}
 		values[key] = strings.TrimSpace(value)
 	}
@@ -206,7 +211,7 @@ func tomlString(raw string) string {
 	return raw
 }
 
-func applyTOMLConfig(opts *options, values map[string]string, cli map[string]bool) {
+func applyTOMLConfig(opts *options, values map[string]string, cli map[string]bool) error {
 	setString := func(flagName, key string, target *string) {
 		if !cli[flagName] {
 			if value, ok := values[key]; ok {
@@ -221,44 +226,48 @@ func applyTOMLConfig(opts *options, values map[string]string, cli map[string]boo
 	setString("allowed-nodes", "allowednodes", &opts.allowedNodes)
 	setString("genesis-hash", "genesishash", &opts.genesisHash)
 
-	if !cli["p2pport"] {
-		if value, ok := values["p2pport"]; ok {
-			if parsed, err := strconv.Atoi(tomlString(value)); err == nil {
-				opts.p2pPort = parsed
-			}
+	parseInt := func(key string, bits int) (int64, bool, error) {
+		value, ok := values[key]
+		if !ok {
+			return 0, false, nil
+		}
+		parsed, err := strconv.ParseInt(tomlString(value), 10, bits)
+		if err != nil {
+			return 0, true, fmt.Errorf("%s must be an integer: %w", key, err)
+		}
+		return parsed, true, nil
+	}
+	if value, ok, err := parseInt("p2pport", 32); err != nil {
+		return err
+	} else if ok && !cli["p2pport"] {
+		opts.p2pPort = int(value)
+	}
+	if value, ok, err := parseInt("maxpeers", 32); err != nil {
+		return err
+	} else if ok && !cli["maxpeers"] {
+		opts.maxPeers = int(value)
+	}
+	if value, ok, err := parseInt("chainid", 64); err != nil {
+		return err
+	} else if ok && !cli["chain-id"] {
+		opts.chainID = value
+	}
+	if value, ok := values["peerauth"]; ok {
+		parsed, err := strconv.ParseBool(tomlString(value))
+		if err != nil {
+			return fmt.Errorf("peerauth must be true or false: %w", err)
+		}
+		if !cli["peer-auth"] {
+			opts.peerAuth = parsed
 		}
 	}
-	if !cli["maxpeers"] {
-		if value, ok := values["maxpeers"]; ok {
-			if parsed, err := strconv.Atoi(tomlString(value)); err == nil {
-				opts.maxPeers = parsed
-			}
-		}
-	}
-	if !cli["chain-id"] {
-		if value, ok := values["chainid"]; ok {
-			if parsed, err := strconv.ParseInt(tomlString(value), 10, 64); err == nil {
-				opts.chainID = parsed
-			}
-		}
-	}
-	if !cli["peer-auth"] {
-		if value, ok := values["peerauth"]; ok {
-			if parsed, err := strconv.ParseBool(tomlString(value)); err == nil {
-				opts.peerAuth = parsed
-			}
-		}
-	}
+	return nil
 }
 
 func genesisHashForChainID(chainID int64) (string, error) {
 	switch chainID {
 	case 198282:
-		genesis, err := core.GenesisForNetwork("mainnet")
-		if err != nil {
-			return "", err
-		}
-		return core.GenesisBlock(genesis).Hash, nil
+		return "", fmt.Errorf("mainnet genesis hash is not verified in this repository; supply the approved --genesis-hash")
 	case 198281:
 		genesis, err := core.GenesisForNetwork("testnet")
 		if err != nil {
