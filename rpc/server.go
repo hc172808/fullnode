@@ -292,6 +292,14 @@ func (s *Server) syncReadinessMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// Admin routes have their own session checks. Keep the control plane
+		// available while a node is behind so an operator can configure peers
+		// and recover it; otherwise the readiness gate can prevent the actions
+		// needed to make the node ready.
+		if r.URL.Path == "/admin" || strings.HasPrefix(r.URL.Path, "/admin/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		switch r.URL.Path {
 		case "/", "/health", "/ready", "/sync-status", "/guide",
 			"/p2p/node-id", "/logo.png", "/favicon.ico",

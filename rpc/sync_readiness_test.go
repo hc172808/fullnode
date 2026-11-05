@@ -80,6 +80,13 @@ func TestReadinessBlocksServiceUntilPeerHeightIsReached(t *testing.T) {
 	if progressAPI.Code != http.StatusOK {
 		t.Fatalf("pre-sync progress endpoint status = %d, want 200", progressAPI.Code)
 	}
+	for _, path := range []string{"/admin/login", "/admin/node"} {
+		adminResponse := httptest.NewRecorder()
+		guard.ServeHTTP(adminResponse, httptest.NewRequest(http.MethodGet, path, nil))
+		if adminResponse.Code != http.StatusOK {
+			t.Fatalf("pre-sync admin route %s status = %d, want 200", path, adminResponse.Code)
+		}
+	}
 
 	peer.peerHeight = s.chain.Height()
 	ready := httptest.NewRecorder()
