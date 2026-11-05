@@ -118,6 +118,27 @@
     }
     .pin-field input:focus { border-color: var(--accent); }
 
+    .wallet-status {
+      margin: 10px 0 14px;
+      padding: 10px 12px;
+      border: 1px solid rgba(148,163,184,.2);
+      border-radius: 8px;
+      background: rgba(148,163,184,.06);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .wallet-status[data-state="ready"] {
+      color: #a7f3d0;
+      border-color: rgba(16,185,129,.3);
+      background: rgba(16,185,129,.08);
+    }
+    .wallet-status[data-state="error"] {
+      color: #fca5a5;
+      border-color: rgba(239,68,68,.3);
+      background: rgba(239,68,68,.08);
+    }
+
     /* ── Error ── */
     .error-box {
       background: rgba(239,68,68,.12);
@@ -194,6 +215,7 @@
         <div class="wallet-addr" id="adminAddr">Loading…</div>
       </div>
     </div>
+    <div class="wallet-status" id="walletStatus" data-state="checking" role="status" aria-live="polite">Checking the authorized Admin wallet…</div>
 
     <div class="wallet-note">Both checks are required on every node: sign a one-time challenge with the authorized Admin wallet, then enter this node's own PIN. Your PIN and signature are sent only to this node.</div>
     <form id="adminLoginForm" onsubmit="event.preventDefault(); doLogin()">
@@ -225,11 +247,13 @@
 </div>
 
 <script>
-// ── Load admin wallet from server ─────────────────────────────────────────────
-fetch('/admin/wallet')
-  .then(r => r.json())
-  .then(d => { document.getElementById('adminAddr').textContent = d.adminWallet || '—'; })
-  .catch(() => { document.getElementById('adminAddr').textContent = '0x6422d12b…09017b1'; });
+let authorizedAdminWallet = '';
+
+function setWalletStatus(message, state = 'checking') {
+  const status = document.getElementById('walletStatus');
+  status.textContent = message;
+  status.dataset.state = state;
+}
 
 function showError(msg, success = false) {
   const b = document.getElementById('errBox');
@@ -244,6 +268,7 @@ function showLockout(msg) {
   b.textContent = msg;
   b.classList.add('show');
   const btn = document.getElementById('loginBtn');
+  btn.dataset.locked = 'true';
   btn.disabled = true;
   btn.textContent = 'Locked';
 }
@@ -272,12 +297,54 @@ async function requestJSON(path, options, label) {
   return data;
 }
 
+async function fetchAuthorizedAdminWallet() {
+  const wallet = await requestJSON('/admin/wallet', { cache: 'no-store' }, 'Admin wallet lookup');
+  if (!/^0x[0-9a-f]{40}$/i.test(wallet.adminWallet || '')) {
+    throw new Error('The server returned an invalid authorized Admin wallet address.');
+  }
+  authorizedAdminWallet = wallet.adminWallet;
+  document.getElementById('adminAddr').textContent = authorizedAdminWallet;
+  return authorizedAdminWallet;
+}
+
+async function loadAuthorizedAdminWallet() {
+  setWalletStatus('Checking the authorized Admin wallet with this node…');
+  try {
+    await fetchAuthorizedAdminWallet();
+    setWalletStatus('Authorized wallet loaded. Connect this exact address; no signature is requested until you choose Sign In.', 'ready');
+  } catch (error) {
+    document.getElementById('adminAddr').textContent = 'Unavailable';
+    setWalletStatus(`${error.message} Login will not request a signature until the wallet can be verified.`, 'error');
+  }
+}
+
+function sameAddress(left, right) {
+  return typeof left === 'string' && typeof right === 'string' &&
+    left.toLowerCase() === right.toLowerCase();
+}
+
+loadAuthorizedAdminWallet();
+if (window.ethereum && typeof window.ethereum.on === 'function') {
+  window.ethereum.on('accountsChanged', accounts => {
+    const address = accounts && accounts[0];
+    if (!address) {
+      setWalletStatus('Wallet disconnected. Reconnect the authorized Admin wallet to continue.', 'error');
+    } else if (!authorizedAdminWallet || !sameAddress(address, authorizedAdminWallet)) {
+      setWalletStatus(`Wrong wallet selected (${address}). No signature will be requested. Switch to ${authorizedAdminWallet || 'the authorized Admin wallet'} and retry.`, 'error');
+    } else {
+      setWalletStatus('Authorized Admin wallet selected. Click Sign In when ready.', 'ready');
+    }
+  });
+}
+
 // ── Login ─────────────────────────────────────────────────────────────────────
 async function doLogin() {
   const btn = document.getElementById('loginBtn');
   const pin = document.getElementById('adminPin').value;
+  let stage = 'wallet account access';
+  delete btn.dataset.locked;
   btn.disabled = true;
-  btn.textContent = 'Verifying…';
+  btn.textContent = 'Checking wallet…';
   hideError();
 
   try {
@@ -287,20 +354,39 @@ async function doLogin() {
     const address = accounts && accounts[0];
     if (!address) throw new Error('No wallet account was selected.');
 
-    const wallet = await requestJSON('/admin/wallet', { cache: 'no-store' }, 'Admin wallet lookup');
-    if (!wallet.adminWallet) throw new Error('The server did not provide the authorized admin wallet.');
-    if (address.toLowerCase() !== wallet.adminWallet.toLowerCase()) {
-      throw new Error(`Connected wallet is not the authorized admin wallet (${wallet.adminWallet}).`);
+    stage = 'authorized wallet check';
+    const expectedWallet = await fetchAuthorizedAdminWallet();
+    if (!sameAddress(address, expectedWallet)) {
+      const message = `Wrong wallet selected (${address}). The authorized Admin wallet is ${expectedWallet}. No signature was requested.`;
+      setWalletStatus(message, 'error');
+      throw new Error(message);
     }
 
+    stage = 'login challenge';
+    btn.textContent = 'Preparing secure challenge…';
     const challenge = await requestJSON('/admin/challenge', { cache: 'no-store' }, 'Login challenge');
     if (!challenge.nonce || !challenge.message) {
       throw new Error('The server returned an incomplete login challenge. Reload and retry.');
     }
+
+    stage = 'wallet account recheck';
+    const currentAccounts = await window.ethereum.request({ method: 'eth_accounts' });
+    if (!currentAccounts || !sameAddress(currentAccounts[0], expectedWallet) ||
+        !sameAddress(currentAccounts[0], address)) {
+      const message = 'The selected wallet changed before signing. No signature was requested; reconnect the authorized Admin wallet and retry.';
+      setWalletStatus(message, 'error');
+      throw new Error(message);
+    }
+
+    stage = 'message signing';
+    btn.textContent = 'Waiting for wallet signature…';
+    setWalletStatus('Wallet verified. Review the one-time Admin login message in your wallet.', 'ready');
     const signature = await window.ethereum.request({
       method: 'personal_sign',
       params: [challenge.message, address]
     });
+    stage = 'server verification';
+    btn.textContent = 'Verifying signature and PIN…';
     const data = await requestJSON('/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -317,12 +403,18 @@ async function doLogin() {
     if (e.status === 429) {
       showLockout('⚠️ ' + e.message);
     } else if (e.code === 4001) {
-      showError('Wallet request was rejected. Approve account access and message signing to continue.');
+      const message = stage === 'wallet account access'
+        ? 'Wallet account access was canceled. No signature was requested.'
+        : stage === 'message signing'
+          ? 'Admin login signature was canceled. No session was created.'
+          : `Wallet request was canceled during ${stage}. No Admin session was created.`;
+      setWalletStatus(message, 'error');
+      showError(message);
     } else {
       showError(e.message || 'Admin login failed. Please retry.');
     }
   } finally {
-    if (btn.textContent === 'Verifying…') {
+    if (!btn.dataset.locked) {
       btn.textContent = 'Connect Wallet & Sign In';
       btn.disabled = false;
     }
@@ -354,7 +446,14 @@ async function recoverPIN() {
     if (!address) throw new Error('No wallet account was selected.');
     const challenge = await requestJSON('/admin/security/pin/recovery-challenge', { cache: 'no-store' }, 'PIN recovery challenge');
     if (!challenge.nonce || !challenge.message || !challenge.address) throw new Error('The server returned an incomplete recovery challenge.');
-    if (address.toLowerCase() !== challenge.address.toLowerCase()) throw new Error(`Connected wallet is not the authorized Admin wallet (${challenge.address}).`);
+    if (!sameAddress(address, challenge.address)) {
+      throw new Error(`Connected wallet is not the authorized Admin wallet (${challenge.address}). No signature was requested.`);
+    }
+    const currentAccounts = await window.ethereum.request({ method: 'eth_accounts' });
+    if (!currentAccounts || !sameAddress(currentAccounts[0], challenge.address) ||
+        !sameAddress(currentAccounts[0], address)) {
+      throw new Error('The selected wallet changed before PIN recovery signing. No signature was requested.');
+    }
     const signature = await window.ethereum.request({ method: 'personal_sign', params: [challenge.message, address] });
     const result = await requestJSON('/admin/security/pin/recover', {
       method: 'POST',

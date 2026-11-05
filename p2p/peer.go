@@ -345,6 +345,31 @@ func (s *Server) SetAuth(nk *NodeKey, requireAuth bool, allowedIDs []string) {
 	}
 }
 
+// SetAllowedNodes updates the approved peer identities without restarting the
+// listener. The caller is responsible for persisting the approval separately.
+func (s *Server) SetAllowedNodes(allowedIDs []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	allowed := make(map[string]struct{}, len(allowedIDs))
+	for _, id := range allowedIDs {
+		if id = normalizeNodeID(id); id != "" {
+			allowed[id] = struct{}{}
+		}
+	}
+	s.allowedNodes = allowed
+}
+
+// SignNodeMessage signs a control-plane challenge with this node's P2P key.
+// The private key is never returned to the caller.
+func (s *Server) SignNodeMessage(data []byte) (nodeID, signature string, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.nodeKey == nil {
+		return "", "", false
+	}
+	return s.nodeKey.ID(), s.nodeKey.Sign(data), true
+}
+
 func normalizeNodeID(id string) string {
 	id = strings.ToLower(strings.TrimSpace(id))
 	return strings.TrimPrefix(id, "0x")
@@ -1160,6 +1185,27 @@ func (s *Server) Disconnect(addr string) {
 	if target != nil {
 		target.Close()
 	}
+}
+
+// DisconnectNode closes a live P2P session after its identity is revoked.
+func (s *Server) DisconnectNode(nodeID string) bool {
+	nodeID = normalizeNodeID(nodeID)
+	s.mu.RLock()
+	peers := make([]*Peer, 0, len(s.peers))
+	for _, peer := range s.peers {
+		peers = append(peers, peer)
+	}
+	s.mu.RUnlock()
+	for _, peer := range peers {
+		peer.mu.Lock()
+		matches := normalizeNodeID(peer.peerNodeID) == nodeID
+		peer.mu.Unlock()
+		if matches {
+			peer.Close()
+			return true
+		}
+	}
+	return false
 }
 
 // HandshakePeerCount counts connected authorized peers with a validated

@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <header class="top"><div class="logo">GY</div><div class="brand">GYDS <span>Chain</span></div><span class="pill">Admin Control</span><div class="grow"></div><a href="/">← Dashboard</a><a href="/guide">Operator Guide</a><a href="/admin/db">Database</a><a href="#dashboard-pin">Dashboard PIN</a><a href="/admin/logout" style="color:#ef8888">Logout</a></header>
+  <header class="top"><div class="logo">GY</div><div class="brand">GYDS <span>Chain</span></div><span class="pill">Admin Control</span><div class="grow"></div><a href="/">← Dashboard</a><a href="/guide">Operator Guide</a><a href="/admin/db">Database</a><a href="#peer-enrollments">Peer approvals</a><a href="#dashboard-pin">Dashboard PIN</a><a href="/admin/logout" style="color:#ef8888">Logout</a></header>
   <main>
     <div class="heading"><h1>Node Control</h1><p>Change the node role, network, wallet/peer settings, then apply to restart.</p></div>
     <div class="grid">
@@ -53,7 +53,8 @@
           <div class="field"><label>Maximum peers</label><input id="maxPeers" type="number" min="1" max="10000"/></div>
           <div class="field wide"><label>Advertised P2P host</label><input id="p2pAdvertiseHost" placeholder="public-ip-or-dns (never 0.0.0.0)"/><span class="hint">The listener still binds all interfaces; this is the reachable host shared with peers.</span></div>
            <div class="field wide"><label>Bootstrap peers</label><textarea id="bootstrapNodes" placeholder="genesis.example.com:30303, 203.0.113.10:30303"></textarea><span class="hint">Enter the peer's reachable host:port here, then click Apply &amp; Restart Node. Do not edit .env.admin.tmp; it is a temporary save file, not the active configuration. “Connected” increases only after the peer completes a successful handshake.</span></div>
-          <div class="field wide"><label>Approved node IDs</label><textarea id="allowedNodes" placeholder="One or more ed25519 node IDs, comma-separated"></textarea><span class="hint">Only listed identities can connect inbound. An empty list rejects all inbound peers; approve the same node separately on every receiving node.</span></div>
+          <div class="field wide"><label>Peer enrollment coordinator URL</label><input id="peerRegistrationURL" type="url" placeholder="http://10.8.0.1:5000"/><span class="hint">Optional. On this P2P node, set the coordinator dashboard URL reachable over WireGuard. This node submits a signed identity request; it remains blocked until an admin approves it.</span></div>
+          <div class="field wide"><label>Manual approved node IDs</label><textarea id="allowedNodes" placeholder="One or more ed25519 node IDs, comma-separated"></textarea><span class="hint">Only listed identities can connect inbound. Signed enrollment approvals appear below. A revoked enrollment stays denied until you approve that registration again.</span></div>
           <div class="field"><label>Log level</label><select id="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option></select></div>
           <div class="field"><label>Log format</label><select id="logFormat"><option>json</option><option>pretty</option></select></div>
           <label class="check wide"><input id="peerAuth" type="checkbox" checked disabled/> Authenticated peer approval is required for P2P node roles</label>
@@ -76,6 +77,15 @@
         <div id="peerNotice" class="notice"></div>
       </aside>
     </div>
+    <section class="card" id="peer-enrollments" style="margin-top:18px">
+      <div class="peer-head">
+        <div><h2>Peer enrollment approvals</h2><div class="sub">Signed requests from nodes on a private/VPN address. New IDs stay pending until you approve them.</div></div>
+        <button class="btn ghost" id="clearPeerEnrollmentsBtn" onclick="clearPeerEnrollments()">Clear pending &amp; approved</button>
+      </div>
+      <div id="peerEnrollmentNotice" class="notice"></div>
+      <div id="peerEnrollmentList" class="remote-list"><div class="empty">Loading peer registrations…</div></div>
+      <p class="hint" style="margin-top:12px">Clearing removes pending and approved enrollment records and their saved bootstrap addresses. Revoked identity denials remain. Blockchain data and unrelated manually configured peers are not deleted.</p>
+    </section>
     <section class="card" id="dashboard-pin" style="margin-top:18px">
       <h2>Dashboard PIN <span id="pinStatus" class="pill" style="margin-left:8px">Checking…</span></h2>
       <div class="sub">Set or replace the dashboard PIN after signing in with the authorized Web3 admin wallet. This does not change or erase the wallet saved in this browser.</div>
@@ -148,7 +158,7 @@ function setNetworkProfile(changing){
   $('networkName').value=selected.name;
 }
 async function loadConfig(){try{const r=await fetch('/admin/node/config');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load config');
-  for(const [id,key] of Object.entries({nodeMode:'nodeMode',chainId:'chainId',networkName:'networkName',blockTime:'blockTime',dataDir:'dataDir',walletAddress:'walletAddress',rpcPort:'rpcPort',wsPort:'wsPort',p2pPort:'p2pPort',maxPeers:'maxPeers',p2pAdvertiseHost:'p2pAdvertiseHost',bootstrapNodes:'bootstrapNodes',allowedNodes:'allowedNodes',logLevel:'logLevel',logFormat:'logFormat'}))$(id).value=d[key]??'';
+  for(const [id,key] of Object.entries({nodeMode:'nodeMode',chainId:'chainId',networkName:'networkName',blockTime:'blockTime',dataDir:'dataDir',walletAddress:'walletAddress',rpcPort:'rpcPort',wsPort:'wsPort',p2pPort:'p2pPort',maxPeers:'maxPeers',p2pAdvertiseHost:'p2pAdvertiseHost',bootstrapNodes:'bootstrapNodes',peerRegistrationURL:'peerRegistrationURL',allowedNodes:'allowedNodes',logLevel:'logLevel',logFormat:'logFormat'}))$(id).value=d[key]??'';
   activeNetworkProfile=['testnet','testnet3b'].includes(d.network)?d.network:'mainnet';$('networkProfile').value=activeNetworkProfile;setNetworkProfile(false);
    $('peerAuth').checked=true;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
  }catch(e){show('configNotice',e.message,'err')}}
@@ -184,6 +194,48 @@ async function loadConfig(){try{const r=await fetch('/admin/node/config');const 
      show('remoteNodeNotice','Remote Admin link removed.','ok');await loadRemoteNodes();
    }catch(e){show('remoteNodeNotice',e.message,'err')}
  }
+ async function loadPeerEnrollments(){
+   try{
+     const r=await fetch('/admin/peer-registrations',{cache:'no-store'});const d=await r.json();
+     if(!r.ok)throw Error(d.error||'Could not load peer registrations');
+     const records=Array.isArray(d.registrations)?d.registrations:[];
+     $('peerEnrollmentList').innerHTML=records.length?records.map(record=>{
+       const id=encodeURIComponent(record.nodeId||'');
+       const status=String(record.status||'unknown');
+       const action=status==='approved'
+         ?`<button class="btn ghost" onclick="revokePeerEnrollment('${id}')">Revoke</button>`
+         :`<button class="btn blue" onclick="approvePeerEnrollment('${id}')">Approve</button>`;
+       return `<div class="remote-row"><div class="remote-info"><div class="remote-name">${esc(record.nodeId)}</div><div class="remote-url">${esc(record.network)} · ${esc(record.nodeMode)} · ${esc(record.address)}</div><div class="remote-url">Status: ${esc(status)} · Last seen: ${esc(record.lastSeen)}</div></div><div class="remote-actions">${action}</div></div>`;
+     }).join(''):'<div class="empty">No node enrollment requests yet. Configure a coordinator URL on a P2P node to submit its signed identity.</div>';
+   }catch(e){$('peerEnrollmentList').innerHTML='<div class="empty">Unable to load peer registrations.</div>';show('peerEnrollmentNotice',e.message,'err')}
+ }
+ async function approvePeerEnrollment(encodedID){
+   const id=decodeURIComponent(encodedID);
+   try{
+     const r=await fetch('/admin/peer-registrations/'+encodeURIComponent(id)+'/approve',{method:'POST'});
+     const d=await r.json();if(!r.ok)throw Error(d.error||'Could not approve node');
+     show('peerEnrollmentNotice',d.message||'Node approved.','ok');await loadPeerEnrollments();
+   }catch(e){show('peerEnrollmentNotice',e.message,'err')}
+ }
+ async function revokePeerEnrollment(encodedID){
+   const id=decodeURIComponent(encodedID);
+   if(!confirm('Revoke this node’s approval and disconnect its active P2P session?'))return;
+   try{
+     const r=await fetch('/admin/peer-registrations/'+encodeURIComponent(id)+'/revoke',{method:'POST'});
+     const d=await r.json();if(!r.ok)throw Error(d.error||'Could not revoke node');
+     show('peerEnrollmentNotice',d.message||'Approval revoked.','ok');await loadPeerEnrollments();
+   }catch(e){show('peerEnrollmentNotice',e.message,'err')}
+ }
+ async function clearPeerEnrollments(){
+   if(!confirm('Clear all pending and approved enrollment records and their saved bootstrap addresses? Manually configured peers and blockchain data will remain.'))return;
+   const b=$('clearPeerEnrollmentsBtn');b.disabled=true;
+   try{
+     const r=await fetch('/admin/peer-registrations',{method:'DELETE'});
+     const d=await r.json();if(!r.ok)throw Error(d.error||'Could not clear peer records');
+     show('peerEnrollmentNotice',d.message||'Peer enrollment records cleared.','ok');await loadPeerEnrollments();
+   }catch(e){show('peerEnrollmentNotice',e.message,'err')}
+   finally{b.disabled=false}
+ }
  async function resetDashboardPin(){
    const pin=$('newDashboardPin').value,confirmPin=$('confirmDashboardPin').value,b=$('pinResetBtn');
    if(pin.length<4||pin.length>16){show('pinNotice','PIN must be 4–16 characters.','err');return}
@@ -198,7 +250,7 @@ async function loadConfig(){try{const r=await fetch('/admin/node/config');const 
    finally{b.disabled=false}
  }
 async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configNotice','Saving configuration and restarting…','warn');
-  const body={network:$('networkProfile').value};for(const id of ['nodeMode','networkName','dataDir','p2pAdvertiseHost','bootstrapNodes','allowedNodes','logLevel','logFormat'])body[id]=$(id).value;
+  const body={network:$('networkProfile').value};for(const id of ['nodeMode','networkName','dataDir','p2pAdvertiseHost','bootstrapNodes','peerRegistrationURL','allowedNodes','logLevel','logFormat'])body[id]=$(id).value;
  for(const id of ['chainId','blockTime','rpcPort','wsPort','p2pPort','maxPeers'])body[id]=Number($(id).value);body.peerAuth=$('peerAuth').checked;
  const key=$('validatorKey').value.trim();if(key)body.validatorKey=key;const walletKey=$('walletPrivateKey').value.trim();if(walletKey)body.walletPrivateKey=walletKey;body.walletAddress=$('walletAddress').value.trim();
  try{const r=await fetch('/admin/node/config/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not apply');show('configNotice',d.message,'ok');setTimeout(()=>location.reload(),2500)}catch(e){b.disabled=false;show('configNotice',e.message,'err')}}
@@ -245,7 +297,7 @@ async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configN
  function stagePeer(){const address=cleanPeerAddress($('peerAddress').value);if(!address){show('peerNotice','Enter a peer host:port first.','err');return}const peers=readBootstrapPeers();if(peers.some(peer=>peer.toLowerCase()===address.toLowerCase())){show('peerNotice','That peer is already in the pending list. Click Apply & Restart Node to save any pending changes.','warn');return}peers.push(address);writeBootstrapPeers(peers);$('peerAddress').value='';show('peerNotice','Peer added to pending changes. Click Apply & Restart Node to save and connect it.','ok')}
  function removePeer(encoded){const address=cleanPeerAddress(decodeURIComponent(encoded));if(!confirm('Stage removal of '+address+'? It will remain connected until you click Apply & Restart Node.'))return;const peers=readBootstrapPeers().filter(peer=>peer.toLowerCase()!==address.toLowerCase());writeBootstrapPeers(peers);show('peerNotice','Peer removal staged. Click Apply & Restart Node to save the change and disconnect it.','ok')}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-  loadConfig();loadPinStatus();loadPINRedirect();refreshPeers();loadRemoteNodes();setInterval(refreshPeers,5000);
+  loadConfig();loadPinStatus();loadPINRedirect();refreshPeers();loadRemoteNodes();loadPeerEnrollments();setInterval(refreshPeers,5000);setInterval(loadPeerEnrollments,10000);
 </script>
 </body>
 </html>

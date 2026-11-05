@@ -24,7 +24,7 @@ type DBRecord struct {
 	UpdatedAt string          `json:"updated_at"`
 }
 
-var builtinTables = []string{"notes", "settings", "addresses"}
+var builtinTables = []string{"notes", "settings", "addresses", "peer_registrations"}
 
 // NewAdminDB opens (or creates) the admin database at dataDir/admin/admin.db.
 func NewAdminDB(dataDir string) (*AdminDB, error) {
@@ -168,6 +168,22 @@ func (a *AdminDB) DeleteRecord(table, key string) error {
 			return fmt.Errorf("record %q not found", key)
 		}
 		return b.Delete([]byte(key))
+	})
+}
+
+// DeleteRecords removes the supplied records as a single database transaction.
+func (a *AdminDB) DeleteRecords(table string, keys []string) error {
+	return a.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(table))
+		if b == nil {
+			return fmt.Errorf("table %q not found", table)
+		}
+		for _, key := range keys {
+			if err := b.Delete([]byte(key)); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

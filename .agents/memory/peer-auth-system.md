@@ -33,3 +33,14 @@ When `GYDS_PEER_AUTH=true`:
 **Why:** Permissioned networks need to prevent unauthorized nodes from connecting and receiving chain data.
 
 **How to apply:** P2P-capable roles require peer authentication and explicit identity approval. Do not interpret an empty allowlist as open access; keep unapproved IDs from receiving blocks or other P2P messages.
+
+## Signed self-enrollment and cleanup
+Nodes may self-register with a coordinator over a private/VPN address. The one-time signed challenge binds the Node ID, network, chain ID, genesis, node role, P2P port, and source address. A registration stays pending until an administrator approves it; approval adds the identity to the local runtime allowlist and saves its private address as a bootstrap peer.
+
+Enrollment is node self-registration, not parsing the WireGuard client config. The client config does not enumerate all other clients, and its private key must never be read or transferred for discovery. Each node's authorization remains local: peers may need reciprocal approval before they can authenticate to one another.
+
+Explicit revocations override the legacy environment allowlist for that identity. Bulk cleanup removes pending and approved enrollment records and their saved bootstrap addresses, but preserves revoked denial records, unrelated manual peers, and blockchain data.
+
+**Why:** The operator chose signed node self-registration and cleanup limited to pending and approved peers; the WireGuard config is not a safe or complete peer inventory.
+
+**How to apply:** Configure `GYDS_PEER_REGISTRATION_URL` on each joining P2P node with the coordinator's WireGuard address. Keep registration approval and revocation administrative; never let a registration automatically authorize a peer.

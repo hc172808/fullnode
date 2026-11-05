@@ -22,27 +22,28 @@ var validNodeModes = map[string]bool{
 }
 
 type adminNodeConfig struct {
-	Network          string `json:"network"`
-	ChainID          int64  `json:"chainId"`
-	NetworkName      string `json:"networkName"`
-	NodeMode         string `json:"nodeMode"`
-	BlockTime        int    `json:"blockTime"`
-	RPCPort          int    `json:"rpcPort"`
-	WSPort           int    `json:"wsPort"`
-	P2PPort          int    `json:"p2pPort"`
-	P2PAdvertiseHost string `json:"p2pAdvertiseHost"`
-	MaxPeers         int    `json:"maxPeers"`
-	BootstrapNodes   string `json:"bootstrapNodes"`
-	DataDir          string `json:"dataDir"`
-	LogLevel         string `json:"logLevel"`
-	LogFormat        string `json:"logFormat"`
-	PeerAuth         bool   `json:"peerAuth"`
-	AllowedNodes     string `json:"allowedNodes"`
-	ValidatorKeySet  bool   `json:"validatorKeySet"`
-	WalletConfigured bool   `json:"walletConfigured"`
-	WalletAddress    string `json:"walletAddress"`
-	ValidatorKey     string `json:"validatorKey,omitempty"`
-	WalletPrivateKey string `json:"walletPrivateKey,omitempty"`
+	Network             string `json:"network"`
+	ChainID             int64  `json:"chainId"`
+	NetworkName         string `json:"networkName"`
+	NodeMode            string `json:"nodeMode"`
+	BlockTime           int    `json:"blockTime"`
+	RPCPort             int    `json:"rpcPort"`
+	WSPort              int    `json:"wsPort"`
+	P2PPort             int    `json:"p2pPort"`
+	P2PAdvertiseHost    string `json:"p2pAdvertiseHost"`
+	MaxPeers            int    `json:"maxPeers"`
+	BootstrapNodes      string `json:"bootstrapNodes"`
+	DataDir             string `json:"dataDir"`
+	PeerRegistrationURL string `json:"peerRegistrationURL"`
+	LogLevel            string `json:"logLevel"`
+	LogFormat           string `json:"logFormat"`
+	PeerAuth            bool   `json:"peerAuth"`
+	AllowedNodes        string `json:"allowedNodes"`
+	ValidatorKeySet     bool   `json:"validatorKeySet"`
+	WalletConfigured    bool   `json:"walletConfigured"`
+	WalletAddress       string `json:"walletAddress"`
+	ValidatorKey        string `json:"validatorKey,omitempty"`
+	WalletPrivateKey    string `json:"walletPrivateKey,omitempty"`
 }
 
 func (s *Server) handleAdminNodePage(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +63,8 @@ func (s *Server) handleAdminNodeConfig(w http.ResponseWriter, r *http.Request) {
 		BlockTime: int(cfg.BlockTime.Seconds()), RPCPort: cfg.RPCPort, WSPort: cfg.WSPort,
 		P2PPort: cfg.P2PPort, P2PAdvertiseHost: cfg.P2PAdvertiseHost, MaxPeers: cfg.MaxPeers,
 		BootstrapNodes: strings.Join(bootstrapPeers, ", "), DataDir: cfg.DataDir,
-		LogLevel: cfg.LogLevel, LogFormat: cfg.LogFormat, PeerAuth: cfg.PeerAuth,
+		PeerRegistrationURL: cfg.PeerRegistrationURL,
+		LogLevel:            cfg.LogLevel, LogFormat: cfg.LogFormat, PeerAuth: cfg.PeerAuth,
 		AllowedNodes:     strings.Join(cfg.AllowedNodes, ", "),
 		ValidatorKeySet:  strings.TrimSpace(os.Getenv("GYDS_VALIDATOR_KEY")) != "",
 		WalletConfigured: strings.TrimSpace(os.Getenv("GYDS_WALLET_PRIVATE_KEY")) != "",
@@ -157,6 +159,11 @@ func (c adminNodeConfig) validate() error {
 	}
 	if strings.ContainsAny(c.DataDir, "\r\n") || strings.TrimSpace(c.DataDir) == "" {
 		return fmt.Errorf("data directory must be a non-empty single-line path")
+	}
+	if strings.TrimSpace(c.PeerRegistrationURL) != "" {
+		if _, err := parsePeerRegistrationBase(c.PeerRegistrationURL); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -417,22 +424,23 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 	}
 
 	updates := map[string]string{
-		"GYDS_NETWORK":            c.Network,
-		"GYDS_CHAIN_ID":           strconv.FormatInt(c.ChainID, 10),
-		"GYDS_NETWORK_NAME":       c.NetworkName,
-		"GYDS_NODE_MODE":          c.NodeMode,
-		"GYDS_BLOCK_TIME":         strconv.Itoa(c.BlockTime),
-		"GYDS_RPC_PORT":           strconv.Itoa(c.RPCPort),
-		"GYDS_WS_PORT":            strconv.Itoa(c.WSPort),
-		"GYDS_P2P_PORT":           strconv.Itoa(c.P2PPort),
-		"GYDS_P2P_ADVERTISE_HOST": c.P2PAdvertiseHost,
-		"GYDS_MAX_PEERS":          strconv.Itoa(c.MaxPeers),
-		"GYDS_BOOTSTRAP_NODES":    strings.Join(bootstrapPeers, ","),
-		"GYDS_DATA_DIR":           c.DataDir,
-		"GYDS_LOG_LEVEL":          c.LogLevel,
-		"GYDS_LOG_FORMAT":         c.LogFormat,
-		"GYDS_PEER_AUTH":          strconv.FormatBool(c.PeerAuth),
-		"GYDS_ALLOWED_NODES":      c.AllowedNodes,
+		"GYDS_NETWORK":               c.Network,
+		"GYDS_CHAIN_ID":              strconv.FormatInt(c.ChainID, 10),
+		"GYDS_NETWORK_NAME":          c.NetworkName,
+		"GYDS_NODE_MODE":             c.NodeMode,
+		"GYDS_BLOCK_TIME":            strconv.Itoa(c.BlockTime),
+		"GYDS_RPC_PORT":              strconv.Itoa(c.RPCPort),
+		"GYDS_WS_PORT":               strconv.Itoa(c.WSPort),
+		"GYDS_P2P_PORT":              strconv.Itoa(c.P2PPort),
+		"GYDS_P2P_ADVERTISE_HOST":    c.P2PAdvertiseHost,
+		"GYDS_MAX_PEERS":             strconv.Itoa(c.MaxPeers),
+		"GYDS_BOOTSTRAP_NODES":       strings.Join(bootstrapPeers, ","),
+		"GYDS_DATA_DIR":              c.DataDir,
+		"GYDS_PEER_REGISTRATION_URL": strings.TrimSpace(c.PeerRegistrationURL),
+		"GYDS_LOG_LEVEL":             c.LogLevel,
+		"GYDS_LOG_FORMAT":            c.LogFormat,
+		"GYDS_PEER_AUTH":             strconv.FormatBool(c.PeerAuth),
+		"GYDS_ALLOWED_NODES":         c.AllowedNodes,
 	}
 	if strings.TrimSpace(c.ValidatorKey) != "" {
 		updates["GYDS_VALIDATOR_KEY"] = strings.TrimSpace(c.ValidatorKey)

@@ -42,8 +42,9 @@ type Config struct {
 	ValidatorKey string // hex private key for PoS validator signing
 
 	// P2P peer authorization
-	PeerAuth     bool     // if true, only AllowedNodes may connect
-	AllowedNodes []string // whitelist of peer Node IDs (hex ed25519 public keys)
+	PeerAuth            bool     // if true, only AllowedNodes may connect
+	AllowedNodes        []string // whitelist of peer Node IDs (hex ed25519 public keys)
+	PeerRegistrationURL string   // optional signed self-enrollment coordinator
 }
 
 func DefaultConfig() *Config {
@@ -250,6 +251,7 @@ func FromEnv() *Config {
 	} else if v := os.Getenv("REPLIT_DEV_DOMAIN"); v != "" {
 		cfg.ExternalURL = "https://" + strings.TrimPrefix(v, "https://")
 	}
+	cfg.PeerRegistrationURL = strings.TrimSpace(os.Getenv("GYDS_PEER_REGISTRATION_URL"))
 
 	return cfg
 }

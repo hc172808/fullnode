@@ -34,6 +34,36 @@ func TestEnodeUsesStableNodeIdentityAndPublicAdvertisedHost(t *testing.T) {
 	}
 }
 
+func TestDynamicPeerAllowlistAndEnrollmentSignature(t *testing.T) {
+	key, err := LoadOrCreateNodeKey(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(30303, 198282, nil)
+	s.SetAuth(key, true, nil)
+
+	message := []byte("enrollment challenge")
+	nodeID, signature, ok := s.SignNodeMessage(message)
+	if !ok || nodeID != key.ID() || !VerifyNodeSig(nodeID, message, signature) {
+		t.Fatalf("node enrollment signature invalid: id=%q ok=%v", nodeID, ok)
+	}
+
+	s.SetAllowedNodes([]string{"0x" + nodeID})
+	s.mu.RLock()
+	_, allowed := s.allowedNodes[nodeID]
+	s.mu.RUnlock()
+	if !allowed {
+		t.Fatal("dynamic allowlist did not authorize the approved node ID")
+	}
+	s.SetAllowedNodes(nil)
+	s.mu.RLock()
+	_, allowed = s.allowedNodes[nodeID]
+	s.mu.RUnlock()
+	if allowed {
+		t.Fatal("dynamic allowlist did not revoke the node ID")
+	}
+}
+
 func TestHandshakeRejectsChainMismatchAndUnverifiableGenesis(t *testing.T) {
 	tests := []struct {
 		name string

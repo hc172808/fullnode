@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -165,6 +166,12 @@ func runNode() error {
 		return err
 	}
 	cfg.NodeMode = mode
+	approvedNodeIDs, revokedNodeIDs, err := rpc.LoadPeerAuthorizationIDs(cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("load approved peer registry: %w", err)
+	}
+	cfg.AllowedNodes = appendUniqueNodeIDs(cfg.AllowedNodes, approvedNodeIDs...)
+	cfg.AllowedNodes = filterRevokedNodeIDs(cfg.AllowedNodes, revokedNodeIDs)
 
 	genesis, err := core.GenesisForNetwork(cfg.Network)
 	if err != nil {
@@ -785,6 +792,39 @@ func ensureSyncCaughtUp(localHeight, networkHeight uint64) error {
 		)
 	}
 	return nil
+}
+
+func appendUniqueNodeIDs(base []string, additions ...string) []string {
+	seen := make(map[string]struct{}, len(base)+len(additions))
+	result := make([]string, 0, len(base)+len(additions))
+	for _, id := range append(append([]string(nil), base...), additions...) {
+		id = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(id, "0x")))
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
+}
+
+func filterRevokedNodeIDs(ids, revoked []string) []string {
+	revokedSet := make(map[string]struct{}, len(revoked))
+	for _, id := range revoked {
+		id = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(id)), "0x")
+		revokedSet[id] = struct{}{}
+	}
+	filtered := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(id)), "0x")
+		if _, isRevoked := revokedSet[id]; !isRevoked {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
 }
 
 // startBootstrapDialers starts outbound dialing only after the P2P listener

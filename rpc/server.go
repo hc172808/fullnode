@@ -77,7 +77,10 @@ type Server struct {
 	pendingBootstrapMu sync.Mutex
 	pendingBootstrap   map[string]stagedBootstrapChanges
 
-	remoteNodesMu sync.Mutex
+	remoteNodesMu    sync.Mutex
+	peerEnrollmentMu sync.Mutex
+	peerChallengeMu  sync.Mutex
+	peerChallenges   map[string]peerEnrollmentChallenge
 
 	accessLogFile *os.File
 }
@@ -149,8 +152,12 @@ func (s *Server) DashboardEnabled() bool {
 	return s.dashboardEnabled
 }
 
-// SetP2P wires the P2P server so the RPC layer can connect to imported nodes.
-func (s *Server) SetP2P(p P2PConnector) { s.p2p = p }
+// SetP2P wires the P2P server so the RPC layer can connect to imported nodes
+// and optionally enroll this node with a configured approval coordinator.
+func (s *Server) SetP2P(p P2PConnector) {
+	s.p2p = p
+	s.startPeerEnrollmentClient()
+}
 
 // SetNodeMode exposes the configured local node role to the dashboard and API.
 func (s *Server) SetNodeMode(mode string) {
@@ -300,6 +307,10 @@ func (s *Server) syncReadinessMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if r.URL.Path == "/api/peer-enrollment/challenge" || r.URL.Path == "/api/peer-enrollment" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		switch r.URL.Path {
 		case "/", "/health", "/ready", "/sync-status", "/guide",
 			"/p2p/node-id", "/logo.png", "/favicon.ico",
@@ -371,6 +382,8 @@ func (s *Server) setupDashboardRoutes() {
 	api.HandleFunc("/token-info", s.handleTokenInfo).Methods("GET")
 	api.HandleFunc("/tokens/{address}", s.handleTokenBalances).Methods("GET")
 	api.HandleFunc("/node-id", s.handleNodeIDInfo).Methods("GET")
+	api.HandleFunc("/peer-enrollment/challenge", s.handlePeerEnrollmentChallenge).Methods("POST")
+	api.HandleFunc("/peer-enrollment", s.handlePeerEnrollmentSubmit).Methods("POST")
 	api.HandleFunc("/lock/status", s.handleLockStatus).Methods("GET")
 	api.HandleFunc("/lock/set", s.handleLockSet).Methods("POST", "OPTIONS")
 	api.HandleFunc("/lock/verify", s.handleLockVerify).Methods("POST", "OPTIONS")
@@ -393,6 +406,10 @@ func (s *Server) setupDashboardRoutes() {
 	admin.HandleFunc("/node/sync", s.requireAdminSession(s.handleAdminNodeSync)).Methods("POST")
 	admin.HandleFunc("/node/remove", s.requireAdminSession(s.handleAdminNodeRemove)).Methods("DELETE", "POST")
 	admin.HandleFunc("/node/status", s.requireAdminSession(s.handleAdminNodeStatus)).Methods("GET")
+	admin.HandleFunc("/peer-registrations", s.requireAdminSession(s.handleAdminPeerRegistrations)).Methods("GET")
+	admin.HandleFunc("/peer-registrations/{nodeID}/approve", s.requireAdminSession(s.handleAdminPeerRegistrationApprove)).Methods("POST")
+	admin.HandleFunc("/peer-registrations/{nodeID}/revoke", s.requireAdminSession(s.handleAdminPeerRegistrationRevoke)).Methods("POST")
+	admin.HandleFunc("/peer-registrations", s.requireAdminSession(s.handleAdminPeerRegistrationsClear)).Methods("DELETE")
 	admin.HandleFunc("/security/pin", s.requireAdminSession(s.handleAdminPinReset)).Methods("POST")
 	admin.HandleFunc("/security/pin/redirect", s.requireAdminSession(s.handleAdminPINRedirectSettings)).Methods("GET", "POST")
 	admin.HandleFunc("/remote-nodes", s.requireAdminSession(s.handleRemoteNodes)).Methods("GET", "POST")
