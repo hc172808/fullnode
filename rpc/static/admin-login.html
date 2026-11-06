@@ -225,8 +225,8 @@
         <input id="adminPin" type="password" maxlength="16" autocomplete="current-password"
                placeholder="Enter this node's PIN" required/>
       </div>
-      <div class="error-box"   id="errBox"></div>
-      <div class="lockout-box" id="lockBox"></div>
+      <div class="error-box"   id="errBox" role="alert" aria-live="assertive"></div>
+      <div class="lockout-box" id="lockBox" role="status" aria-live="polite"></div>
       <button class="btn" id="loginBtn" type="submit">Connect Wallet &amp; Sign In</button>
     </form>
     <button class="recovery-toggle" id="recoveryToggle" type="button" onclick="togglePINRecovery()">Forgot the PIN? Recover it with the Admin wallet</button>
@@ -401,6 +401,7 @@ async function doLogin() {
       return;
     }
     if (e.status === 429) {
+      setWalletStatus(e.message, 'error');
       showLockout('⚠️ ' + e.message);
     } else if (e.code === 4001) {
       const message = stage === 'wallet account access'
@@ -411,6 +412,13 @@ async function doLogin() {
       setWalletStatus(message, 'error');
       showError(message);
     } else {
+      if (stage === 'authorized wallet check') {
+        setWalletStatus(`${e.message} No signature was requested.`, 'error');
+      } else if (stage === 'login challenge') {
+        setWalletStatus(`Could not prepare a login challenge: ${e.message} No signature was requested.`, 'error');
+      } else if (stage === 'server verification') {
+        setWalletStatus(`The wallet signed the challenge, but the node rejected login: ${e.message} Check this node's PIN and retry.`, 'error');
+      }
       showError(e.message || 'Admin login failed. Please retry.');
     }
   } finally {

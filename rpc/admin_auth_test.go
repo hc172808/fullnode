@@ -58,12 +58,13 @@ func TestAdminLoginPageChecksWalletBeforePersonalSign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loginStart := strings.Index(string(page), "async function doLogin()")
-	recoveryStart := strings.Index(string(page), "async function recoverPIN()")
+	source := string(page)
+	loginStart := strings.Index(source, "async function doLogin()")
+	recoveryStart := strings.Index(source, "async function recoverPIN()")
 	if loginStart < 0 || recoveryStart <= loginStart {
 		t.Fatal("could not locate the login handler in admin-login.html")
 	}
-	login := string(page[loginStart:recoveryStart])
+	login := source[loginStart:recoveryStart]
 	walletCheck := strings.Index(login, "if (!sameAddress(address, expectedWallet))")
 	accountRecheck := strings.Index(login, "const currentAccounts = await window.ethereum.request({ method: 'eth_accounts' })")
 	personalSign := strings.Index(login, "method: 'personal_sign'")
