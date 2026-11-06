@@ -169,6 +169,8 @@ func (s *Server) SetNodeMode(mode string) {
 
 // RequireSyncForServing blocks state-serving routes and the dashboard until a
 // connected authorized peer reports a height the local chain has reached.
+// Genesis nodes are the local source of the chain and do not need a peer to be
+// ready to serve their own chain state.
 func (s *Server) RequireSyncForServing(required bool) {
 	s.syncGate = required
 }
@@ -917,6 +919,14 @@ func (s *Server) syncStatus() SyncStatus {
 		TargetBlock:  current,
 		Source:       "unavailable",
 		Reason:       "no peer height source is configured",
+	}
+	if strings.EqualFold(strings.TrimSpace(s.nodeMode), "genesis") {
+		status.Ready = true
+		status.Synced = true
+		status.Percent = 100
+		status.Source = "local-genesis-chain"
+		status.Reason = "genesis node serves its locally produced chain without requiring peers"
+		return status
 	}
 	if s.p2p == nil {
 		return status

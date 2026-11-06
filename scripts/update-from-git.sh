@@ -75,8 +75,10 @@ fi
 
 RPC_PORT="${GYDS_RPC_PORT:-$(env_value GYDS_RPC_PORT | tr -d '[:space:]')}"
 DASHBOARD_PORT="${GYDS_DASHBOARD_PORT:-$(env_value GYDS_DASHBOARD_PORT | tr -d '[:space:]')}"
+NODE_MODE="${GYDS_NODE_MODE:-$(env_value GYDS_NODE_MODE)}"
 RPC_PORT="${RPC_PORT:-8545}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-5000}"
+NODE_MODE="${NODE_MODE:-full}"
 
 log "Fetching origin/$BRANCH..."
 git fetch --prune origin "$BRANCH"
@@ -177,14 +179,29 @@ deadline=$((SECONDS + HEALTH_TIMEOUT))
 while (( SECONDS < deadline )); do
   if curl -fsS --max-time 3 "http://127.0.0.1:${RPC_PORT}/health" >/dev/null 2>&1 &&
      curl -fsS --max-time 3 "http://127.0.0.1:${DASHBOARD_PORT}/health" >/dev/null 2>&1; then
-    healthy=true
-    break
+    if [[ "${NODE_MODE,,}" == "genesis" ]]; then
+      block_response="$(curl -sS --max-time 3 \
+        -H 'Content-Type: application/json' \
+        --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' \
+        "http://127.0.0.1:${RPC_PORT}/" 2>/dev/null || true)"
+      if curl -fsS --max-time 3 "http://127.0.0.1:${RPC_PORT}/ready" >/dev/null 2>&1 &&
+         [[ "$block_response" == *'"result"'* && "$block_response" != *'"error"'* ]]; then
+        healthy=true
+        break
+      fi
+    else
+      healthy=true
+      break
+    fi
   fi
   sleep 2
 done
 
 if ! $healthy; then
   warn "Health checks failed after update."
+  if [[ "${NODE_MODE,,}" == "genesis" ]]; then
+    warn "Genesis readiness or eth_blockNumber RPC did not pass; the node may still be blocking wallet requests."
+  fi
   if [[ "$SERVICE_MODE" == "docker" ]]; then
     rollback_docker
   else

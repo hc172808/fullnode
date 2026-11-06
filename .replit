@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "if [ -f .env ]; then set -a; . ./.env; set +a; fi; GYDS_NETWORK=${GYDS_NETWORK:-testnet} GYDS_DATA_DIR=./data GYDS_DASHBOARD_PORT=5000 GYDS_TESTNODE_DASHBOARD_PORT=5000 GYDS_TESTNODE_RPC_PORT=18545 GOTOOLCHAIN=local go run . start"
+args = "if [ -f .env ]; then set -a; . ./.env; set +a; fi; GYDS_NETWORK=${GYDS_NETWORK:-testnet} GYDS_NODE_MODE=genesis GYDS_DATA_DIR=./data GYDS_DASHBOARD_PORT=5000 GYDS_TESTNODE_DASHBOARD_PORT=5000 GYDS_TESTNODE_RPC_PORT=18545 GOTOOLCHAIN=local go run . start"
 waitForPort = 5000
 
 [[ports]]
@@ -69,7 +69,6 @@ externalPort = 8008
 [[ports]]
 localPort = 18545
 externalPort = 3001
-exposeLocalhost = true
 
 [[ports]]
 localPort = 18547

@@ -17,11 +17,12 @@ GOTOOLCHAIN=local GYDS_DASHBOARD_PORT=5000 GYDS_RPC_PORT=8545 GYDS_NODE_MODE=ful
 Or use the "Start application" workflow (already configured).
 
 The workflow loads `.env` when present and runs `GOTOOLCHAIN=local go run . start`
-with the dashboard forced to port 5000 for Replit Preview. Unless explicitly
-configured otherwise, the workflow selects persistent testnet: full mode,
-chain ID 198281, and `./data/testnet` storage. Existing mainnet data in `./data`
+with the dashboard forced to port 5000 for Replit Preview. It selects the
+persistent testnet genesis role for local preview so the node can serve and
+produce its isolated test chain without bootstrap peers. The default profile is
+chain ID 198281 with `./data/testnet` storage; existing mainnet data in `./data`
 is left untouched. Direct CLI defaults remain mainnet; for the same safe local
-profile, prefix the command above with `GYDS_NETWORK=testnet`.
+profile, prefix the command above with `GYDS_NETWORK=testnet GYDS_NODE_MODE=genesis`.
 Open `/setup` in Preview to configure the node; wallet and validator credentials
 must be supplied or generated through the existing setup flow, not invented.
 Running the dashboard does not by itself confirm synchronization with peers.
@@ -96,6 +97,29 @@ Visit `/setup` for the 8-step guided configuration wizard:
 6. Dashboard PIN (set during setup; required alongside the authorized Web3 Admin signature on each node)
 7. Logging (level, format)
 8. Review & Save (writes `.env`, applies PIN)
+
+## Separate shell setup files
+
+The shell setup is intentionally split into two files:
+
+- `bash setup-node.sh` asks for the network and one node role, then creates a
+  protected environment profile. It supports `full`, `lite`, `rpc`, `boost`,
+  `genesis`, `sync`, `validator`, and `testnode`. Run it once for each node
+  profile you need. By default it writes `.env.generated-<network>-<role>`;
+  use `bash setup-node.sh --output .env` when you intentionally want to create
+  the main `.env` file. Replacing an existing file requires confirmation and
+  creates a backup.
+- `bash setup-dashboard.sh --env .env` edits dashboard enablement, port, and
+  public HTTPS URL only. It preserves other settings, backs up the file, and
+  does not start or restart a node.
+
+For a new native install, review the generated profile and pass it to
+`sudo bash deploy.sh --env <profile>`. For an already deployed node, use Admin
+→ Node Control to save node settings and restart, or deliberately edit the
+installed `.env`. The normal Git update command,
+`sudo gyds-fullnode-update`, preserves the installed `.env`; it does not apply
+a generated profile automatically. Dashboard PIN and wallet onboarding remain
+in the setup wizard/Admin flow, not in these shell setup files.
 
 ## Security
 - Dashboard PIN: set during setup and SHA-256 hashed at `<dataDir>/admin/.pin_hash`. Admin login requires both the authorized Web3 wallet signature and that node's own PIN; pins must not be reused or relayed through another node.

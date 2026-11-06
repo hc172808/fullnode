@@ -95,3 +95,32 @@ func TestReadinessBlocksServiceUntilPeerHeightIsReached(t *testing.T) {
 		t.Fatalf("/ready status after catch-up = %d, want 200", ready.Code)
 	}
 }
+
+func TestGenesisNodeServesLocalChainWithoutPeerConnections(t *testing.T) {
+	s := compatibilityServer(t, core.GydsGenesis)
+	s.SetNodeMode("genesis")
+	s.RequireSyncForServing(true)
+
+	ready := httptest.NewRecorder()
+	s.rpcRouter.ServeHTTP(ready, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if ready.Code != http.StatusOK {
+		t.Fatalf("/ready status = %d, want 200 for a genesis node without peers", ready.Code)
+	}
+	var status SyncStatus
+	if err := json.Unmarshal(ready.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode readiness: %v", err)
+	}
+	if !status.Ready || !status.Synced || status.Source != "local-genesis-chain" {
+		t.Fatalf("genesis sync status = %#v, want ready local-chain status", status)
+	}
+
+	balance := s.dispatch(jsonRPCRequest{
+		JSONRPC: "2.0",
+		Method:  "eth_getBalance",
+		Params:  []interface{}{rpcTestRecipient, "latest"},
+		ID:      "balance",
+	})
+	if balance.Error != nil {
+		t.Fatalf("genesis state RPC was blocked without peers: %#v", balance.Error)
+	}
+}
