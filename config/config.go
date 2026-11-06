@@ -2,12 +2,15 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
+
+const DefaultMainnetRPCURL = "https://app.netlifegy.com/api/rpc?network=mainnet"
 
 type Config struct {
 	Network     string
@@ -29,10 +32,11 @@ type Config struct {
 	WSPort    int
 	WSEnabled bool
 
-	DataDir     string
-	LogLevel    string
-	LogFormat   string
-	ExternalURL string
+	DataDir      string
+	LogLevel     string
+	LogFormat    string
+	ExternalURL  string
+	PublicRPCURL string
 
 	BlockTime time.Duration
 
@@ -133,6 +137,11 @@ func FromEnv() *Config {
 	// The test node is intentionally isolated and uses its own standard ports
 	// unless the operator explicitly supplies testnode-specific overrides.
 	testNodeMode := strings.EqualFold(cfg.NodeMode, "testnode")
+	if configuredRPCURL := strings.TrimSpace(os.Getenv("GYDS_PUBLIC_RPC_URL")); configuredRPCURL != "" {
+		cfg.PublicRPCURL = configuredRPCURL
+	} else if cfg.Network == "mainnet" && !testNodeMode {
+		cfg.PublicRPCURL = DefaultMainnetRPCURL
+	}
 	if testNodeMode {
 		cfg.DashboardPort = 15000
 		cfg.RPCPort = 18545
@@ -254,6 +263,27 @@ func FromEnv() *Config {
 	cfg.PeerRegistrationURL = strings.TrimSpace(os.Getenv("GYDS_PEER_REGISTRATION_URL"))
 
 	return cfg
+}
+
+// ValidatePublicRPCURL validates the wallet-facing JSON-RPC endpoint. Query
+// parameters are allowed because remote gateways may select a network there.
+func ValidatePublicRPCURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parsed, err := url.ParseRequestURI(raw)
+	if err != nil {
+		return fmt.Errorf("public RPC URL is invalid: %w", err)
+	}
+	if parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil ||
+		parsed.Fragment != "" || strings.Contains(raw, "#") {
+		return fmt.Errorf("public RPC URL must be HTTPS with a hostname and no credentials or fragment")
+	}
+	if strings.ContainsAny(raw, "\r\n\t ") {
+		return fmt.Errorf("public RPC URL must not contain whitespace")
+	}
+	return nil
 }
 
 // ProfileDataDir maps a configured base directory to an isolated network

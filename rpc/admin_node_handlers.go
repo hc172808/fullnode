@@ -34,6 +34,7 @@ type adminNodeConfig struct {
 	MaxPeers            int    `json:"maxPeers"`
 	BootstrapNodes      string `json:"bootstrapNodes"`
 	DataDir             string `json:"dataDir"`
+	PublicRPCURL        string `json:"publicRPCURL"`
 	PeerRegistrationURL string `json:"peerRegistrationURL"`
 	LogLevel            string `json:"logLevel"`
 	LogFormat           string `json:"logFormat"`
@@ -63,6 +64,7 @@ func (s *Server) handleAdminNodeConfig(w http.ResponseWriter, r *http.Request) {
 		BlockTime: int(cfg.BlockTime.Seconds()), RPCPort: cfg.RPCPort, WSPort: cfg.WSPort,
 		P2PPort: cfg.P2PPort, P2PAdvertiseHost: cfg.P2PAdvertiseHost, MaxPeers: cfg.MaxPeers,
 		BootstrapNodes: strings.Join(bootstrapPeers, ", "), DataDir: cfg.DataDir,
+		PublicRPCURL:        cfg.PublicRPCURL,
 		PeerRegistrationURL: cfg.PeerRegistrationURL,
 		LogLevel:            cfg.LogLevel, LogFormat: cfg.LogFormat, PeerAuth: cfg.PeerAuth,
 		AllowedNodes:     strings.Join(cfg.AllowedNodes, ", "),
@@ -164,6 +166,9 @@ func (c adminNodeConfig) validate() error {
 		if _, err := parsePeerRegistrationBase(c.PeerRegistrationURL); err != nil {
 			return err
 		}
+	}
+	if err := config.ValidatePublicRPCURL(c.PublicRPCURL); err != nil {
+		return err
 	}
 	return nil
 }
@@ -390,6 +395,7 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 	c.NodeMode = strings.ToLower(strings.TrimSpace(c.NodeMode))
 	c.Network = strings.ToLower(strings.TrimSpace(c.Network))
 	c.DataDir = strings.TrimSpace(c.DataDir)
+	c.PublicRPCURL = strings.TrimSpace(c.PublicRPCURL)
 	switch c.Network {
 	case "mainnet":
 		c.ChainID = 198282
@@ -436,6 +442,7 @@ func (s *Server) handleAdminNodeConfigApply(w http.ResponseWriter, r *http.Reque
 		"GYDS_MAX_PEERS":             strconv.Itoa(c.MaxPeers),
 		"GYDS_BOOTSTRAP_NODES":       strings.Join(bootstrapPeers, ","),
 		"GYDS_DATA_DIR":              c.DataDir,
+		"GYDS_PUBLIC_RPC_URL":        c.PublicRPCURL,
 		"GYDS_PEER_REGISTRATION_URL": strings.TrimSpace(c.PeerRegistrationURL),
 		"GYDS_LOG_LEVEL":             c.LogLevel,
 		"GYDS_LOG_FORMAT":            c.LogFormat,

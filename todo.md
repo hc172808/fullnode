@@ -748,13 +748,17 @@ peer count, peer list, and height synchronization all pass on both servers.
 
 ## Plan 8 — Make the public RPC wallet-ready
 
-Your public JSON-RPC endpoint is:
+Your default mainnet public JSON-RPC endpoint is:
 
 ```text
-https://rpc.netlifegy.com
+https://app.netlifegy.com/api/rpc?network=mainnet
 ```
 
-Validation completed on **2026-08-09**:
+The advertised wallet RPC can be changed in Admin → Node Control or with
+`GYDS_PUBLIC_RPC_URL` in `.env`. The complete path and query string are
+preserved.
+
+Endpoint validation completed on **2026-08-09**:
 
 - [x] Confirm the HTTPS RPC endpoint responds to `eth_chainId`.
 - [x] Confirm the endpoint reports chain ID `198282` (`0x3068a`).
@@ -967,7 +971,10 @@ Validation completed on **2026-08-09**:
 
 ## External wallet support for native GYDS
 
-- [x] Publish a stable HTTPS RPC URL: `https://rpc.netlifegy.com`.
+- [x] Publish a stable HTTPS RPC URL:
+  `https://app.netlifegy.com/api/rpc?network=mainnet`.
+- [x] Make the public wallet RPC configurable in Admin and `.env` using
+  `GYDS_PUBLIC_RPC_URL`.
 - [ ] Publish a stable HTTPS WebSocket URL and block explorer URL.
 - [x] Add a canonical `/gyds-network.json` document with chain ID, RPC,
   WebSocket, explorer, and logo URLs.
@@ -976,7 +983,7 @@ Validation completed on **2026-08-09**:
   - Chain ID: `198282`
   - Native symbol: `GYDS`
   - Decimals: `18`
-  - RPC URL: `https://rpc.netlifegy.com`
+  - RPC URL: `https://app.netlifegy.com/api/rpc?network=mainnet`
 - [ ] Use HTTPS for `iconUrls`; many wallets ignore HTTP or localhost image URLs.
 - [x] Add PNG and JPEG logo URLs to the wallet-add request and metadata document.
 - [ ] Submit the network logo to the wallet's supported chain registry where

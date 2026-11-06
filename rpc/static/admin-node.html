@@ -48,6 +48,7 @@
           <div class="field"><label>Wallet private key</label><input id="walletPrivateKey" type="password" placeholder="Leave blank to keep current key"/></div>
           <div class="key-warning wide" role="alert"><strong>Server wallet key warning:</strong> If supplied, this key is sent to this server and stored in <code>.env</code> with mode <code>0600</code>. The app does not encrypt it; anyone with server access may use it. Use only a dedicated server wallet. Never enter a personal, admin-login, validator, or GYD treasury key. This does not deploy GYD or create separate GYD/GYDS wallets. Prefer signing locally with your browser or hardware wallet.</div>
           <div class="field"><label>RPC port</label><input id="rpcPort" type="number" min="1" max="65535"/></div>
+          <div class="field wide"><label>Public JSON-RPC URL</label><input id="publicRPCURL" type="url" placeholder="https://app.netlifegy.com/api/rpc?network=mainnet"/><span class="hint">Exact wallet-facing RPC endpoint published in network metadata. Path and query parameters are preserved. This changes the advertised remote endpoint, not this node’s local RPC listener.</span></div>
           <div class="field"><label>WebSocket port</label><input id="wsPort" type="number" min="1" max="65535"/></div>
           <div class="field"><label>P2P port</label><input id="p2pPort" type="number" min="1" max="65535"/></div>
           <div class="field"><label>Maximum peers</label><input id="maxPeers" type="number" min="1" max="10000"/></div>
@@ -158,7 +159,7 @@ function setNetworkProfile(changing){
   $('networkName').value=selected.name;
 }
 async function loadConfig(){try{const r=await fetch('/admin/node/config');const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load config');
-  for(const [id,key] of Object.entries({nodeMode:'nodeMode',chainId:'chainId',networkName:'networkName',blockTime:'blockTime',dataDir:'dataDir',walletAddress:'walletAddress',rpcPort:'rpcPort',wsPort:'wsPort',p2pPort:'p2pPort',maxPeers:'maxPeers',p2pAdvertiseHost:'p2pAdvertiseHost',bootstrapNodes:'bootstrapNodes',peerRegistrationURL:'peerRegistrationURL',allowedNodes:'allowedNodes',logLevel:'logLevel',logFormat:'logFormat'}))$(id).value=d[key]??'';
+  for(const [id,key] of Object.entries({nodeMode:'nodeMode',chainId:'chainId',networkName:'networkName',blockTime:'blockTime',dataDir:'dataDir',walletAddress:'walletAddress',rpcPort:'rpcPort',publicRPCURL:'publicRPCURL',wsPort:'wsPort',p2pPort:'p2pPort',maxPeers:'maxPeers',p2pAdvertiseHost:'p2pAdvertiseHost',bootstrapNodes:'bootstrapNodes',peerRegistrationURL:'peerRegistrationURL',allowedNodes:'allowedNodes',logLevel:'logLevel',logFormat:'logFormat'}))$(id).value=d[key]??'';
   activeNetworkProfile=['testnet','testnet3b'].includes(d.network)?d.network:'mainnet';$('networkProfile').value=activeNetworkProfile;setNetworkProfile(false);
    $('peerAuth').checked=true;$('validatorHint').textContent=d.validatorKeySet?'A validator key is configured. Enter a new value only to replace it.':'No validator key configured.'; if(d.walletConfigured)$('validatorHint').textContent+=' Wallet key is configured server-side and is not exposed here.';
  }catch(e){show('configNotice',e.message,'err')}}
@@ -250,7 +251,7 @@ async function loadConfig(){try{const r=await fetch('/admin/node/config');const 
    finally{b.disabled=false}
  }
 async function applyConfig(){const b=$('applyBtn');b.disabled=true;show('configNotice','Saving configuration and restarting…','warn');
-  const body={network:$('networkProfile').value};for(const id of ['nodeMode','networkName','dataDir','p2pAdvertiseHost','bootstrapNodes','peerRegistrationURL','allowedNodes','logLevel','logFormat'])body[id]=$(id).value;
+  const body={network:$('networkProfile').value};for(const id of ['nodeMode','networkName','dataDir','publicRPCURL','p2pAdvertiseHost','bootstrapNodes','peerRegistrationURL','allowedNodes','logLevel','logFormat'])body[id]=$(id).value;
  for(const id of ['chainId','blockTime','rpcPort','wsPort','p2pPort','maxPeers'])body[id]=Number($(id).value);body.peerAuth=$('peerAuth').checked;
  const key=$('validatorKey').value.trim();if(key)body.validatorKey=key;const walletKey=$('walletPrivateKey').value.trim();if(walletKey)body.walletPrivateKey=walletKey;body.walletAddress=$('walletAddress').value.trim();
  try{const r=await fetch('/admin/node/config/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not apply');show('configNotice',d.message,'ok');setTimeout(()=>location.reload(),2500)}catch(e){b.disabled=false;show('configNotice',e.message,'err')}}

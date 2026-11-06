@@ -238,6 +238,14 @@ if [[ "$MODE" == "testnode" ]]; then
 else
   prompt_value RPC_HOST "RPC bind host (127.0.0.1 is safer)" "127.0.0.1"
 fi
+PUBLIC_RPC_DEFAULT=""
+if [[ "$NETWORK" == "mainnet" && "$MODE" != "testnode" ]]; then
+  PUBLIC_RPC_DEFAULT="https://app.netlifegy.com/api/rpc?network=mainnet"
+fi
+prompt_value PUBLIC_RPC_URL "Public wallet-facing JSON-RPC URL" "$PUBLIC_RPC_DEFAULT"
+if [[ -n "$PUBLIC_RPC_URL" && ! "$PUBLIC_RPC_URL" =~ ^https://[^[:space:]]+$ ]]; then
+  die "public RPC URL must be HTTPS and contain no whitespace"
+fi
 prompt_yes_no DASHBOARD_ENABLED "Enable the dashboard" "true"
 if [[ "$MODE" == "testnode" ]]; then
   BLOCK_TIME=5
@@ -394,6 +402,7 @@ trap '[[ -e "${tmp_file:-}" ]] && rm -f -- "$tmp_file"' EXIT
   emit GYDS_DASHBOARD_PORT "$DASHBOARD_PORT"
   emit GYDS_RPC_HOST "$RPC_HOST"
   emit GYDS_RPC_PORT "$RPC_PORT"
+  emit GYDS_PUBLIC_RPC_URL "$PUBLIC_RPC_URL"
   emit GYDS_WS_PORT "$WS_PORT"
   emit GYDS_P2P_PORT "$P2P_PORT"
   emit GYDS_MAX_PEERS "$MAX_PEERS"

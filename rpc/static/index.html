@@ -853,13 +853,9 @@ let NETWORK_NAME = 'GYDS Chain';
 const SYMBOL     = 'GYDS';
 const GAS_LIMIT  = 21000;
 const GAS_PRICE  = ethers.utils.parseUnits('1', 'gwei');
-let RPC_URL       = 'https://rpc.netlifegy.com';
+let RPC_URL       = 'https://app.netlifegy.com/api/rpc?network=mainnet';
 const PUBLIC_BASE_URL = window.location.origin;
-// The public RPC node is exposed through Cloudflare on its dedicated RPC
-// port. Other/local nodes keep the same-origin fallback for development.
-let WALLET_RPC_URL = window.location.hostname === 'rpc.netlifegy.com'
-  ? window.location.protocol + '//rpc.netlifegy.com:8545'
-  : window.location.origin + '/rpc';
+let WALLET_RPC_URL = 'https://app.netlifegy.com/api/rpc?network=mainnet';
 let networkConfigLoaded = false;
 
 // ── State ───────────────────────────────────────────────────────────────────

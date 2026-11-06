@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,7 +32,7 @@ import (
 
 const (
 	canonicalExplorerURL = "https://explorer.netlifegy.com"
-	canonicalRPCURL      = "https://rpc.netlifegy.com"
+	canonicalRPCURL      = config.DefaultMainnetRPCURL
 )
 
 // P2PConnector is the minimal interface the RPC server needs from the P2P layer.
@@ -63,11 +64,12 @@ type Server struct {
 	rpcRouter *mux.Router
 	rpcServer *http.Server
 
-	externalURL string
-	bindHost    string // host to bind listeners on ("" / "0.0.0.0" = all interfaces, "127.0.0.1" = loopback only)
-	nodeMode    string
-	syncGate    bool
-	dataDir     string
+	externalURL  string
+	publicRPCURL string
+	bindHost     string // host to bind listeners on ("" / "0.0.0.0" = all interfaces, "127.0.0.1" = loopback only)
+	nodeMode     string
+	syncGate     bool
+	dataDir      string
 
 	auth    *AuthStore
 	adminDB *AdminDB
@@ -126,6 +128,7 @@ func NewServer(chain *core.Chain, dashPort, rpcPort, blockTimeSecs int, dataDir,
 		dashboardEnabled: true,
 		rpcPort:          rpcPort,
 		externalURL:      externalURL,
+		publicRPCURL:     strings.TrimSpace(os.Getenv("GYDS_PUBLIC_RPC_URL")),
 		nodeMode:         "full",
 		dataDir:          dataDir,
 		upgrader: websocket.Upgrader{
@@ -563,14 +566,21 @@ func (s *Server) publicBaseURL(r *http.Request) string {
 }
 
 func websocketURL(base string) string {
-	switch {
-	case strings.HasPrefix(base, "https://"):
-		return "wss://" + strings.TrimPrefix(base, "https://")
-	case strings.HasPrefix(base, "http://"):
-		return "ws://" + strings.TrimPrefix(base, "http://")
+	parsed, err := url.Parse(strings.TrimSpace(base))
+	if err != nil || parsed.Host == "" {
+		return base
+	}
+	switch parsed.Scheme {
+	case "https":
+		parsed.Scheme = "wss"
+	case "http":
+		parsed.Scheme = "ws"
 	default:
 		return base
 	}
+	parsed.Path = "/api/ws"
+	parsed.RawPath = ""
+	return parsed.String()
 }
 
 // handleNetworkMetadata serves wallet-readable GYDS network metadata. Wallets
@@ -580,17 +590,15 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 	base := s.publicBaseURL(r)
 	genesis := s.chain.GenesisConfig()
 	chainID := genesis.ChainID
-	rpcURL := base + "/rpc"
-	requestHost := strings.ToLower(r.Host)
-	if host, _, err := net.SplitHostPort(requestHost); err == nil {
-		requestHost = host
-	}
-	if chainID == 198282 && (requestHost == "rpc.netlifegy.com" || strings.Contains(strings.ToLower(base), "rpc.netlifegy.com")) {
-		rpcURL = strings.TrimRight(base, "/") + ":" + strconv.Itoa(s.rpcPort)
-		if requestHost == "rpc.netlifegy.com" {
-			rpcURL = "https://rpc.netlifegy.com:" + strconv.Itoa(s.rpcPort)
+	rpcURL := strings.TrimSpace(s.publicRPCURL)
+	if rpcURL == "" {
+		if chainID == 198282 {
+			rpcURL = canonicalRPCURL
+		} else {
+			rpcURL = strings.TrimRight(base, "/") + "/rpc"
 		}
 	}
+	wsURL := websocketURL(rpcURL)
 	jsonOK(w, map[string]interface{}{
 		"name":       genesis.NetworkName,
 		"chainId":    fmt.Sprintf("0x%x", chainID),
@@ -602,7 +610,7 @@ func (s *Server) handleNetworkMetadata(w http.ResponseWriter, r *http.Request) {
 			"decimals": 18,
 		},
 		"rpcUrls":           []string{rpcURL},
-		"wsUrls":            []string{websocketURL(rpcURL) + "/api/ws"},
+		"wsUrls":            []string{wsURL},
 		"explorerUrls":      []string{canonicalExplorerURL},
 		"iconUrls":          []string{base + "/logo.png"},
 		"connectionInfoUrl": base + "/gyds-connection-info.json",
@@ -675,15 +683,18 @@ func (s *Server) buildConnectionInfo() map[string]interface{} {
 	}
 
 	extBase := strings.TrimRight(s.externalURL, "/")
-	rpcURL := canonicalRPCURL
-	if chainID != 198282 {
+	rpcURL := strings.TrimSpace(s.publicRPCURL)
+	if rpcURL == "" && chainID == 198282 {
+		rpcURL = canonicalRPCURL
+	}
+	if rpcURL == "" && chainID != 198282 {
 		if extBase != "" {
 			rpcURL = extBase + "/rpc"
 		} else {
 			rpcURL = fmt.Sprintf("http://127.0.0.1:%d/rpc", s.rpcPort)
 		}
 	}
-	wsURL := websocketURL(rpcURL) + "/api/ws"
+	wsURL := websocketURL(rpcURL)
 	dashURL := fmt.Sprintf("http://0.0.0.0:%d", s.dashPort)
 	p2pPort := 30303
 	enode := ""

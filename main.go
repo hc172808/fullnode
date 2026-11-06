@@ -161,6 +161,9 @@ func versionCmd() *cobra.Command {
 
 func runNode() error {
 	cfg := config.FromEnv()
+	if err := config.ValidatePublicRPCURL(cfg.PublicRPCURL); err != nil {
+		return fmt.Errorf("GYDS_PUBLIC_RPC_URL: %w", err)
+	}
 	mode, err := config.NormalizeNodeMode(cfg.NodeMode)
 	if err != nil {
 		return err

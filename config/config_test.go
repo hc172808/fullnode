@@ -115,6 +115,52 @@ func TestFromEnvSelectsIsolatedTestnetProfile(t *testing.T) {
 	}
 }
 
+func TestPublicRPCURLDefaultsForMainnetAndSupportsOverride(t *testing.T) {
+	t.Setenv("GYDS_NODE_MODE", "full")
+	t.Setenv("GYDS_DATA_DIR", t.TempDir())
+	t.Setenv("GYDS_BOOTSTRAP_NODES", "")
+	t.Setenv("GYDS_PUBLIC_RPC_URL", "")
+	t.Setenv("GYDS_NETWORK", "mainnet")
+
+	if got := FromEnv().PublicRPCURL; got != DefaultMainnetRPCURL {
+		t.Fatalf("mainnet public RPC URL = %q, want %q", got, DefaultMainnetRPCURL)
+	}
+
+	t.Setenv("GYDS_NETWORK", "testnet")
+	if got := FromEnv().PublicRPCURL; got != "" {
+		t.Fatalf("testnet public RPC URL = %q, want empty network-local fallback", got)
+	}
+
+	override := "https://nodes.example.com/api/rpc?network=mainnet"
+	t.Setenv("GYDS_PUBLIC_RPC_URL", override)
+	if got := FromEnv().PublicRPCURL; got != override {
+		t.Fatalf("configured public RPC URL = %q, want %q", got, override)
+	}
+}
+
+func TestValidatePublicRPCURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "blank uses network default"},
+		{name: "HTTPS endpoint with query", value: DefaultMainnetRPCURL},
+		{name: "rejects plain HTTP", value: "http://nodes.example.com/rpc", wantErr: true},
+		{name: "rejects credentials", value: "https://user:pass@nodes.example.com/rpc", wantErr: true},
+		{name: "rejects fragments", value: "https://nodes.example.com/rpc#section", wantErr: true},
+		{name: "rejects malformed URL", value: "not a URL", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidatePublicRPCURL(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ValidatePublicRPCURL(%q) error = %v, wantErr %t", tt.value, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestFromEnvSelectsIsolatedThreeBTestnetProfile(t *testing.T) {
 	t.Setenv("GYDS_NETWORK", "testnet3b")
 	t.Setenv("GYDS_CHAIN_ID", "198281")
